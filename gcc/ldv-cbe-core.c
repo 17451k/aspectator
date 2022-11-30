@@ -126,13 +126,13 @@ ldv_c_backend_print (unsigned int indent_level, bool padding, const char *format
   /* Print indentation spaces if so just at the beginning of the line. */
   if (ldv_c_backend_last_char == '\n')
     for (i = 0; i < indent_level * LDV_SPACES_PER_INDENT_LEVEL; i++)
-      ldv_c_backend_print_to_file_or_buffer (" ", va_list());
+      ldv_c_backend_print_to_file_or_buffer (" ", ap);
 
   /* Print an optional space before some identifier. */
   if (padding)
     {
       if (ldv_c_backend_padding)
-        ldv_c_backend_print_to_file_or_buffer (" ", va_list());
+        ldv_c_backend_print_to_file_or_buffer (" ", ap);
       else
         ldv_c_backend_padding = true;
     }
