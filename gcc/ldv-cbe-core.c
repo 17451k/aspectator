@@ -126,13 +126,13 @@ ldv_c_backend_print (unsigned int indent_level, bool padding, const char *format
   /* Print indentation spaces if so just at the beginning of the line. */
   if (ldv_c_backend_last_char == '\n')
     for (i = 0; i < indent_level * LDV_SPACES_PER_INDENT_LEVEL; i++)
-      ldv_c_backend_print_to_file_or_buffer (" ", NULL);
+      ldv_c_backend_print_to_file_or_buffer (" ", va_list());
 
   /* Print an optional space before some identifier. */
   if (padding)
     {
       if (ldv_c_backend_padding)
-        ldv_c_backend_print_to_file_or_buffer (" ", NULL);
+        ldv_c_backend_print_to_file_or_buffer (" ", va_list());
       else
         ldv_c_backend_padding = true;
     }
@@ -168,10 +168,7 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
 
   if (ldv_c_backend_buffer_enabled)
     {
-      if (ap)
-        vasprintf (&str, format, ap);
-      else
-        asprintf (&str, format);
+      vasprintf (&str, format, ap);
 
       if (ldv_c_backend_buffer)
         {
@@ -193,10 +190,7 @@ ldv_c_backend_print_to_file_or_buffer (const char *format, va_list ap)
     }
   else
     {
-      if (ap)
-        vfprintf (ldv_c_backend_out_stream, format, ap);
-      else
-        fprintf (ldv_c_backend_out_stream, format);
+      vfprintf (ldv_c_backend_out_stream, format, ap);
     }
 }
 
