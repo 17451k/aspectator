@@ -1,6 +1,6 @@
 /* Get common system includes and various definitions and declarations based
    on autoconf macros.
-   Copyright (C) 1998-2021 Free Software Foundation, Inc.
+   Copyright (C) 1998-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -51,9 +51,9 @@ along with GCC; see the file COPYING3.  If not see
 /* Some of these are #define on some systems, e.g. on AIX to redirect
    the names to 64bit capable functions for LARGE_FILES support. These
    redefs are pointless here so we can override them.  */
-    
-#undef fopen 
-#undef freopen 
+
+#undef fopen
+#undef freopen
 
 #define fopen(PATH,MODE) fopen_unlocked(PATH,MODE)
 #define fdopen(FILDES,MODE) fdopen_unlocked(FILDES,MODE)
@@ -420,6 +420,18 @@ extern void fancy_abort (const char *, int, const char *) ATTRIBUTE_NORETURN;
 #else
 /* N.B.: in release build EXPR is not evaluated.  */
 #define gcc_checking_assert(EXPR) ((void)(0 && (EXPR)))
+#endif
+
+#ifdef __has_cpp_attribute
+# if __has_cpp_attribute(likely)
+#  define ATTR_LIKELY [[likely]]
+# elif __has_cpp_attribute(__likely__)
+#  define ATTR_LIKELY [[__likely__]]
+# else
+#  define ATTR_LIKELY
+# endif
+#else
+# define ATTR_LIKELY
 #endif
 
 /* Poison identifiers we do not want to use.  */

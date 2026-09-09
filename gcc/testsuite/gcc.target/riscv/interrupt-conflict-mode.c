@@ -1,7 +1,7 @@
 /* Verify proper errors are generated for conflicted interrupt type.  */
 /* { dg-do compile } */
-/* { dg-options "-O" } */
-void __attribute__ ((interrupt ("user")))
+/* { dg-options "" } */
+void __attribute__ ((interrupt ("supervisor")))
 foo(void);
 
 void __attribute__ ((interrupt ("machine")))

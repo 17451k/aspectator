@@ -3,12 +3,13 @@
    explicitly specifies -fwrapv, which is a condition for the
    gimple folding of the vec_sl() intrinsic.  */
 
-/* specify -mpower8-vector, which provides vec_sl(long long,...) support. */
+/* specify -mcpu=power8 -mvsx, which provides vec_sl(long long,...) support. */
 
 /* { dg-do compile } */
-/* { dg-require-effective-target powerpc_p8vector_ok } */
+/* { dg-options "-maltivec -O3 -fwrapv -mvsx " } */
+/* { dg-additional-options "-mdejagnu-cpu=power8" { target { ! has_arch_pwr8 } } } */
+/* { dg-require-effective-target powerpc_vsx } */
 /* { dg-require-effective-target lp64 } */
-/* { dg-options "-maltivec -O3 -fwrapv -mpower8-vector " } */
 
 #include <altivec.h>
 
@@ -24,11 +25,12 @@ vector signed long long splats4(void)
         return (vector signed long long) vec_sl(mzero, mzero);
 }
 
-/* Codegen will consist of splat and shift instructions for most types.
-   If folding is enabled, the vec_sl tests using vector long long type will
-   generate a lvx instead of a vspltisw+vsld pair.  */
+/* Codegen will consist of splat and shift instructions for most types.  If
+   folding is enabled, the vec_sl tests using vector long long type will
+   generate a lvx instead of a vspltisw+vsld pair.  On power10, it will
+   generate a xxspltidp instruction instead of the lvx.  */
 
 /* { dg-final { scan-assembler-times {\mvspltis[bhw]\M} 0 } } */
 /* { dg-final { scan-assembler-times {\mvsl[bhwd]\M} 0 } } */
-/* { dg-final { scan-assembler-times {\mlvx\M|\mlxv\M|\mlxvd2x\M} 2 } } */
+/* { dg-final { scan-assembler-times {\mp?lxv\M|\mlvx\M|\mlxvd2x\M|\mxxspltidp\M} 2 } } */
 

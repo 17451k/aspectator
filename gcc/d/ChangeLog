@@ -1,465 +1,340 @@
-2021-07-28  Release Manager
+2026-08-07  Release Manager
 
-	* GCC 11.2.0 released.
+	* GCC 16.2.0 released.
 
-2021-07-03  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	Backported from master:
-	2021-07-03  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/101273
-	* toir.cc (IRVisitor::visit (ReturnStatement *)): Detect returns that
-	use a temporary, and replace with return value.
-
-2021-07-02  Iain Buclaw  <ibuclaw@gdcproject.org>
+2026-05-05  Iain Buclaw  <ibuclaw@gdcproject.org>
 
 	Backported from master:
-	2021-07-02  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/101282
-	* d-codegen.cc (build_assign): Force target_expr on RHS for non-POD
-	assignment expressions.
-
-2021-06-11  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	Backported from master:
-	2021-06-11  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/100999
-	* dmd/cond.c (lowerArrayAggregate): Run CTFE interpret on foreach
-	input range.
-	(createTupleType): Don't generate typeinfo when disabled.
-	(lowerNonArrayAggregate): Suppress errors when running type semantic.
-	(staticForeachPrepare): Don't run CTFE interpret from here.
-	* dmd/dinterpret.c (ctfeInterpret): Add more shortcut cases.
-	* dmd/expression.c (Expression::checkPostblit): Don't generate
-	typeinfo when type is missing from library.
-	* dmd/expressionsem.c (resolvePropertiesX): Remove early error.
-	* dmd/statementsem.c (StatementSemanticVisitor::declareVariable):
-	Don't override index type.
-	(StatementSemanticVisitor::makeTupleForeachBody): Check index type is
-	integral and index range fits type size.
-	(StatementSemanticVisitor::visit (ForeachStatement*)): Adjust index
-	range before testing.
+	2026-05-05  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/125089
+	* types.cc (finish_aggregate_mode): Explicitly set TYPE_MODE of
+	non-POD types here.
+	(finish_aggregate_type): Propagate TREE_ADDRESSABLE to all variants.
+	(TypeVisitor::visit (TypeStruct *)): Set TREE_ADDRESSABLE before
+	visiting struct members.
 
-2021-06-10  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	Backported from master:
-	2021-06-10  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/100967
-	* d-frontend.cc (getTypeInfoType): Move TypeInfo checks to
-	check_typeinfo_type and call new function.
-	* d-tree.h (check_typeinfo_type): Declare.
-	* typeinfo.cc: Include dmd/scope.h.
-	(create_frontend_tinfo_types): Generate front-end types even if Object
-	is missing.
-	(build_typeinfo): Move TypeInfo checks to check_typeinfo_type and call
-	new function.
-	(check_typeinfo_type): New function.
-
-2021-06-09  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	Backported from master:
-	2021-06-09  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/100964
-	* dmd/expression.c (Expression::checkPostblit): Don't generate
-	TypeInfo when RTTI is disabled.
-
-2021-06-09  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	Backported from master:
-	2021-06-09  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/100935
-	* dmd/mtype.c (Type::getProperty): Prefer explicit alignment over
-	natural alignment for alignof property.
-
-2021-06-04  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	Backported from master:
-	2021-06-04  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/100882
-	* d-codegen.cc (build_assign): Construct initializations inside
-	TARGET_EXPR_INITIAL.
-	(compound_expr): Remove intermediate expressions that have no
-	side-effects.
-	(return_expr): Construct returns inside TARGET_EXPR_INITIAL.
-	* expr.cc (ExprVisitor::visit (CallExp *)): Remove useless assignment
-	to TARGET_EXPR_SLOT.
-
-2021-05-10  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	Backported from master:
-	2021-05-10  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/dsymbolsem.c (aliasInstanceSemantic): Merge storage class of old
-	alias into new symbol.
-
-2021-04-27  Release Manager
-
-	* GCC 11.1.0 released.
-
-2021-04-19  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/98457
-	* d-diagnostic.cc (expand_d_format): Handle escaped backticks.
-	(escape_d_format): New funtion.
-	(verror): Call escape_d_format on prefixing strings.
-	(vdeprecation): Likewise.
-
-2021-04-17  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/99914
-	* d-target.def (d_templates_always_comdat): New hook.
-	* d-tree.h (mark_needed): Remove prototype.
-	* decl.cc: Include d-target.h.
-	(mark_needed): Rename to...
-	(d_mark_needed): ...this.  Make static.
-	(set_linkage_for_decl): Put variables in comdat if
-	d_templates_always_comdat.
-
-2021-04-17  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-target.cc (d_handle_target_object_format): New function.
-	(d_language_target_info): Add d_handle_target_object_format as handler
-	for objectFormat key.
-	(Target::getTargetInfo): Continue if handler returned NULL_TREE.
-
-2021-04-14  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-target.cc (Target::_init): Call new targetdm hook to register OS
-	specific target info keys.
-	* d-target.def (d_register_os_target_info): New hook.
-
-2021-04-14  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-builtins.cc (d_add_builtin_version): Remove all setting of
-	target-specific global.params.
-	* typeinfo.cc (create_typeinfo): Don't add argType fields to
-	TypeInfo_Struct.
-
-2021-04-14  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/99914
-	* decl.cc (DeclVisitor::visit (StructDeclaration *)): Don't set
-	DECL_INSTANTIATED on static initializer declarations.
-	(DeclVisitor::visit (ClassDeclaration *)): Likewise.
-	(DeclVisitor::visit (EnumDeclaration *)): Likewise.
-	(d_finish_decl): Move call to set_linkage_for_decl to...
-	(declare_extern_var): ...here.
-
-2021-04-14  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-target.cc (Target::_init): Call new targetdm hook to register CPU
-	specific target info keys.
-	* d-target.def (d_register_cpu_target_info): New hook.
-
-2021-04-14  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-target.cc (Target::systemLinkage): Return LINKwindows if
-	d_has_stdcall_convention applies to LINKsystem.
-	* d-target.def (d_has_stdcall_convention): New hook.
-	* types.cc (TypeVisitor::visit (TypeFunction *)): Insert "stdcall"
-	function attribute if d_has_stdcall_convention applies to LINKwindows.
-
-2021-04-10  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 0450061c8.
-
-2021-04-08  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-attribs.cc: Include fold-const.h and opts.h.
-	(attr_noreturn_exclusions): Add alloc_size.
-	(attr_const_pure_exclusions): Likewise.
-	(attr_inline_exclusions): Add target_clones.
-	(attr_noinline_exclusions): Rename forceinline to always_inline.
-	(attr_target_exclusions): New array.
-	(attr_target_clones_exclusions): New array.
-	(attr_alloc_exclusions): New array.
-	(attr_cold_hot_exclusions): New array.
-	(d_langhook_common_attribute_table): Add new D attribute handlers.
-	(build_attributes): Update to look for gcc.attributes.  Issue warning
-	if not given a struct literal.  Handle void initialized arguments.
-	(handle_always_inline_attribute): Remove function.
-	(d_handle_noinline_attribute): Don't extract TYPE_LANG_FRONTEND.
-	(d_handle_forceinline_attribute): Rename to...
-	(d_handle_always_inline_attribute): ...this.  Remove special handling.
-	(d_handle_flatten_attribute): Don't extract TYPE_LANG_FRONTEND.
-	(d_handle_target_attribute): Likewise.  Warn about empty arguments.
-	(d_handle_target_clones_attribute): New function.
-	(optimize_args): New static variable.
-	(parse_optimize_options): New function.
-	(d_handle_optimize_attribute): New function.
-	(d_handle_noclone_attribute): Don't extract TYPE_LANG_FRONTEND.
-	(d_handle_alias_attribute): Remove function.
-	(d_handle_noicf_attribute): New function.
-	(d_handle_noipa_attribute): New function.
-	(d_handle_section_attribute): Call the handle_generic_attribute target
-	hook after performing target independent processing.
-	(d_handle_symver_attribute): New function.
-	(d_handle_noplt_attribute): New function.
-	(positional_argument): New function.
-	(d_handle_alloc_size_attribute): New function.
-	(d_handle_cold_attribute): New function.
-	(d_handle_restrict_attribute): New function.
-	(d_handle_used_attribute): New function.
-	* decl.cc (gcc_attribute_p): Update to look for gcc.attributes.
-	(get_symbol_decl): Update decl source location of old prototypes to
-	the new declaration being merged.
-	* types.cc (layout_aggregate_members): Apply user defined attributes
-	on fields.
-
-2021-04-06  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/99917
-	* dmd/MERGE: Merge upstream dmd d16195406.
-
-2021-04-06  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-codegen.cc (build_frame_type): Use Array::find to get index of
-	element.
-
-2021-04-06  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-diagnostic.cc (vwarning): Increment gaggedWarnings if warning
-	message	was suppressed.
-	(vdeprecation): Likewise for deprecation messages.
-
-2021-04-06  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 5cc71ff83.
-
-2021-04-05  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/99914
-	* d-lang.cc (d_init): Disable flag_weak_templates if no support for
-	weak or one-only symbols.
-	* d-tree.h (VAR_OR_FUNCTION_DECL_CHECK): New macro.
-	(DECL_INSTANTIATED): New macro.
-	(d_comdat_linkage): Remove declaration.
-	(d_linkonce_linkage): Remove declaration.
-	(set_linkage_for_decl): New declaration.
-	* decl.cc (DeclVisitor::visit (StructDeclaration *)): Replace call to
-	d_linkonce_linkage with setting DECL_INSTANTIATED.
-	(DeclVisitor::visit (ClassDeclaration *)): Likewise.
-	(DeclVisitor::visit (EnumDeclaration *)): Likewise.
-	(DeclVisitor::visit (InterfaceDeclaration *)): Remove call to
-	d_linkonce_linkage.
-	(get_symbol_decl): Call set_linkage_for_decl instead of
-	d_linkonce_linkage.
-	(d_finish_decl): Call set_linkage_for_decl.
-	(d_comdat_linkage): Made function static.  Only set DECL_COMDAT for
-	DECL_INSTANTIATED decls.
-	(d_linkonce_linkage): Remove function.
-	(d_weak_linkage): New function.
-	(set_linkage_for_decl): New function.
-	* gdc.texi (Runtime Options): Rename -fno-weak to -fno-weak-templates,
-	update documentation of option.
-	* lang.opt (fweak): Rename option to ...
-	(fweak-templates): ... this.  Update help string.
-	* modules.cc (get_internal_fn): Add Prot parameter.  Set generated
-	function flag.
-	(build_internal_fn): Update call to get_internal_fn.
-	(build_dso_cdtor_fn): Likewise.
-	(register_moduleinfo): Call d_finish_decl on dso_slot_node and
-	dso_initialized_node.
-	* typeinfo.cc (TypeInfoVisitor::internal_reference): Call
-	set_linkage_for_decl instead of d_comdat_linkage.
-	(TypeInfoDeclVisitor::visit (TypeInfoDeclaration *)): Remove calls to
-	d_linkonce_linkage and d_comdat_linkage.
-	(get_cpp_typeinfo_decl): Likewise.
-
-2021-04-03  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 3b808e838.
-	* Make-lang.in (D_FRONTEND_OBJS): Add d/chkformat.o.
-	* d-codegen.cc (build_struct_literal): Handle special enums.
-	* d-convert.cc (convert_expr): Handle noreturn type.
-	(convert_for_condition): Likewise.
-	* d-target.cc (Target::_init): Set type for wchar_t.
-	(TargetCPP::derivedClassOffset): New method.
-	(Target::libraryObjectMonitors): New method.
-	* decl.cc (get_symbol_decl): Set TREE_THIS_VOLATILE for functions of
-	type noreturn.
-	* toir.cc (IRVisitor::visit (ReturnStatement *)): Handle returning
-	noreturn types.
-	* types.cc (TypeVisitor::visit (TypeNoreturn *)): New method.
-	(TypeVisitor::visit (TypeEnum *)): Handle special enums.
-
-2021-03-28  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-builtins.cc (d_init_versions): Predefine D_PIE if flag_pie is set.
-
-2021-03-28  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-lang.cc (d_enum_underlying_base_type): New function.
-	(LANG_HOOKS_ENUM_UNDERLYING_BASE_TYPE): Set as
-	d_enum_underlying_base_type.
-
-2021-03-28  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* Make-lang.in (DMDGEN_COMPILE): Remove.
-	(d/%.dmdgen.o): Use COMPILER_FOR_BUILD and BUILD_COMPILERFLAGS to
-	build all D generator programs.
-	(D_SYSTEM_H): New macro.
-	(d/idgen.dmdgen.o): Add dependencies to build.
-	(d/impcnvgen.dmdgen.o): Likewise.
-	* d-system.h: Include bconfig.h if GENERATOR_FILE is defined.
-
-2021-03-28  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* config-lang.in (gtfiles): Remove modules.cc.
-	* modules.cc (struct module_info): Remove GTY marker.
-	(static_ctor_list): Remove variable.
-	(static_dtor_list): Remove variable.
-	(register_moduleinfo): Directly set DECL_STATIC_CONSTRUCTOR on
-	dso_ctor, and DECL_STATIC_DESTRUCTOR on dso_dtor.
-	(d_finish_compilation): Remove static ctor/dtor handling.
-
-2021-03-06  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-lang.cc (d_init_options_struct): Don't set default
-	flag_complex_method.
-
-2021-03-03  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/99337
-	* dmd/MERGE: Merge upstream dmd a3c9bf422.
-
-2021-02-13  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 7132b3537.
-	* Make-lang.in (D_FRONTEND_OBJS): Add d/dsymbolsem.o, d/semantic2.o,
-	d/semantic3.o, and d/templateparamsem.o.
-	* d-compiler.cc (Compiler::genCmain): Update calls to semantic
-	entrypoint functions.
-	* d-lang.cc (d_parse_file): Likewise.
-	* typeinfo.cc (make_frontend_typeinfo): Likewise.
-
-2021-02-05  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* d-tree.h (DEF_D_INTRINSIC): Don't insert INTRINSIC_ into the
-	intrinsic code name.
-	* intrinsics.cc (DEF_D_INTRINSIC): Don't insert INTRISIC_ and
-	BUILT_IN_ into the intrinsic and built-in code names.
-	* intrinsics.def:  Explicitly use full intrinsic and built-in
-	codes in all definitions.
-
-2021-02-04  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 46133f761.
-	* d-builtins.cc (d_build_builtins_module): Set builtins as BUILTINgcc.
-	(maybe_set_builtin_1): Likewise.
-	* d-frontend.cc (eval_builtin): Adjust condition for early return.
-	* intrinsics.cc (maybe_set_intrinsic): Set intrinsics as BUILTINgcc.
-	(maybe_expand_intrinsic): Add case for INTRINSIC_BSWAP16.
-	* intrinsics.def (INTRINSIC_BT): Update signature.
-	(INTRINSIC_BT64): Likewise.
-	(INTRINSIC_BSWAP16): New intrinsic.
-	(INTRINSIC_VLOAD8): Update module.
-	(INTRINSIC_VLOAD16): Likewise.
-	(INTRINSIC_VLOAD32): Likewise.
-	(INTRINSIC_VLOAD64): Likewise.
-	(INTRINSIC_VSTORE8): Likewise.
-	(INTRINSIC_VSTORE16): Likewise.
-	(INTRINSIC_VSTORE32): Likewise.
-	(INTRINSIC_VSTORE64): Likewise.
-	(INTRINSIC_ADDS): Update signature.
-	(INTRINSIC_ADDSL): Likewise.
-	(INTRINSIC_ADDU): Likewise.
-	(INTRINSIC_ADDUL): Likewise.
-	(INTRINSIC_SUBS): Likewise.
-	(INTRINSIC_SUBSL): Likewise.
-	(INTRINSIC_SUBU): Likewise.
-	(INTRINSIC_SUBUL): Likewise.
-	(INTRINSIC_MULS): Likewise.
-	(INTRINSIC_MULSL): Likewise.
-	(INTRINSIC_MULU): Likewise.
-	(INTRINSIC_MULUI): Likewise.
-	(INTRINSIC_MULUL): Likewise.
-	(INTRINSIC_NEGS): Likewise.
-	(INTRINSIC_NEGSL): Likewise.
-
-2021-02-02  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	PR d/98921
-	* dmd/MERGE: Merge upstream dmd 5e2a81d9c.
-
-2021-01-30  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* typeinfo.cc (TypeInfoVisitor::visit (TypeInfoDeclaration *)): Don't
-	layout m_arg1 and m_arg2 fields.
-
-2021-01-26  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 609c3ce2d.
-	* d-compiler.cc (Compiler::loadModule): Rename to ...
-	(Compiler::onParseModule): ... this.
-	(Compiler::onImport): New function.
-	* d-lang.cc (d_parse_file): Remove call to Compiler::loadModule.
-
-2021-01-21  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 3a7ebef73.
-
-2021-01-11  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 2d3d13748.
-	* d-lang.cc (d_handle_option): Remove OPT_ftransition_checkimports and
-	OPT_ftransition_import.
-	* gdc.texi (Warnings): Remove documentation for -ftransition=import
-	and -ftransition=checkimports.
-	* lang.opt (ftransition=checkimports): Remove.
-	(ftransition=import): Remove.
-
-2021-01-09  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd cb1106ad5.
-
-2021-01-09  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 9bba772fa.
-
-2021-01-09  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd e598f69c0.
-
-2021-01-07  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd 9038e64c5.
-	* d-builtins.cc (build_frontend_type): Update call to
-	Parameter::create.
-
-2021-01-05  Iain Buclaw  <ibuclaw@gdcproject.org>
-
-	* dmd/MERGE: Merge upstream dmd a5c86f5b9.
-	* d-builtins.cc (d_eval_constant_expression): Handle ADDR_EXPR trees
-	created by build_string_literal.
-	* d-frontend.cc (retStyle): Remove function.
-	* d-target.cc (d_language_target_info): New variable.
-	(d_target_info_table): Likewise.
-	(Target::_init): Initialize d_target_info_table.
-	(Target::isReturnOnStack): New function.
-	(d_add_target_info_handlers): Likewise.
-	(d_handle_target_cpp_std): Likewise.
-	(d_handle_target_cpp_runtime_library): Likewise.
-	(Target::getTargetInfo): Likewise.
-	* d-target.h (struct d_target_info_spec): New type.
-	(d_add_target_info_handlers): Declare.
-
-2021-01-01  Jakub Jelinek  <jakub@redhat.com>
+2026-04-30  Release Manager
+
+	* GCC 16.1.0 released.
+
+2026-04-21  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* dmd/MERGE: Merge upstream dmd d1fbbb1a2f.
+	* expr.cc (ExprVisitor::visit (StringExp *)): Don't generate a
+	STRING_CST for a mutable array type.
+
+2026-04-20  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123411
+	* types.cc (TypeVisitor::visit (TypeEnum *)): Only call layout_type on
+	the TYPE_MAIN_VARIANT of the enum.
+
+2026-04-20  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/124157
+	* expr.cc (ExprVisitor::visit (AssocArrayLiteralExp *)): Return AA
+	constructor with memory returned by _d_assocarrayliteralTX().
+
+2026-04-19  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* d-attribs.cc (d_langhook_gnu_attributes): Add no_split_stack
+	attribute.
+	(d_handle_no_split_stack_attribute): New function.
+
+2026-04-18  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/124922
+	* d-codegen.cc (build_trap_call): New function.
+	(build_array_bounds_call): Use it.
+	(build_bounds_index_condition): Likewise.
+	(build_bounds_slice_condition): Likewise.
+	(d_build_call): Likewise.
+	* expr.cc (ExprVisitor::visit (HaltExp *)): Likewise.
+	(ExprVisitor::visit (AssertExp *)): Likewise.  Return zero instead of
+	void_node when assert contracts are disabled.
+	* d-tree.h (build_trap_call): New prototype.
+
+2026-04-14  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* dmd/MERGE: Merge upstream dmd e145b91245.
+
+2026-04-07  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/124784
+	* lang.opt.urls: Regenerated.
+
+2026-04-01  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* dmd/MERGE: Merge upstream dmd 55e64690bc.
+	* dmd/VERSION: Bump version to v2.113.0-beta.1.
+	* d-codegen.cc (d_build_call): Check if argument is already a
+	TARGET_EXPR.
+	* decl.cc (DeclVisitor::visit (FuncDeclaration *)): Don't use
+	`__result' decl as named return value if it's a ref type.
+	* expr.cc (ExprVisitor::visit (StructLiteralExp *)): Force TARGET_EXPR
+	if init symbol needs to be mutable.
+	* runtime.def (ARRAYSETLENGTHT): Remove.
+	(ARRAYSETLENGTHIT): Remove.
+	(ARRAYCOPY): Remove.
+	(ARRAYAPPENDCTX): Remove.
+	* typeinfo.cc (TypeInfoVisitor::visit (TypeInfoClassDeclaration *)):
+	Only scan class fields for pointer members.
+
+2026-03-31  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* dmd/MERGE: Merge upstream dmd e7c34c13de.
+	* d-codegen.cc (build_vthis): Update for new front-end interface.
+	(get_frameinfo): Likewise.
+	* d-lang.cc (d_post_options): Disable null pointer checks.
+	* decl.cc (DeclVisitor::visit (VarDeclaration *)): Ignore ref noreturn
+	variables.
+
+2026-02-08  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* d-tree.h (build_libcall): New declaration.
+	* runtime.cc (build_libcall_1): New function.
+	(build_libcall): New overload.
+	* d-codegen.cc (build_assert_call): Call build_libcall without Type
+	argument.
+	(build_array_bounds_call): Likewise.
+	(build_bounds_index_condition): Likewise.
+	(build_bounds_slice_condition): Likewise.
+	(build_closure): Likewise.
+	* expr.cc (ExprVisitor::visit): Likewise.
+	* toir.cc (IRVisitor::visit): Likewise.
+
+2026-02-08  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/124026
+	* expr.cc (ExprVisitor::visit (FuncExp *)): Always convert function
+	literal to a delegate if the expression expects one.
+
+2026-02-08  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123995
+	* d-codegen.cc (build_assert_call): Cast libcall result to `noreturn'.
+	(build_array_bounds_call):  Likewise.
+	(build_bounds_index_condition): Likewise.
+	(build_bounds_slice_condition): Likewise.
+	* expr.cc (ExprVisitor::visit (ThrowExp *)): Likewise.
+	* toir.cc (IRVisitor::visit (ThrowStatement *)): Likewise.
+	* runtime.cc (enum d_libcall_type): Add LCT_NORETURN.
+	(get_libcall_type): Handle LCT_NORETURN.
+	* runtime.def (ASSERTP): Change return type to `noreturn'.
+	(ASSERT_MSG): Likewise.
+	(UNITTESTP): Likewise.
+	(UNITTEST_MSG): Likewise.
+	(ARRAYBOUNDSP): Likewise.
+	(ARRAYBOUNDS_SLICEP): Likewise.
+	(ARRAYBOUNDS_INDEXP): Likewise.
+	(THROW): Likewise.
+
+2026-02-06  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+
+	PR middle-end/123892
+	* d-builtins.cc: Replace CONST_CAST with const_cast<>.
+	* d-incpath.cc: Likewise.
+	* d-lang.cc: Likewise.
+	* d-spec.cc: Likewise.
+	* decl.cc: Likewise.
+
+2026-02-03  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* dmd/VERSION: Bump version to v2.112.0.
+	* dmd/MERGE: Merge upstream dmd 24a41073c2.
+	* d-attribs.cc (build_attributes): Update for new front-end interface.
+	* d-builtins.cc (build_frontend_type): Likewise.
+	(matches_builtin_type): Likewise.
+	(d_init_versions): Predefine D_Profile when compiling with profile
+	enabled.
+	* d-codegen.cc (get_array_length): Update for new front-end interface.
+	(lower_struct_comparison): Likewise.
+	(build_array_from_val): Likewise.
+	(get_function_type): Likewise.
+	(get_frameinfo): Likewise.
+	* d-compiler.cc (Compiler::paintAsType): Likewise.
+	* d-convert.cc (convert_expr): Likewise.
+	(convert_for_rvalue): Likewise.
+	(convert_for_assignment): Likewise.
+	(d_array_convert): Likewise.
+	* d-diagnostic.cc (verrorReport): Rename to ...
+	(vreportDiagnostic): ... this.
+	(verrorReportSupplemental): Rename to ...
+	(vsupplementalDiagnostic): ... this.
+	* d-lang.cc (d_handle_option): Handle -std=d2024 and -std=d202y.
+	(d_parse_file): Update for new front-end interface.
+	* d-target.cc (Target::fieldalign): Likewise.
+	(Target::isVectorTypeSupported): Likewise.
+	(Target::isVectorOpSupported): Likewise.
+	* decl.cc (get_symbol_decl): Likewise.
+	(DeclVisitor::visit): Likewise.
+	(DeclVisitor::visit (FuncDeclaration *)): Do NRVO on `__result' decl.
+	* expr.cc (needs_postblit): Remove.
+	(needs_dtor): Remove.
+	(lvalue_p): Remove.
+	(ExprVisitor::visit): Update for new front-end interface.
+	(ExprVisitor::visit (AssignExp *)): Update for front-end lowering
+	expression using templates.
+	* imports.cc (ImportVisitor::visit): Update for new front-end
+	interface.
+	* intrinsics.def (INTRINSIC_VA_ARG): Update signature.
+	(INTRINSIC_C_VA_ARG): Update signature.
+	(INTRINSIC_VASTART): Update signature.
+	* lang.opt: Add -std=d2024 and -std=d202y.
+	* toir.cc (IRVisitor::visit): Update for new front-end interface.
+	* typeinfo.cc (TypeInfoVisitor::visit): Likewise.
+	(TypeInfoVisitor::visit (TypeInfoStructDeclaration *)): Ensure
+	semantic is ran on all TypeInfo members.
+	(base_vtable_offset): Update for new front-end interface.
+	* types.cc (TypeVisitor::visit): Likewise.
+
+2026-01-31  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* dmd/MERGE: Merge upstream dmd e1f6680f50.
+	* Make-lang.in (D_FRONTEND_OBJS): Remove d/gluelayer.o, d/iasm.o,
+	d/iasmgcc.o.  Add d/iasm-package.o, d/iasm-gcc.o.
+	(d/iasm-%.o): New recipe.
+	* d-convert.cc (convert_expr): Remove library call to dynamic_cast.
+	* d-lang.cc (d_init_options): Set errorSupplementLimit parameter.
+	* decl.cc (DeclVisitor::visit): Update for new front-end interface.
+	* expr.cc (ExprVisitor::visit (EqualExp *)): Update for front-end
+	lowering expression using templates.
+	(ExprVisitor::visit (InExp *)): Likewise.
+	(ExprVisitor::visit (IndexExp *)): Likewise.
+	(ExprVisitor::visit (CastExp *)): Likewise.
+	(ExprVisitor::visit (RemoveExp *)): Likewise.
+	(ExprVisitor::visit (AddrExp *)): Likewise.
+	(ExprVisitor::visit (NewExp *)): Likewise.
+	(ExprVisitor::visit (ArrayLiteralExp *)): Likewise.
+	(ExprVisitor::visit (AssocArrayLiteralExp *)): Likewise.
+	* imports.cc (ImportVisitor::visit (AliasDeclaration *)): Update for
+	new front-end interface.
+	* runtime.def (DYNAMIC_CAST): Remove.
+	(INTERFACE_CAST): Remove.
+	(ARRAYLITERALTX): Remove.
+	(ADEQ2): Remove.
+	(ASSOCARRAYLITERALTX): Remove.
+	(AANEW): Remove.
+	(AAEQUAL): Remove.
+	(AAINX): Remove.
+	(AAGETY): Remove.
+	(AAGETRVALUEX): Remove.
+	(AADELX): Remove.
+	* typeinfo.cc (TypeInfoVisitor::visit): Layout xopEquals and xtoHash
+	in TypeInfo_AssociativeArray.
+	(create_typeinfo): Add new fields to internal typeinfo.
+	(check_typeinfo_type): Print instantiation trace of error.
+	* types.cc (TypeVisitor::visit (TypeStruct *)): Update for new
+	front-end interface.
+
+2026-01-30  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* dmd/MERGE: Merge upstream dmd 1017635a96.
+	* dmd/VERSION: Bump version to v2.112.0-beta.1.
+	* decl.cc (DeclVisitor::finish_vtable): Update for new front-end
+	interface.
+	(DeclVisitor::visit): Likewise.
+	* typeinfo.cc (TypeInfoVisitor::visit): Likewise.
+
+2026-01-30  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* decl.cc (DeclVisitor::visit (EnumDeclaration *)): Treat sinit member
+	field as a generic pointer.
+	(enum_initializer_decl): Likewise.
+	* expr.cc (ExprVisitor::visit (ArrayLiteralExp *)): Compute static
+	array length separately from creating type.
+	* modules.cc (struct module_info): Add ctor_decl, dtor_decl,
+	sharedctor_decl, shareddtor_decl, standalonector_decl, and
+	unittest_decl.
+	(layout_moduleinfo_fields): Add mi argument. Use it to check whether
+	module helpers have been generated.
+	(layout_moduleinfo): Likewise.
+	(build_module_tree): Cache generated module helpers in module_info.
+	* typeinfo.cc (cpp_type_info_ptrs): New variable.
+	(get_cpp_typeinfo_decl): Cache generated C++ type_info references in
+	cpp_type_info_ptrs.
+	* types.cc (TypeVisitor::visit (TypeEnum *)): Separate getting
+	front-end member value from building its CST tree.
+
+2026-01-30  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123263
+	* d-codegen.cc (d_decl_context): Set DECL_CONTEXT of compiler
+	generated functions to that of parent module.
+
+2026-01-30  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123264
+	* types.cc (finish_aggregate_type): Propagate struct TYPE_NAME to all
+	TYPE_NEXT_VARIANT types.
+
+2026-01-29  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123407
+	* decl.cc (get_symbol_decl): Handle declarations with matching
+	assembler names, but different TREE_CODE.
+
+2026-01-29  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123046
+	* d-codegen.cc (build_address): Return `null' when generating the
+	address of a `noreturn' declaration.
+	(d_build_call): Compare TYPE_MAIN_VARIANT of type with `noreturn'.
+	* decl.cc (get_fndecl_arguments): Likewise.
+	* types.cc (finish_aggregate_mode): Likewise.
+	(TypeVisitor::visit (TypeFunction *)): Likewise.
+
+2026-01-29  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123349
+	* d-spec.cc (lang_specific_driver): Use xstrdup to copy -defaultlib
+	and -debuglib argument, and unconditionally free the old value.
+
+2026-01-28  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123419
+	* expr.cc (ExprVisitor::visit (VarExp *)): Adjust assertion.
+
+2026-01-28  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123798
+	* types.cc (insert_aggregate_bitfield): Set DECL_NONADDRESSABLE_P and
+	DECL_PADDING_P on bit-field decls.
+	(finish_aggregate_type): Pass the aligned bit offset to layout_decl.
+
+2026-01-28  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/121477
+	* d-codegen.cc (d_mark_addressable): Give an error if taking the
+	address of a DECL_BIT_FIELD.
+
+2026-01-28  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/123422
+	* expr.cc (ExprVisitor::visit (ArrayLiteralExp *)): Don't add
+	TARGET_EXPR around constructor.
+	* toir.cc (IRVisitor::visit (ReturnStatement *)): Recognize more
+	patterns for return value optimization.
+
+2026-01-27  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/120096
+	* expr.cc (ExprVisitor::visit (ArrayLiteralExp *)): Include saved side
+	effects in expression result.
+
+2026-01-27  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/122817
+	* d-lang.cc (d_parse_file): Set module filename location after
+	creation.
+
+2026-01-01  Jakub Jelinek  <jakub@redhat.com>
 
 	* gdc.texi: Bump @copyrights-d year.
 
-2021-01-01  Jakub Jelinek  <jakub@redhat.com>
-
-	* ChangeLog-2020: Rotate ChangeLog.  New file.
-
 
-Copyright (C) 2021 Free Software Foundation, Inc.
+Copyright (C) 2026 Free Software Foundation, Inc.
 
 Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright

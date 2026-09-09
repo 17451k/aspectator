@@ -1,5 +1,5 @@
 /* { dg-do compile }  */
-/* { dg-options "-O2" }  */
+/* { dg-options "-O2 -std=gnu17" }  */
 
 struct b1 {
       char c;
@@ -45,6 +45,6 @@ void f() {
   a(at3.bn[bu]);
 }
 
-/* { dg-final { scan-assembler "add1" } } */
+/* { dg-final { scan-assembler "@at1\\+1" } } */
 /* { dg-final { scan-assembler "add2" } } */
 /* { dg-final { scan-assembler "add3" } } */

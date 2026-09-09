@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,7 +29,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-package body Interfaces.C is
+package body Interfaces.C
+  with SPARK_Mode
+is
 
    -----------------------
    -- Is_Nul_Terminated --
@@ -129,10 +131,9 @@ package body Interfaces.C is
 
       declare
          R : String (1 .. Count);
-
       begin
          for J in R'Range loop
-            R (J) := To_Ada (Item (size_t (J) + (Item'First - 1)));
+            R (J) := To_Ada (Item (size_t (J) - 1 + Item'First));
          end loop;
 
          return R;
@@ -148,7 +149,7 @@ package body Interfaces.C is
       Trim_Nul : Boolean := True)
    is
       From : size_t;
-      To   : Positive;
+      To   : Integer;
 
    begin
       if Trim_Nul then
@@ -178,11 +179,15 @@ package body Interfaces.C is
 
          for J in 1 .. Count loop
             Target (To) := Character (Item (From));
+
+            --  Avoid possible overflow when incrementing To in the last
+            --  iteration of the loop.
+            exit when J = Count;
+
             From := From + 1;
             To   := To + 1;
          end loop;
       end if;
-
    end To_Ada;
 
    --  Convert wchar_t to Wide_Character
@@ -223,10 +228,9 @@ package body Interfaces.C is
 
       declare
          R : Wide_String (1 .. Count);
-
       begin
          for J in R'Range loop
-            R (J) := To_Ada (Item (size_t (J) + (Item'First - 1)));
+            R (J) := To_Ada (Item (size_t (J) - 1 + Item'First));
          end loop;
 
          return R;
@@ -242,7 +246,7 @@ package body Interfaces.C is
       Trim_Nul : Boolean := True)
    is
       From : size_t;
-      To   : Positive;
+      To   : Integer;
 
    begin
       if Trim_Nul then
@@ -272,6 +276,11 @@ package body Interfaces.C is
 
          for J in 1 .. Count loop
             Target (To) := To_Ada (Item (From));
+
+            --  Avoid possible overflow when incrementing To in the last
+            --  iteration of the loop.
+            exit when J = Count;
+
             From := From + 1;
             To   := To + 1;
          end loop;
@@ -301,7 +310,7 @@ package body Interfaces.C is
          loop
             if From > Item'Last then
                raise Terminator_Error;
-            elsif Item (From) = char16_t'Val (0) then
+            elsif Item (From) = char16_nul then
                exit;
             else
                From := From + 1;
@@ -316,10 +325,9 @@ package body Interfaces.C is
 
       declare
          R : Wide_String (1 .. Count);
-
       begin
          for J in R'Range loop
-            R (J) := To_Ada (Item (size_t (J) + (Item'First - 1)));
+            R (J) := To_Ada (Item (size_t (J) - 1 + Item'First));
          end loop;
 
          return R;
@@ -335,7 +343,7 @@ package body Interfaces.C is
       Trim_Nul : Boolean := True)
    is
       From : size_t;
-      To   : Positive;
+      To   : Integer;
 
    begin
       if Trim_Nul then
@@ -343,7 +351,7 @@ package body Interfaces.C is
          loop
             if From > Item'Last then
                raise Terminator_Error;
-            elsif Item (From) = char16_t'Val (0) then
+            elsif Item (From) = char16_nul then
                exit;
             else
                From := From + 1;
@@ -365,6 +373,11 @@ package body Interfaces.C is
 
          for J in 1 .. Count loop
             Target (To) := To_Ada (Item (From));
+
+            --  Avoid possible overflow when incrementing To in the last
+            --  iteration of the loop.
+            exit when J = Count;
+
             From := From + 1;
             To   := To + 1;
          end loop;
@@ -394,7 +407,7 @@ package body Interfaces.C is
          loop
             if From > Item'Last then
                raise Terminator_Error;
-            elsif Item (From) = char32_t'Val (0) then
+            elsif Item (From) = char32_nul then
                exit;
             else
                From := From + 1;
@@ -412,7 +425,7 @@ package body Interfaces.C is
 
       begin
          for J in R'Range loop
-            R (J) := To_Ada (Item (size_t (J) + (Item'First - 1)));
+            R (J) := To_Ada (Item (size_t (J) - 1 + Item'First));
          end loop;
 
          return R;
@@ -428,7 +441,7 @@ package body Interfaces.C is
       Trim_Nul : Boolean := True)
    is
       From : size_t;
-      To   : Positive;
+      To   : Integer;
 
    begin
       if Trim_Nul then
@@ -436,7 +449,7 @@ package body Interfaces.C is
          loop
             if From > Item'Last then
                raise Terminator_Error;
-            elsif Item (From) = char32_t'Val (0) then
+            elsif Item (From) = char32_nul then
                exit;
             else
                From := From + 1;
@@ -458,6 +471,11 @@ package body Interfaces.C is
 
          for J in 1 .. Count loop
             Target (To) := To_Ada (Item (From));
+
+            --  Avoid possible overflow when incrementing To in the last
+            --  iteration of the loop.
+            exit when J = Count;
+
             From := From + 1;
             To   := To + 1;
          end loop;
@@ -485,13 +503,13 @@ package body Interfaces.C is
       if Append_Nul then
          declare
             R : char_array (0 .. Item'Length);
-
          begin
             for J in Item'Range loop
                R (size_t (J - Item'First)) := To_C (Item (J));
             end loop;
 
             R (R'Last) := nul;
+
             return R;
          end;
 
@@ -513,7 +531,6 @@ package body Interfaces.C is
          else
             declare
                R : char_array (0 .. Item'Length - 1);
-
             begin
                for J in Item'Range loop
                   R (size_t (J - Item'First)) := To_C (Item (J));
@@ -543,6 +560,7 @@ package body Interfaces.C is
          To := Target'First;
          for From in Item'Range loop
             Target (To) := char (Item (From));
+
             To := To + 1;
          end loop;
 
@@ -553,7 +571,6 @@ package body Interfaces.C is
                Target (To) := nul;
                Count := Item'Length + 1;
             end if;
-
          else
             Count := Item'Length;
          end if;
@@ -577,13 +594,13 @@ package body Interfaces.C is
       if Append_Nul then
          declare
             R : wchar_array (0 .. Item'Length);
-
          begin
             for J in Item'Range loop
                R (size_t (J - Item'First)) := To_C (Item (J));
             end loop;
 
             R (R'Last) := wide_nul;
+
             return R;
          end;
 
@@ -601,10 +618,9 @@ package body Interfaces.C is
          else
             declare
                R : wchar_array (0 .. Item'Length - 1);
-
             begin
-               for J in size_t range 0 .. Item'Length - 1 loop
-                  R (J) := To_C (Item (Integer (J) + Item'First));
+               for J in Item'Range loop
+                  R (size_t (J - Item'First)) := To_C (Item (J));
                end loop;
 
                return R;
@@ -622,15 +638,14 @@ package body Interfaces.C is
       Append_Nul : Boolean := True)
    is
       To : size_t;
-
    begin
       if Target'Length < Item'Length then
          raise Constraint_Error;
-
       else
          To := Target'First;
          for From in Item'Range loop
             Target (To) := To_C (Item (From));
+
             To := To + 1;
          end loop;
 
@@ -641,7 +656,6 @@ package body Interfaces.C is
                Target (To) := wide_nul;
                Count := Item'Length + 1;
             end if;
-
          else
             Count := Item'Length;
          end if;
@@ -665,13 +679,13 @@ package body Interfaces.C is
       if Append_Nul then
          declare
             R : char16_array (0 .. Item'Length);
-
          begin
             for J in Item'Range loop
                R (size_t (J - Item'First)) := To_C (Item (J));
             end loop;
 
-            R (R'Last) := char16_t'Val (0);
+            R (R'Last) := char16_nul;
+
             return R;
          end;
 
@@ -685,14 +699,12 @@ package body Interfaces.C is
 
          if Item'Length = 0 then
             raise Constraint_Error;
-
          else
             declare
                R : char16_array (0 .. Item'Length - 1);
-
             begin
-               for J in size_t range 0 .. Item'Length - 1 loop
-                  R (J) := To_C (Item (Integer (J) + Item'First));
+               for J in Item'Range loop
+                  R (size_t (J - Item'First)) := To_C (Item (J));
                end loop;
 
                return R;
@@ -710,7 +722,6 @@ package body Interfaces.C is
       Append_Nul : Boolean := True)
    is
       To : size_t;
-
    begin
       if Target'Length < Item'Length then
          raise Constraint_Error;
@@ -719,6 +730,7 @@ package body Interfaces.C is
          To := Target'First;
          for From in Item'Range loop
             Target (To) := To_C (Item (From));
+
             To := To + 1;
          end loop;
 
@@ -726,10 +738,9 @@ package body Interfaces.C is
             if To > Target'Last then
                raise Constraint_Error;
             else
-               Target (To) := char16_t'Val (0);
+               Target (To) := char16_nul;
                Count := Item'Length + 1;
             end if;
-
          else
             Count := Item'Length;
          end if;
@@ -753,13 +764,13 @@ package body Interfaces.C is
       if Append_Nul then
          declare
             R : char32_array (0 .. Item'Length);
-
          begin
             for J in Item'Range loop
                R (size_t (J - Item'First)) := To_C (Item (J));
             end loop;
 
-            R (R'Last) := char32_t'Val (0);
+            R (R'Last) := char32_nul;
+
             return R;
          end;
 
@@ -776,10 +787,9 @@ package body Interfaces.C is
          else
             declare
                R : char32_array (0 .. Item'Length - 1);
-
             begin
-               for J in size_t range 0 .. Item'Length - 1 loop
-                  R (J) := To_C (Item (Integer (J) + Item'First));
+               for J in Item'Range loop
+                  R (size_t (J - Item'First)) := To_C (Item (J));
                end loop;
 
                return R;
@@ -799,24 +809,20 @@ package body Interfaces.C is
       To : size_t;
 
    begin
-      if Target'Length < Item'Length then
+      if Target'Length < Item'Length + (if Append_Nul then 1 else 0) then
          raise Constraint_Error;
-
       else
          To := Target'First;
+
          for From in Item'Range loop
             Target (To) := To_C (Item (From));
+
             To := To + 1;
          end loop;
 
          if Append_Nul then
-            if To > Target'Last then
-               raise Constraint_Error;
-            else
-               Target (To) := char32_t'Val (0);
-               Count := Item'Length + 1;
-            end if;
-
+            Target (To) := char32_nul;
+            Count := Item'Length + 1;
          else
             Count := Item'Length;
          end if;

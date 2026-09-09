@@ -1,6 +1,6 @@
 // Functor implementations -*- C++ -*-
 
-// Copyright (C) 2001-2021 Free Software Foundation, Inc.
+// Copyright (C) 2001-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -131,6 +131,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   /// One of the @link binders binder functors@endlink.
   template<typename _Operation, typename _Tp>
+    _GLIBCXX11_DEPRECATED_SUGGEST("std::bind")
     inline binder1st<_Operation>
     bind1st(const _Operation& __fn, const _Tp& __x)
     {
@@ -166,12 +167,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   /// One of the @link binders binder functors@endlink.
   template<typename _Operation, typename _Tp>
+    _GLIBCXX11_DEPRECATED_SUGGEST("std::bind")
     inline binder2nd<_Operation>
     bind2nd(const _Operation& __fn, const _Tp& __x)
     {
       typedef typename _Operation::second_argument_type _Arg2_type;
       return binder2nd<_Operation>(__fn, _Arg2_type(__x));
-    } 
+    }
   /** @}  */
 
 _GLIBCXX_END_NAMESPACE_VERSION

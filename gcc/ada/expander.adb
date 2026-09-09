@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,31 +23,32 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;     use Atree;
-with Debug;     use Debug;
-with Debug_A;   use Debug_A;
-with Exp_Aggr;  use Exp_Aggr;
-with Exp_SPARK; use Exp_SPARK;
-with Exp_Attr;  use Exp_Attr;
-with Exp_Ch2;   use Exp_Ch2;
-with Exp_Ch3;   use Exp_Ch3;
-with Exp_Ch4;   use Exp_Ch4;
-with Exp_Ch5;   use Exp_Ch5;
-with Exp_Ch6;   use Exp_Ch6;
-with Exp_Ch7;   use Exp_Ch7;
-with Exp_Ch8;   use Exp_Ch8;
-with Exp_Ch9;   use Exp_Ch9;
-with Exp_Ch11;  use Exp_Ch11;
-with Exp_Ch12;  use Exp_Ch12;
-with Exp_Ch13;  use Exp_Ch13;
-with Exp_Prag;  use Exp_Prag;
-with Ghost;     use Ghost;
-with Opt;       use Opt;
-with Rtsfind;   use Rtsfind;
-with Sem;       use Sem;
-with Sem_Ch8;   use Sem_Ch8;
-with Sem_Util;  use Sem_Util;
-with Sinfo;     use Sinfo;
+with Atree;          use Atree;
+with Debug;          use Debug;
+with Debug_A;        use Debug_A;
+with Exp_Aggr;       use Exp_Aggr;
+with Exp_SPARK;      use Exp_SPARK;
+with Exp_Attr;       use Exp_Attr;
+with Exp_Ch2;        use Exp_Ch2;
+with Exp_Ch3;        use Exp_Ch3;
+with Exp_Ch4;        use Exp_Ch4;
+with Exp_Ch5;        use Exp_Ch5;
+with Exp_Ch6;        use Exp_Ch6;
+with Exp_Ch7;        use Exp_Ch7;
+with Exp_Ch8;        use Exp_Ch8;
+with Exp_Ch9;        use Exp_Ch9;
+with Exp_Ch11;       use Exp_Ch11;
+with Exp_Ch12;       use Exp_Ch12;
+with Exp_Ch13;       use Exp_Ch13;
+with Exp_Prag;       use Exp_Prag;
+with Ghost;          use Ghost;
+with Opt;            use Opt;
+with Rtsfind;        use Rtsfind;
+with Sem;            use Sem;
+with Sem_Ch8;        use Sem_Ch8;
+with Sem_Util;       use Sem_Util;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Stand;          use Stand;
 with Table;
 
 package body Expander is
@@ -82,8 +83,7 @@ package body Expander is
    --  Ghost mode.
 
    procedure Expand (N : Node_Id) is
-      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
-      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      Saved_Ghost_Config : constant Ghost_Config_Type := Ghost_Config;
       --  Save the Ghost-related attributes to restore on exit
 
    begin
@@ -151,7 +151,19 @@ package body Expander is
       --  not take place. This prevents cascaded errors due to stack mismatch.
 
       elsif not Expander_Active then
-         Set_Analyzed (N, Full_Analysis);
+
+         --  Do not clear the Analyzed flag if it has been set on purpose
+         --  during preanalysis in Fold_Ureal. In that case, the Etype field
+         --  in N_Real_Literal will be set to something different than
+         --  Universal_Real.
+
+         if Full_Analysis
+           or else not (Nkind (N) = N_Real_Literal
+                          and then Present (Etype (N))
+                          and then Etype (N) /= Universal_Real)
+         then
+            Set_Analyzed (N, Full_Analysis);
+         end if;
 
          if Serious_Errors_Detected > 0 and then Scope_Is_Transient then
             Scope_Stack.Table
@@ -216,6 +228,9 @@ package body Expander is
                when N_Conditional_Entry_Call =>
                   Expand_N_Conditional_Entry_Call (N);
 
+               when N_Continue_Statement =>
+                  Expand_N_Continue_Statement (N);
+
                when N_Delay_Relative_Statement =>
                   Expand_N_Delay_Relative_Statement (N);
 
@@ -272,6 +287,9 @@ package body Expander is
 
                when N_Generic_Instantiation =>
                   Expand_N_Generic_Instantiation (N);
+
+               when N_Goto_When_Statement =>
+                  Expand_N_Goto_When_Statement (N);
 
                when N_Handled_Sequence_Of_Statements =>
                   Expand_N_Handled_Sequence_Of_Statements (N);
@@ -420,6 +438,9 @@ package body Expander is
                when N_Raise_Statement =>
                   Expand_N_Raise_Statement (N);
 
+               when N_Raise_When_Statement =>
+                  Expand_N_Raise_When_Statement (N);
+
                when N_Raise_Constraint_Error =>
                   Expand_N_Raise_Constraint_Error (N);
 
@@ -440,6 +461,9 @@ package body Expander is
 
                when N_Requeue_Statement =>
                   Expand_N_Requeue_Statement (N);
+
+               when N_Return_When_Statement =>
+                  Expand_N_Return_When_Statement (N);
 
                when N_Simple_Return_Statement =>
                   Expand_N_Simple_Return_Statement (N);
@@ -483,14 +507,14 @@ package body Expander is
                when N_Type_Conversion =>
                   Expand_N_Type_Conversion (N);
 
-               when N_Unchecked_Expression =>
-                  Expand_N_Unchecked_Expression (N);
-
                when N_Unchecked_Type_Conversion =>
                   Expand_N_Unchecked_Type_Conversion (N);
 
                when N_Variant_Part =>
                   Expand_N_Variant_Part (N);
+
+               when N_Interpolated_String_Literal =>
+                  Expand_N_Interpolated_String_Literal (N);
 
                --  For all other node kinds, no expansion activity required
 
@@ -533,7 +557,7 @@ package body Expander is
       end if;
 
    <<Leave>>
-      Restore_Ghost_Region (Saved_GM, Saved_IGR);
+      Restore_Ghost_Region (Saved_Ghost_Config);
    end Expand;
 
    ---------------------------

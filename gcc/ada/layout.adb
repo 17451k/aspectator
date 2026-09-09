@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2001-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,19 +23,22 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;    use Atree;
-with Debug;    use Debug;
-with Einfo;    use Einfo;
-with Errout;   use Errout;
-with Opt;      use Opt;
-with Sem_Aux;  use Sem_Aux;
-with Sem_Ch13; use Sem_Ch13;
-with Sem_Eval; use Sem_Eval;
-with Sem_Util; use Sem_Util;
-with Sinfo;    use Sinfo;
-with Snames;   use Snames;
-with Ttypes;   use Ttypes;
-with Uintp;    use Uintp;
+with Atree;          use Atree;
+with Debug;          use Debug;
+with Einfo.Entities; use Einfo.Entities;
+with Einfo.Utils;    use Einfo.Utils;
+with Errout;         use Errout;
+with Opt;            use Opt;
+with Sem_Aux;        use Sem_Aux;
+with Sem_Ch13;       use Sem_Ch13;
+with Sem_Eval;       use Sem_Eval;
+with Sem_Util;       use Sem_Util;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Snames;         use Snames;
+with Ttypes;         use Ttypes;
+with Uintp;          use Uintp;
+with Warnsw;         use Warnsw;
 
 package body Layout is
 
@@ -73,7 +76,7 @@ package body Layout is
    begin
       --  Nothing to do if size unknown
 
-      if Unknown_Esize (E) then
+      if not Known_Esize (E) then
          return;
       end if;
 
@@ -115,7 +118,7 @@ package body Layout is
       --  Now we have the size set, it must be a multiple of the alignment
       --  nothing more we can do here if the alignment is unknown here.
 
-      if Unknown_Alignment (E) then
+      if not Known_Alignment (E) then
          return;
       end if;
 
@@ -151,7 +154,7 @@ package body Layout is
             exit when Esize (E) mod Abits = 0;
          end loop;
 
-         Init_Alignment (E, Abits / SSU);
+         Set_Alignment (E, UI_From_Int (Abits / SSU));
          return;
       end if;
 
@@ -222,9 +225,7 @@ package body Layout is
    procedure Layout_Object (E : Entity_Id) is
       pragma Unreferenced (E);
    begin
-      --  Nothing to do for now, assume backend does the layout
-
-      return;
+      null; -- Nothing to do for now, assume backend does the layout
    end Layout_Object;
 
    -----------------
@@ -235,23 +236,31 @@ package body Layout is
       Desig_Type : Entity_Id;
 
    begin
-      --  For string literal types, for now, kill the size always, this is
-      --  because gigi does not like or need the size to be set ???
+      --  For string literal types, kill the size always, because gigi does not
+      --  like or need the size to be set.
 
       if Ekind (E) = E_String_Literal_Subtype then
-         Set_Esize (E, Uint_0);
-         Set_RM_Size (E, Uint_0);
+         Reinit_Esize (E);
+         Reinit_RM_Size (E);
          return;
       end if;
 
       --  For access types, set size/alignment. This is system address size,
-      --  except for fat pointers (unconstrained array access types), where the
-      --  size is two times the address size, to accommodate the two pointers
-      --  that are required for a fat pointer (data and template). Note that
-      --  E_Access_Protected_Subprogram_Type is not an access type for this
-      --  purpose since it is not a pointer but is equivalent to a record. For
-      --  access subtypes, copy the size from the base type since Gigi
-      --  represents them the same way.
+      --  except for unconstrained array access types:
+      --
+      --   - fat pointers where the size is two times the address size, to
+      --     accommodate the two pointers that are required for a fat pointer
+      --     (data and template).
+      --
+      --   - extended access where the size is the size of an address (data
+      --     pointer) plus the size of the template. The template size can't be
+      --     computed yet (will be done in the code generator), leave it empty
+      --     for now.
+      --
+      --  Note that E_Access_Protected_Subprogram_Type is not an access type
+      --  for this purpose since it is not a pointer but is equivalent to a
+      --  record. For access subtypes, copy the size from the base type since
+      --  the code generator represents them the same way.
 
       if Is_Access_Type (E) then
          Desig_Type := Underlying_Type (Designated_Type (E));
@@ -266,15 +275,15 @@ package body Layout is
             Desig_Type := Non_Limited_View (Designated_Type (E));
          end if;
 
-         --  If Esize already set (e.g. by a size clause), then nothing further
-         --  to be done here.
+         --  If Esize already set (e.g. by a size or value size clause), then
+         --  nothing further to be done here.
 
          if Known_Esize (E) then
             null;
 
-         --  Access to subprogram is a strange beast, and we let the backend
-         --  figure out what is needed (it may be some kind of fat pointer,
-         --  including the static link for example.
+         --  Access to protected subprogram is a strange beast, and we let the
+         --  backend figure out what is needed (it may be some kind of fat
+         --  pointer, including the static link for example).
 
          elsif Is_Access_Protected_Subprogram_Type (E) then
             null;
@@ -283,7 +292,7 @@ package body Layout is
 
          elsif Ekind (E) = E_Access_Subtype then
             Set_Size_Info (E, Base_Type (E));
-            Set_RM_Size   (E, RM_Size (Base_Type (E)));
+            Copy_RM_Size (To => E, From => Base_Type (E));
 
          --  For other access types, we use either address size, or, if a fat
          --  pointer is used (pointer-to-unconstrained array case), twice the
@@ -298,7 +307,9 @@ package body Layout is
 
            and then not Debug_Flag_6
          then
-            Init_Size (E, 2 * System_Address_Size);
+            if not Is_Extended_Access_Type (E) then
+               Init_Size (E, 2 * System_Address_Size);
+            end if;
 
             --  Check for bad convention set
 
@@ -323,7 +334,9 @@ package body Layout is
                                              N_Unconstrained_Array_Definition
            and then not Debug_Flag_6
          then
-            Init_Size (E, 2 * System_Address_Size);
+            if not Is_Extended_Access_Type (E) then
+               Init_Size (E, 2 * System_Address_Size);
+            end if;
 
          --  If unnesting subprograms, subprogram access types contain the
          --  address of both the subprogram and an activation record. But if we
@@ -368,20 +381,20 @@ package body Layout is
 
             if not Known_Esize (E) then
                declare
-                  S : Int := 8;
+                  S : Pos := 8;
 
                begin
                   loop
                      --  If size is big enough, set it and exit
 
                      if S >= RM_Size (E) then
-                        Init_Esize (E, S);
+                        Set_Esize (E, UI_From_Int (S));
                         exit;
 
                      --  If the RM_Size is greater than System_Max_Integer_Size
                      --  (happens only when strange values are specified by the
                      --  user), then Esize is simply a copy of RM_Size, it will
-                     --  be further refined later on).
+                     --  be further refined later on.
 
                      elsif S = System_Max_Integer_Size then
                         Set_Esize (E, RM_Size (E));
@@ -400,7 +413,7 @@ package body Layout is
          --  it now to a copy of the Esize if the Esize is set.
 
          else
-            if Known_Esize (E) and then Unknown_RM_Size (E) then
+            if Known_Esize (E) and then not Known_RM_Size (E) then
                Set_RM_Size (E, Esize (E));
             end if;
          end if;
@@ -421,16 +434,16 @@ package body Layout is
                PAT : constant Entity_Id := Packed_Array_Impl_Type (E);
 
             begin
-               if Unknown_Esize (E) then
-                  Set_Esize     (E, Esize     (PAT));
+               if not Known_Esize (E) then
+                  Copy_Esize (To => E, From => PAT);
                end if;
 
-               if Unknown_RM_Size (E) then
-                  Set_RM_Size   (E, RM_Size   (PAT));
+               if not Known_RM_Size (E) then
+                  Copy_RM_Size (To => E, From => PAT);
                end if;
 
-               if Unknown_Alignment (E) then
-                  Set_Alignment (E, Alignment (PAT));
+               if not Known_Alignment (E) then
+                  Copy_Alignment (To => E, From => PAT);
                end if;
             end;
          end if;
@@ -442,13 +455,13 @@ package body Layout is
          --  gave up because, in this case, the object size is not a multiple
          --  of the alignment and, therefore, cannot be the component size.
 
-         if Ekind (E) = E_Array_Type and then Unknown_Component_Size (E) then
+         if Ekind (E) = E_Array_Type and then not Known_Component_Size (E) then
             declare
                CT : constant Entity_Id := Component_Type (E);
 
             begin
                --  For some reason, access types can cause trouble, So let's
-               --  just do this for scalar types ???
+               --  just do this for scalar types.
 
                if Present (CT)
                  and then Is_Scalar_Type (CT)
@@ -474,7 +487,7 @@ package body Layout is
 
          if Is_Array_Type (E)
            and then not Is_Packed (E)
-           and then Unknown_Alignment (E)
+           and then not Known_Alignment (E)
            and then Known_Alignment (Component_Type (E))
            and then Known_Static_Component_Size (E)
            and then Known_Static_Esize (Component_Type (E))
@@ -482,6 +495,59 @@ package body Layout is
            and then not Is_Full_Access (E)
          then
             Set_Alignment (E, Alignment (Component_Type (E)));
+         end if;
+
+         --  If packing was requested, the one-dimensional array is constrained
+         --  with static bounds, the component size was set explicitly, and
+         --  the alignment is known, we can set (if not set explicitly) the
+         --  RM_Size and the Esize of the array type, as RM_Size is equal to
+         --  (arr'length * arr'component_size) and Esize is the same value
+         --  rounded to the next multiple of arr'alignment. This is not
+         --  applicable to packed arrays that are implemented specially
+         --  in GNAT, i.e. when Packed_Array_Impl_Type is set.
+
+         if Is_Array_Type (E)
+           and then Present (First_Index (E))  --  Skip types in error
+           and then Number_Dimensions (E) = 1
+           and then No (Packed_Array_Impl_Type (E))
+           and then Has_Pragma_Pack (E)
+           and then Is_Constrained (E)
+           and then Compile_Time_Known_Bounds (E)
+           and then Known_Component_Size (E)
+           and then Known_Alignment (E)
+         then
+            declare
+               Abits : constant Int := UI_To_Int (Alignment (E)) * SSU;
+               Lo, Hi : Node_Id;
+               Siz : Uint;
+
+            begin
+               Get_Index_Bounds (First_Index (E), Lo, Hi);
+
+               --  Even if the bounds are known at compile time, they could
+               --  have been replaced by an error node. Check each bound
+               --  explicitly.
+
+               if Compile_Time_Known_Value (Lo)
+                 and then Compile_Time_Known_Value (Hi)
+               then
+                  Siz := (Expr_Value (Hi) - Expr_Value (Lo) + 1)
+                    * Component_Size (E);
+
+                  --  Do not overwrite a different value of 'Size specified
+                  --  explicitly by the user. In that case, also do not set
+                  --  Esize.
+
+                  if not Known_RM_Size (E) or else RM_Size (E) = Siz then
+                     Set_RM_Size (E, Siz);
+
+                     if not Known_Esize (E) then
+                        Siz := ((Siz + (Abits - 1)) / Abits) * Abits;
+                        Set_Esize (E, Siz);
+                     end if;
+                  end if;
+               end if;
+            end;
          end if;
       end if;
 
@@ -519,7 +585,7 @@ package body Layout is
          --  arrays when passed to subprogram parameters (see special test
          --  in Exp_Ch6.Expand_Actuals).
 
-         if not Is_Packed (E) and then Unknown_Alignment (E) then
+         if not Is_Packed (E) and then not Known_Alignment (E) then
             if Known_Static_Component_Size (E)
               and then Component_Size (E) = 1
             then
@@ -549,8 +615,8 @@ package body Layout is
                Error_Msg_Uint_1 := RM_Size (E);
                Error_Msg_F
                  ("object size is too small, minimum allowed is ^",
-                  Expression (Get_Attribute_Definition_Clause
-                                             (E, Attribute_Object_Size)));
+                  Expression (Object_Size_Clause (E)));
+
             end if;
 
             --  Adjust Esize up to RM_Size value
@@ -559,7 +625,7 @@ package body Layout is
                Size : constant Uint := RM_Size (E);
 
             begin
-               Set_Esize (E, RM_Size (E));
+               Set_Esize (E, Size);
 
                --  For scalar types, increase Object_Size to power of 2, but
                --  not less than a storage unit in any case (i.e., normally
@@ -567,13 +633,13 @@ package body Layout is
 
                if Is_Scalar_Type (E) then
                   if Size <= SSU then
-                     Init_Esize (E, SSU);
+                     Set_Esize (E, UI_From_Int (SSU));
                   elsif Size <= 16 then
-                     Init_Esize (E, 16);
+                     Set_Esize (E, Uint_16);
                   elsif Size <= 32 then
-                     Init_Esize (E, 32);
+                     Set_Esize (E, Uint_32);
                   else
-                     Set_Esize  (E, (Size + 63) / 64 * 64);
+                     Set_Esize (E, (Size + 63) / 64 * 64);
                   end if;
 
                   --  Finally, make sure that alignment is consistent with
@@ -584,6 +650,11 @@ package body Layout is
                   loop
                      Set_Alignment (E, 2 * Alignment (E));
                   end loop;
+
+               --  For the other types, apply standard adjustments
+
+               else
+                  Adjust_Esize_Alignment (E);
                end if;
             end;
          end if;
@@ -595,8 +666,8 @@ package body Layout is
    -----------------------------
 
    procedure Set_Composite_Alignment (E : Entity_Id) is
-      Siz   : Uint;
       Align : Nat;
+      Siz   : Uint;
 
    begin
       --  If alignment is already set, then nothing to do
@@ -609,7 +680,7 @@ package body Layout is
       --  the setting of the Optimize_Alignment mode.
 
       --  If Optimize_Alignment is set to Space, then we try to give packed
-      --  records an aligmment of 1, unless there is some reason we can't.
+      --  records an alignment of 1, unless there is some reason we can't.
 
       if Optimize_Alignment_Space (E)
         and then Is_Record_Type (E)
@@ -625,13 +696,13 @@ package body Layout is
                  ("\pragma ignored for atomic record??", E);
             else
                Error_Msg_N
-                 ("\pragma ignored for bolatile full access record??", E);
+                 ("\pragma ignored for volatile full access record??", E);
             end if;
 
             return;
          end if;
 
-         --  No effect if independent components
+         --  No effect for record with independent components
 
          if Has_Independent_Components (E) then
             Error_Msg_N ("Optimize_Alignment has no effect for &??", E);
@@ -671,7 +742,7 @@ package body Layout is
             end loop;
          end;
 
-         --  Optimize_Alignment has no effect on variable length record
+         --  No effect on variable length record
 
          if not Size_Known_At_Compile_Time (E) then
             Error_Msg_N ("Optimize_Alignment has no effect for &??", E);
@@ -683,15 +754,13 @@ package body Layout is
 
          Align := 1;
 
-      --  Not a record, or not packed
-
       else
          --  The only other cases we worry about here are where the size is
          --  statically known at compile time.
 
          if Known_Static_Esize (E) then
             Siz := Esize (E);
-         elsif Unknown_Esize (E) and then Known_Static_RM_Size (E) then
+         elsif not Known_Esize (E) and then Known_Static_RM_Size (E) then
             Siz := RM_Size (E);
          else
             return;
@@ -709,9 +778,9 @@ package body Layout is
          elsif Siz = 8 * SSU then
             Align := 8;
 
-            --  If Optimize_Alignment is set to Space, then make sure the
-            --  alignment matches the size, for example, if the size is 17
-            --  bytes then we want an alignment of 1 for the type.
+         --  If Optimize_Alignment is set to Space, then make sure the
+         --  alignment matches the size, for example, if the size is 17
+         --  bytes then we want an alignment of 1 for the type.
 
          elsif Optimize_Alignment_Space (E) then
             if Siz mod (8 * SSU) = 0 then
@@ -724,9 +793,9 @@ package body Layout is
                Align := 1;
             end if;
 
-            --  If Optimize_Alignment is set to Time, then we reset for odd
-            --  "in between sizes", for example a 17 bit record is given an
-            --  alignment of 4.
+         --  If Optimize_Alignment is set to Time, then we reset for odd
+         --  "in between sizes", for example a 17 bit record is given an
+         --  alignment of 4.
 
          elsif Optimize_Alignment_Time (E)
            and then Siz > SSU
@@ -740,14 +809,14 @@ package body Layout is
                Align := 8;
             end if;
 
-            --  No special alignment fiddling needed
+         --  No special alignment fiddling needed
 
          else
             return;
          end if;
       end if;
 
-      --  Here we have Set Align to the proposed improved value. Make sure the
+      --  Here we have set Align to the proposed improved value. Make sure the
       --  value set does not exceed Maximum_Alignment for the target.
 
       if Align > Maximum_Alignment then
@@ -755,8 +824,8 @@ package body Layout is
       end if;
 
       --  Further processing for record types only to reduce the alignment
-      --  set by the above processing in some specific cases. We do not
-      --  do this for full access records, since we need max alignment there,
+      --  set by the above processing in some specific cases. We do not do
+      --  this for full access records, since we need max alignment there.
 
       if Is_Record_Type (E) and then not Is_Full_Access (E) then
 
@@ -796,7 +865,7 @@ package body Layout is
 
                         if Calign > Align
                           and then
-                            (Unknown_Esize (Comp)
+                            (not Known_Esize (Comp)
                               or else (Known_Static_Esize (Comp)
                                         and then
                                        Esize (Comp) = Calign * SSU))
@@ -842,7 +911,7 @@ package body Layout is
       --  nothing to do with code.
 
       if Is_Generic_Type (Root_Type (FST)) then
-         Set_RM_Size (Def_Id, Uint_0);
+         Reinit_RM_Size (Def_Id);
 
       --  If the subtype statically matches the first subtype, then it is
       --  required to have exactly the same layout. This is required by
@@ -963,8 +1032,8 @@ package body Layout is
          --  If alignment is currently not set, then we can safely set it to
          --  this new calculated value.
 
-         if Unknown_Alignment (E) then
-            Init_Alignment (E, A);
+         if not Known_Alignment (E) then
+            Set_Alignment (E, UI_From_Int (A));
 
          --  Cases where we have inherited an alignment
 
@@ -973,7 +1042,7 @@ package body Layout is
          --  sure that no constructed types have weird alignments.
 
          elsif not Comes_From_Source (E) then
-            Init_Alignment (E, A);
+            Set_Alignment (E, UI_From_Int (A));
 
          --  If this inherited alignment is the same as the one we computed,
          --  then obviously everything is fine, and we do not need to reset it.
@@ -991,8 +1060,6 @@ package body Layout is
             --  derived types.
 
             declare
-               FST : constant Entity_Id := First_Subtype (E);
-
                function Has_Attribute_Clause
                  (E  : Entity_Id;
                   Id : Attribute_Id) return Boolean;
@@ -1010,7 +1077,17 @@ package body Layout is
                   return Present (Get_Attribute_Definition_Clause (E, Id));
                end Has_Attribute_Clause;
 
+               FST : Entity_Id;
+
             begin
+               FST := First_Subtype (E);
+
+               --  Deal with private types
+
+               if Is_Private_Type (FST) then
+                  FST := Full_View (FST);
+               end if;
+
                --  If the alignment comes from a clause, then we respect it.
                --  Consider for example:
 
@@ -1079,7 +1156,7 @@ package body Layout is
                   --  ACATS problem which seems to have disappeared anyway, and
                   --  in any case, this peculiarity was never documented.
 
-                  Init_Alignment (E, A);
+                  Set_Alignment (E, UI_From_Int (A));
 
                --  If no Size (or Object_Size) was specified, then we have
                --  inherited the object size, so we should also inherit the

@@ -1,8 +1,8 @@
 /* Verify that overloaded built-ins for vec_vsx_st with long long
    inputs produce the right code.  */
 
-/* { dg-require-effective-target powerpc_vsx_ok } */
 /* { dg-options "-mvsx -O2" } */
+/* { dg-require-effective-target powerpc_vsx } */
 
 #include <altivec.h>
 
@@ -36,4 +36,4 @@ BUILD_VAR_TEST( test10, vector unsigned long long, signed long long, vector unsi
 BUILD_VAR_TEST( test11, vector unsigned long long, signed int, vector unsigned long long );
 BUILD_CST_TEST( test12, vector unsigned long long, 12, vector unsigned long long );
 
-/* { dg-final { scan-assembler-times {\mstxvd2x\M|\mstxvx\M|\mstvx\M} 12 } } */
+/* { dg-final { scan-assembler-times {\mstxvd2x\M|\mstxvx\M|\mstvx\M|\mpstxv\M} 12 } } */

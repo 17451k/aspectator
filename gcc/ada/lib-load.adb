@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,27 +23,30 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;    use Atree;
-with Debug;    use Debug;
-with Einfo;    use Einfo;
-with Errout;   use Errout;
-with Fname;    use Fname;
-with Fname.UF; use Fname.UF;
-with Nlists;   use Nlists;
-with Nmake;    use Nmake;
-with Opt;      use Opt;
-with Osint;    use Osint;
-with Osint.C;  use Osint.C;
-with Output;   use Output;
+with Atree;          use Atree;
+with Debug;          use Debug;
+with Einfo;          use Einfo;
+with Einfo.Entities; use Einfo.Entities;
+with Errout;         use Errout;
+with Fname;          use Fname;
+with Fname.UF;       use Fname.UF;
+with Nlists;         use Nlists;
+with Nmake;          use Nmake;
+with Opt;            use Opt;
+with Osint;          use Osint;
+with Osint.C;        use Osint.C;
+with Output;         use Output;
 with Par;
-with Restrict; use Restrict;
-with Scn;      use Scn;
-with Sinfo;    use Sinfo;
-with Sinput;   use Sinput;
-with Sinput.L; use Sinput.L;
-with Stand;    use Stand;
-with Tbuild;   use Tbuild;
-with Uname;    use Uname;
+with Restrict;       use Restrict;
+with Scn;            use Scn;
+with Sinfo;          use Sinfo;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Sinput;         use Sinput;
+with Sinput.L;       use Sinput.L;
+with Stand;          use Stand;
+with Tbuild;         use Tbuild;
+with Uname;          use Uname;
 
 package body Lib.Load is
 
@@ -85,7 +88,7 @@ package body Lib.Load is
 
       --  Note: for the following we should really generalize and consult the
       --  file name pattern data, but for now we just deal with the common
-      --  naming cases, which is probably good enough in practice ???
+      --  naming cases, which is good enough in practice.
 
       --  Change .adb to .ads
 
@@ -223,13 +226,11 @@ package body Lib.Load is
          Fatal_Error            => Error_Detected,
          Generate_Code          => False,
          Has_RACW               => False,
-         Filler                 => False,
          Ident_String           => Empty,
 
          Is_Predefined_Renaming => Ren_Name,
          Is_Predefined_Unit     => Pre_Name or Ren_Name,
          Is_Internal_Unit       => Pre_Name or Ren_Name or GNAT_Name,
-         Filler2                => False,
 
          Loading                => False,
          Main_Priority          => Default_Main_Priority,
@@ -310,6 +311,7 @@ package body Lib.Load is
         Is_Predefined_Renaming_File_Name (Fname);
       GNAT_Name : constant Boolean :=
         Is_GNAT_File_Name (Fname);
+      Saved_Error_Count : constant Nat := Total_Errors_Detected;
       Version : Word := 0;
 
    begin
@@ -333,7 +335,14 @@ package body Lib.Load is
          if Main_Source_File > No_Source_File then
             Version := Source_Checksum (Main_Source_File);
 
-         else
+         --  If we get here and Saved_Error_Count /= Total_Errors_Detected,
+         --  then an error occurred during preprocessing. In this case
+         --  we have already generated an error message during preprocessing
+         --  and we do not want to emit an incorrect "file foo.adb not found"
+         --  message here.
+
+         elsif Saved_Error_Count = Total_Errors_Detected then
+
             --  To avoid emitting a source location (since there is no file),
             --  we write a custom error message instead of using the machinery
             --  in errout.adb.
@@ -361,15 +370,13 @@ package body Lib.Load is
             Error_Location         => No_Location,
             Expected_Unit          => No_Unit_Name,
             Fatal_Error            => None,
-            Generate_Code          => False,
+            Generate_Code          => True,
             Has_RACW               => False,
-            Filler                 => False,
             Ident_String           => Empty,
 
             Is_Predefined_Renaming => Ren_Name,
             Is_Predefined_Unit     => Pre_Name or Ren_Name,
             Is_Internal_Unit       => Pre_Name or Ren_Name or GNAT_Name,
-            Filler2                => False,
 
             Loading                => True,
             Main_Priority          => Default_Main_Priority,
@@ -393,14 +400,14 @@ package body Lib.Load is
    ---------------
 
    function Load_Unit
-     (Load_Name         : Unit_Name_Type;
-      Required          : Boolean;
-      Error_Node        : Node_Id;
-      Subunit           : Boolean;
-      Corr_Body         : Unit_Number_Type := No_Unit;
-      Renamings         : Boolean          := False;
-      With_Node         : Node_Id          := Empty;
-      PMES              : Boolean          := False) return Unit_Number_Type
+     (Load_Name  : Unit_Name_Type;
+      Required   : Boolean;
+      Error_Node : Node_Id;
+      Subunit    : Boolean;
+      Corr_Body  : Unit_Number_Type := No_Unit;
+      Renamings  : Boolean          := False;
+      With_Node  : Node_Id          := Empty;
+      PMES       : Boolean          := False) return Unit_Number_Type
    is
       Calling_Unit : Unit_Number_Type;
       Uname_Actual : Unit_Name_Type;
@@ -424,7 +431,7 @@ package body Lib.Load is
       --  it is part of the main extended source, otherwise reset them.
 
       --  Note: it's a bit odd but PMES is False for subunits, which is why
-      --  we have the OR here. Should be investigated some time???
+      --  we have the OR here.
 
       if PMES or Subunit then
          Restore_Config_Cunit_Boolean_Restrictions;
@@ -448,8 +455,8 @@ package body Lib.Load is
               With_Node  => With_Node);
 
          if Unump = No_Unit then
-            Parsing_Main_Extended_Source := Save_PMES;
-            return No_Unit;
+            Unum := No_Unit;
+            goto Done;
          end if;
 
          --  If parent is a renaming, then we use the renamed package as
@@ -478,7 +485,7 @@ package body Lib.Load is
             --  installing the context. The implicit with is on this entity,
             --  not on the package it renames. This is somewhat redundant given
             --  the with_clause just created, but it simplifies subsequent
-            --  expansion of the current with_clause. Optimizable ???
+            --  expansion of the current with_clause.
 
             if Nkind (Error_Node) = N_With_Clause
               and then Nkind (Name (Error_Node)) = N_Selected_Component
@@ -642,11 +649,16 @@ package body Lib.Load is
                   if Is_Predefined_File_Name (Fname) then
                      Error_Msg_Unit_1 := Uname_Actual;
                      Error_Msg
-                       ("$$ is not a language defined unit", Load_Msg_Sloc);
+                       ("$$ is not a language defined unit",
+                        Load_Msg_Sloc,
+                        Error_Node);
                   else
                      Error_Msg_File_1 := Fname;
                      Error_Msg_Unit_1 := Uname_Actual;
-                     Error_Msg ("file{ does not contain unit$", Load_Msg_Sloc);
+                     Error_Msg
+                       ("file{ does not contain unit$",
+                        Load_Msg_Sloc,
+                        Error_Node);
                   end if;
 
                   Write_Dependency_Chain;
@@ -676,7 +688,7 @@ package body Lib.Load is
          --  of being loaded. We do *not* care about a circular chain that
          --  leads back to a body, because this kind of circular dependence
          --  legitimately occurs (e.g. two package bodies that contain
-         --  inlined subprogram referenced by the other).
+         --  inlined subprograms referenced by each other).
 
          --  Ada 2005 (AI-50217): We also ignore limited_with clauses, because
          --  their purpose is precisely to create legal circular structures.
@@ -694,7 +706,8 @@ package body Lib.Load is
             end if;
 
             if Present (Error_Node) then
-               Error_Msg ("circular unit dependency", Load_Msg_Sloc);
+               Error_Msg
+                 ("circular unit dependency", Load_Msg_Sloc, Error_Node);
                Write_Dependency_Chain;
             else
                Load_Stack.Decrement_Last;
@@ -743,13 +756,11 @@ package body Lib.Load is
                Fatal_Error            => None,
                Generate_Code          => False,
                Has_RACW               => False,
-               Filler                 => False,
                Ident_String           => Empty,
 
                Is_Predefined_Renaming => Ren_Name,
                Is_Predefined_Unit     => Pre_Name or Ren_Name,
                Is_Internal_Unit       => Pre_Name or Ren_Name or GNAT_Name,
-               Filler2                => False,
 
                Loading                => True,
                Main_Priority          => Default_Main_Priority,
@@ -795,11 +806,14 @@ package body Lib.Load is
             then
                Error_Msg_File_1 := Unit_File_Name (Corr_Body);
                Error_Msg
-                 ("cannot compile subprogram in file {!", Load_Msg_Sloc);
+                 ("cannot compile subprogram in file {!",
+                  Load_Msg_Sloc,
+                  Error_Node);
                Error_Msg_File_1 := Unit_File_Name (Unum);
                Error_Msg
                  ("\incorrect spec in file { must be removed first!",
-                  Load_Msg_Sloc);
+                  Load_Msg_Sloc,
+                  Error_Node);
                Unum := No_Unit;
                goto Done;
             end if;
@@ -820,7 +834,7 @@ package body Lib.Load is
                      Units.Table (Calling_Unit).Fatal_Error := Error_Detected;
 
                   --  If with'ed unit had an ignored error, then propagate it
-                  --  but do not overide an existring setting.
+                  --  but do not overide an existing setting.
 
                   when Error_Ignored =>
                      if Units.Table (Calling_Unit).Fatal_Error = None then
@@ -876,15 +890,21 @@ package body Lib.Load is
 
                   Error_Msg_Unit_1 := Uname_Actual;
                   Error_Msg -- CODEFIX
-                    ("$$ is not a predefined library unit", Load_Msg_Sloc);
+                    ("$$ is not a predefined library unit",
+                     Load_Msg_Sloc,
+                     Error_Node);
 
                else
                   Error_Msg_File_1 := Fname;
 
                   if Src_Ind = No_Access_To_Source_File then
-                     Error_Msg ("no read access to file{", Load_Msg_Sloc);
+                     Error_Msg
+                       ("no read access to file{",
+                        Load_Msg_Sloc,
+                        Error_Node
+                        );
                   else
-                     Error_Msg ("file{ not found", Load_Msg_Sloc);
+                     Error_Msg ("file{ not found", Load_Msg_Sloc, Error_Node);
                   end if;
                end if;
 
@@ -897,7 +917,7 @@ package body Lib.Load is
                Remove_Unit (Unum);
 
             --  If unit not required, remove load stack entry and the junk
-            --  file table entry, and return No_Unit to indicate not found,
+            --  file table entry, and return No_Unit to indicate not found.
 
             else
                Load_Stack.Decrement_Last;
@@ -922,7 +942,7 @@ package body Lib.Load is
    --------------------------
 
    procedure Make_Child_Decl_Unit (N : Node_Id) is
-      Unit_Decl : constant Node_Id          := Library_Unit (N);
+      Unit_Decl : constant Node_Id          := Spec_Lib_Unit (N);
       Unit_Num  : constant Unit_Number_Type := Get_Cunit_Unit_Number (N);
 
    begin
@@ -955,22 +975,21 @@ package body Lib.Load is
    --  code will have to be generated for it.
 
    procedure Make_Instance_Unit (N : Node_Id; In_Main : Boolean) is
-      Sind  : constant Source_File_Index := Source_Index (Main_Unit);
+      Sind : constant Source_File_Index := Source_Index (Main_Unit);
 
    begin
       Units.Increment_Last;
 
       if In_Main then
-         Units.Table (Units.Last)               := Units.Table (Main_Unit);
-         Units.Table (Units.Last).Cunit         := Library_Unit (N);
-         Units.Table (Units.Last).Generate_Code := True;
+         Units.Table (Units.Last)        := Units.Table (Main_Unit);
+         Units.Table (Units.Last).Cunit  := Spec_Lib_Unit (N);
          Init_Unit_Name (Units.Last, Unit_Name (Main_Unit));
 
-         Units.Table (Main_Unit).Cunit          := N;
-         Units.Table (Main_Unit).Version        := Source_Checksum (Sind);
+         Units.Table (Main_Unit).Cunit   := N;
+         Units.Table (Main_Unit).Version := Source_Checksum (Sind);
          Init_Unit_Name (Main_Unit,
            Get_Body_Name
-             (Unit_Name (Get_Cunit_Unit_Number (Library_Unit (N)))));
+             (Unit_Name (Get_Cunit_Unit_Number (Spec_Lib_Unit (N)))));
 
       else
          --  Duplicate information from instance unit, for the body. The unit
@@ -978,7 +997,7 @@ package body Lib.Load is
          --  units table when first loaded as a declaration.
 
          Units.Table (Units.Last) := Units.Table (Get_Cunit_Unit_Number (N));
-         Units.Table (Units.Last).Cunit := Library_Unit (N);
+         Units.Table (Units.Last).Cunit := Spec_Lib_Unit (N);
       end if;
    end Make_Instance_Unit;
 

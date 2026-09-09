@@ -1,6 +1,6 @@
 // Position types -*- C++ -*-
 
-// Copyright (C) 1997-2021 Free Software Foundation, Inc.
+// Copyright (C) 1997-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -35,35 +35,11 @@
 #ifndef _GLIBCXX_POSTYPES_H
 #define _GLIBCXX_POSTYPES_H 1
 
+#ifdef _GLIBCXX_SYSHDR
 #pragma GCC system_header
+#endif
 
 #include <cwchar> // For mbstate_t
-
-// XXX If <stdint.h> is really needed, make sure to define the macros
-// before including it, in order not to break <tr1/cstdint> (and <cstdint>
-// in C++11).  Reconsider all this as soon as possible...
-#if (defined(_GLIBCXX_HAVE_INT64_T) && !defined(_GLIBCXX_HAVE_INT64_T_LONG) \
-     && !defined(_GLIBCXX_HAVE_INT64_T_LONG_LONG))
-
-#ifndef __STDC_LIMIT_MACROS
-# define _UNDEF__STDC_LIMIT_MACROS
-# define __STDC_LIMIT_MACROS
-#endif
-#ifndef __STDC_CONSTANT_MACROS
-# define _UNDEF__STDC_CONSTANT_MACROS
-# define __STDC_CONSTANT_MACROS
-#endif
-#include <stdint.h> // For int64_t
-#ifdef _UNDEF__STDC_LIMIT_MACROS
-# undef __STDC_LIMIT_MACROS
-# undef _UNDEF__STDC_LIMIT_MACROS
-#endif
-#ifdef _UNDEF__STDC_CONSTANT_MACROS
-# undef __STDC_CONSTANT_MACROS
-# undef _UNDEF__STDC_CONSTANT_MACROS
-#endif
-
-#endif
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
@@ -76,6 +52,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   // unspecified. The behaviour in this implementation is as noted
   // below.
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlong-long"
   /**
    *  @brief  Type used by fpos, char_traits<char>, and char_traits<wchar_t>.
    *
@@ -83,16 +61,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  implementation defined type.
    *  Note: In versions of GCC up to and including GCC 3.3, streamoff
    *  was typedef long.
-  */  
-#ifdef _GLIBCXX_HAVE_INT64_T_LONG
-  typedef long          streamoff;
-#elif defined(_GLIBCXX_HAVE_INT64_T_LONG_LONG)
-  typedef long long     streamoff;
-#elif defined(_GLIBCXX_HAVE_INT64_T) 
-  typedef int64_t       streamoff;
+  */
+#ifdef __INT64_TYPE__
+  typedef __INT64_TYPE__          streamoff;
 #else
   typedef long long     streamoff;
 #endif
+#pragma GCC diagnostic pop
 
   /// Integral type for I/O operation counts and buffer sizes.
   typedef ptrdiff_t	streamsize; // Signed integral type

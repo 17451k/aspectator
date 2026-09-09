@@ -70,7 +70,7 @@ struct C(Args...)
 alias Z = A!(B,B,C!(B,B));
 
 /***************************************************/
-// 14889
+// https://issues.dlang.org/show_bug.cgi?id=14889
 
 struct A14889(alias Exc)
 {
@@ -85,7 +85,7 @@ alias X14889b = TT14889!(A14889!Throwable);
 alias Y14889b = X14889b[0].ExceptionType;
 
 /***************************************************/
-// 14889
+// https://issues.dlang.org/show_bug.cgi?id=14889
 
 alias TypeTuple14900(T...) = T;
 
@@ -107,7 +107,7 @@ void test14900()
 }
 
 /***************************************************/
-// 14911
+// https://issues.dlang.org/show_bug.cgi?id=14911
 
 void test14911()
 {
@@ -119,7 +119,7 @@ void test14911()
 }
 
 /***************************************************/
-// 14986
+// https://issues.dlang.org/show_bug.cgi?id=14986
 
 alias Id14986(alias a) = a;
 
@@ -134,7 +134,7 @@ struct Bar14986
 
 Bar14986 test14986()
 {
-    Foo14986[] types;
+    Foo14986[] types = [Foo14986(1)];
     auto a1 = new void[types[0].tsize];                 // TypeIdentifier::toExpression
     auto a2 = new void[Id14986!types[0].tsize];         // TypeInstance::toExpression
 

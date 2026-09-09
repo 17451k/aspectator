@@ -21,19 +21,6 @@ AS_HELP_STRING([--enable-version-specific-runtime-libs],
 [version_specific_libs=no])
 AC_MSG_RESULT($version_specific_libs)
 
-# Build with intermodule optimisations
-AC_MSG_CHECKING([for --enable-intermodule])
-AC_ARG_ENABLE(intermodule,
-AS_HELP_STRING([--enable-intermodule],[build the library in one step]),
-[case "$enable_intermodule" in
-  yes) onestep="-onestep";;
-    *) onestep="";;
-esac],
-[onestep=""])
-AC_MSG_RESULT($enable_intermodule)
-AM_CONDITIONAL(onestep,[test x$onestep = x-onestep])
-AC_SUBST(onestep)
-
 # Gets build, host, target, *_vendor, *_cpu, *_os, etc.
 #
 # You will slowly go insane if you do not grok the following fact:  when
@@ -145,6 +132,7 @@ AC_SUBST(CFLAGS)
 AM_PROG_CC_C_O
 
 # Add -Wall -fno-repack-arrays -fno-underscoring if we are using GCC.
+have_real_17=no
 if test "x$GCC" = "xyes"; then
   AM_FCFLAGS="-I . -Wall -Werror -fimplicit-none -fno-repack-arrays -fno-underscoring"
   ## We like to use C11 and C99 routines when available.  This makes
@@ -154,7 +142,24 @@ if test "x$GCC" = "xyes"; then
   ## Compile the following tests with the same system header contents
   ## that we'll encounter when compiling our own source files.
   CFLAGS="-std=gnu11 $CFLAGS"
+
+  case x$target in
+    xpowerpc64le*-linux*)
+      AC_PREPROC_IFELSE(
+        [AC_LANG_PROGRAM([[#if __SIZEOF_LONG_DOUBLE__ != 16
+			   #error long double is double
+			   #endif]],
+                         [[(void) 0;]])],
+        [AM_FCFLAGS="$AM_FCFLAGS -mabi=ibmlongdouble -mno-gnu-attribute";
+	 AM_CFLAGS="$AM_CFLAGS -mabi=ibmlongdouble -mno-gnu-attribute";
+	 CFLAGS="$CFLAGS -mabi=ibmlongdouble -mno-gnu-attribute";
+	 have_real_17=yes])
+      ;;
+    *)
+      ;;
+  esac
 fi
+AM_CONDITIONAL([HAVE_REAL_17], [test "x$have_real_17" != xno])
 
 # Add CET specific flags if CET is enabled
 GCC_CET_FLAGS(CET_FLAGS)
@@ -204,17 +209,12 @@ AM_CONDITIONAL(LIBGFOR_USE_SYMVER, [test "x$gfortran_use_symver" != xno])
 AM_CONDITIONAL(LIBGFOR_USE_SYMVER_GNU, [test "x$gfortran_use_symver" = xgnu])
 AM_CONDITIONAL(LIBGFOR_USE_SYMVER_SUN, [test "x$gfortran_use_symver" = xsun])
 
-# For GPU offloading, not everything in libfortran can be supported.
-# Currently, the only target that has this problem is nvptx.  The
-# following is a (partial) list of features that are unsupportable on
-# this particular target:
-# * Constructors
-# * alloca
-# * C library support for I/O, with printf as the one notable exception
-# * C library support for other features such as signal, environment
-#   variables, time functions
+# "Minimal" mode is for targets that cannot (yet) support all features of
+# libgfortran.  It avoids the need for working constructors, alloca, and C
+# library support for I/O, signals, environment variables, time functions, etc.
+# At present there are no targets that require this mode.
 
-AM_CONDITIONAL(LIBGFOR_MINIMAL, [test "x${target_cpu}" = xnvptx])
+AM_CONDITIONAL(LIBGFOR_MINIMAL, false)
 
 # Some compiler target support may have limited support for integer
 # or floating point numbers – or may want to reduce the libgfortran size
@@ -222,10 +222,6 @@ AM_CONDITIONAL(LIBGFOR_MINIMAL, [test "x${target_cpu}" = xnvptx])
 LIBGOMP_CHECKED_INT_KINDS="1 2 4 8 16"
 LIBGOMP_CHECKED_REAL_KINDS="4 8 10 16"
 
-if test "x${target_cpu}" = xamdgcn; then
-  # amdgcn only has limited support for __int128.
-  LIBGOMP_CHECKED_INT_KINDS="1 2 4 8"
-fi
 AC_SUBST(LIBGOMP_CHECKED_INT_KINDS)
 AC_SUBST(LIBGOMP_CHECKED_REAL_KINDS)
 
@@ -264,9 +260,11 @@ AC_PROG_INSTALL
 #AC_MSG_NOTICE([====== Starting libtool configuration])
 AC_LIBTOOL_DLOPEN
 AM_PROG_LIBTOOL
+LT_LIB_M
 ACX_LT_HOST_FLAGS
 AC_SUBST(enable_shared)
 AC_SUBST(enable_static)
+AM_CONDITIONAL([ENABLE_DARWIN_AT_RPATH], [test x$enable_darwin_at_rpath = xyes])
 #AC_MSG_NOTICE([====== Finished libtool configuration]) ; sleep 10
 
 # We need gfortran to compile parts of the library
@@ -275,9 +273,10 @@ FC="$GFORTRAN"
 AC_PROG_FC(gfortran)
 
 # extra LD Flags which are required for targets
+extra_ldflags_libgfortran=
 case "${host}" in
-  *-darwin*)
-    # Darwin needs -single_module when linking libgfortran
+  *-*-darwin[[4567]]*)
+    # Earlier Darwin needs -single_module when linking libgfortran
     extra_ldflags_libgfortran=-Wl,-single_module
     ;;
 esac
@@ -299,7 +298,7 @@ AC_CHECK_TYPES([ptrdiff_t])
 AC_CHECK_HEADERS_ONCE(unistd.h sys/random.h sys/time.h sys/times.h \
 sys/resource.h sys/types.h sys/stat.h sys/uio.h sys/wait.h \
 floatingpoint.h ieeefp.h fenv.h fptrap.h \
-fpxcp.h pwd.h complex.h xlocale.h)
+fpxcp.h pwd.h complex.h xlocale.h sys/mman.h)
 
 GCC_HEADER_STDINT(gstdint.h)
 
@@ -335,14 +334,48 @@ if test "${hardwire_newlib:-0}" -eq 1; then
 else
    AC_CHECK_FUNCS_ONCE(getrusage times mkstemp strtof strtold snprintf \
    ftruncate chsize chdir getentropy getlogin gethostname kill link symlink \
-   sleep ttyname sigaction waitpid \
+   sleep ttyname sigaction waitpid mmap setenv\
    alarm access fork posix_spawn setmode fcntl writev \
    gettimeofday stat fstat lstat getpwuid vsnprintf dup \
    getcwd localtime_r gmtime_r getpwuid_r ttyname_r clock_gettime \
    getgid getpid getuid geteuid umask getegid \
    secure_getenv __secure_getenv mkostemp strnlen strndup newlocale \
-   freelocale uselocale strerror_l)
+   freelocale uselocale strerror_l strtof128 strfromf128)
 fi
+
+# Check for existing and usable pthreads.
+AX_PTHREAD([
+  enable_caf_shmem=true
+  CAF_SHMEM_CFLAGS="$PTHREAD_CFLAGS"
+  CAF_SHMEM_LIBS="$PTHREAD_LIBS"
+  ], [
+  enable_caf_shmem=false
+  ])
+# caf_shmem needs process-shared pthread primitives that are visible through
+# the default pthread headers.  AX_PTHREAD already established the baseline
+# pthread flags; this additional check only verifies that the specific
+# process-shared API surface is usable for caf/shmem/thread_support.c.
+if test x$enable_caf_shmem = xtrue; then
+  AC_MSG_CHECKING([for usable process-shared pthread support for caf_shmem])
+  save_CFLAGS="$CFLAGS"
+  CFLAGS="$CFLAGS $PTHREAD_CFLAGS"
+  AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM(
+      [[#include <pthread.h>]],
+      [[pthread_mutexattr_t mattr;
+        pthread_condattr_t cattr;
+        (void) &pthread_mutexattr_setpshared;
+        (void) &pthread_condattr_setpshared;
+        return pthread_mutexattr_init (&mattr)
+          || pthread_condattr_init (&cattr)
+          || pthread_mutexattr_setpshared (&mattr, PTHREAD_PROCESS_SHARED)
+          || pthread_condattr_setpshared (&cattr, PTHREAD_PROCESS_SHARED);]])],
+    [AC_MSG_RESULT([yes])],
+    [AC_MSG_RESULT([no])
+     enable_caf_shmem=false])
+  CFLAGS="$save_CFLAGS"
+fi
+AM_CONDITIONAL([ENABLE_CAF_SHMEM], [test x$enable_caf_shmem = xtrue])
 
 # Check strerror_r, cannot be above as versions with two and three arguments exist
 LIBGFOR_CHECK_STRERROR_R
@@ -529,6 +562,36 @@ GCC_CHECK_MATH_FUNC([catanhf])
 GCC_CHECK_MATH_FUNC([catanhl])
 GCC_CHECK_MATH_FUNC([catanl])
 
+# For POWER, check the ieee128 math functions
+
+if test "x$have_real_17" = "xyes"; then
+AC_DEFINE_UNQUOTED(AS_TR_CPP(HAVE_REAL_17),[1],
+  [Define to 1 if you have REAL(KIND=17)])
+
+LIBGFOR_CHECK_MATH_IEEE128([__acoshieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__acosieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__asinhieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__asinieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__atan2ieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__atanhieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__atanieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__coshieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__cosieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__erfieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__expieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__fabsieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__jnieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__log10ieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__logieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__powieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__sinhieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__sinieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__sqrtieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__tanhieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__tanieee128])
+LIBGFOR_CHECK_MATH_IEEE128([__ynieee128])
+fi
+
 # On AIX, clog is present in libm as __clog
 AC_CHECK_LIB([m],[__clog],[AC_DEFINE([HAVE_CLOG],[1],[libm includes clog])])
 
@@ -537,24 +600,101 @@ GCC_CHECK_MATH_INLINE_BUILTIN_FALLBACK2([copysignl], [long double])
 GCC_CHECK_MATH_INLINE_BUILTIN_FALLBACK1([fabs], [double])
 GCC_CHECK_MATH_INLINE_BUILTIN_FALLBACK1([fabsl], [long double])
 
+GCC_CHECK_MATH_FUNC([acosf128])
+GCC_CHECK_MATH_FUNC([acoshf128])
+GCC_CHECK_MATH_FUNC([asinf128])
+GCC_CHECK_MATH_FUNC([asinhf128])
+GCC_CHECK_MATH_FUNC([atan2f128])
+GCC_CHECK_MATH_FUNC([atanf128])
+GCC_CHECK_MATH_FUNC([atanhf128])
+GCC_CHECK_MATH_FUNC([cargf128])
+GCC_CHECK_MATH_FUNC([ceilf128])
+GCC_CHECK_MATH_FUNC([copysignf128])
+GCC_CHECK_MATH_FUNC([cosf128])
+GCC_CHECK_MATH_FUNC([ccosf128])
+GCC_CHECK_MATH_FUNC([coshf128])
+GCC_CHECK_MATH_FUNC([ccoshf128])
+GCC_CHECK_MATH_FUNC([expf128])
+GCC_CHECK_MATH_FUNC([cexpf128])
+GCC_CHECK_MATH_FUNC([fabsf128])
+GCC_CHECK_MATH_FUNC([cabsf128])
+GCC_CHECK_MATH_FUNC([floorf128])
+GCC_CHECK_MATH_FUNC([fmaf128])
+GCC_CHECK_MATH_FUNC([fmodf128])
+GCC_CHECK_MATH_FUNC([frexpf128])
+GCC_CHECK_MATH_FUNC([hypotf128])
+GCC_CHECK_MATH_FUNC([ldexpf128])
+GCC_CHECK_MATH_FUNC([logf128])
+GCC_CHECK_MATH_FUNC([clogf128])
+GCC_CHECK_MATH_FUNC([log10f128])
+GCC_CHECK_MATH_FUNC([clog10f128])
+GCC_CHECK_MATH_FUNC([nextafterf128])
+GCC_CHECK_MATH_FUNC([powf128])
+GCC_CHECK_MATH_FUNC([cpowf128])
+GCC_CHECK_MATH_FUNC([roundf128])
+GCC_CHECK_MATH_FUNC([lroundf128])
+GCC_CHECK_MATH_FUNC([llroundf128])
+GCC_CHECK_MATH_FUNC([scalbnf128])
+GCC_CHECK_MATH_FUNC([sinf128])
+GCC_CHECK_MATH_FUNC([csinf128])
+GCC_CHECK_MATH_FUNC([sinhf128])
+GCC_CHECK_MATH_FUNC([csinhf128])
+GCC_CHECK_MATH_FUNC([sqrtf128])
+GCC_CHECK_MATH_FUNC([csqrtf128])
+GCC_CHECK_MATH_FUNC([tanf128])
+GCC_CHECK_MATH_FUNC([ctanf128])
+GCC_CHECK_MATH_FUNC([tanhf128])
+GCC_CHECK_MATH_FUNC([ctanhf128])
+GCC_CHECK_MATH_FUNC([truncf128])
+GCC_CHECK_MATH_FUNC([erff128])
+GCC_CHECK_MATH_FUNC([erfcf128])
+GCC_CHECK_MATH_FUNC([j0f128])
+GCC_CHECK_MATH_FUNC([j1f128])
+GCC_CHECK_MATH_FUNC([jnf128])
+GCC_CHECK_MATH_FUNC([y0f128])
+GCC_CHECK_MATH_FUNC([y1f128])
+GCC_CHECK_MATH_FUNC([ynf128])
+GCC_CHECK_MATH_FUNC([tgammaf128])
+GCC_CHECK_MATH_FUNC([lgammaf128])
+
+GCC_CHECK_MATH_FUNC([cacosf128])
+GCC_CHECK_MATH_FUNC([cacoshf128])
+GCC_CHECK_MATH_FUNC([casinf128])
+GCC_CHECK_MATH_FUNC([casinhf128])
+GCC_CHECK_MATH_FUNC([catanf128])
+GCC_CHECK_MATH_FUNC([catanhf128])
+
 # Check whether the system has a working stat()
 LIBGFOR_CHECK_WORKING_STAT
 
 # Check whether __mingw_snprintf() is present
 LIBGFOR_CHECK_MINGW_SNPRINTF
 
+have_iec_60559_libc_support=no
+if test "x$ac_cv_func_strtof128$ac_cv_func_strfromf128" = xyesyes \
+   && test "x$gcc_cv_math_func_sinf128$gcc_cv_math_func_cacosf128" = xyesyes; then
+  have_iec_60559_libc_support=yes
+fi
+
 # Check whether libquadmath should be used
 AC_ARG_ENABLE(libquadmath-support,
 AS_HELP_STRING([--disable-libquadmath-support],
   [disable libquadmath support for Fortran]),
 ENABLE_LIBQUADMATH_SUPPORT=$enableval,
-ENABLE_LIBQUADMATH_SUPPORT=yes)
+if test "x$have_iec_60559_libc_support" = xyes; then
+  ENABLE_LIBQUADMATH_SUPPORT=default
+else
+  ENABLE_LIBQUADMATH_SUPPORT=yes
+fi)
 enable_libquadmath_support=
 if test "${ENABLE_LIBQUADMATH_SUPPORT}" = "no" ; then
   enable_libquadmath_support=no
+elif test "${ENABLE_LIBQUADMATH_SUPPORT}" = "default" ; then
+  enable_libquadmath_support=default
 fi
 
-# Check whether we have a __float128 type, depends on enable_libquadmath_support
+# Check whether we have a _Float128 type, depends on enable_libquadmath_support
+# and have_iec_60559_libc_support.
 LIBGFOR_CHECK_FLOAT128
 
 # Check for GNU libc feenableexcept
@@ -668,10 +808,10 @@ LIBGFOR_CHECK_CRLF
 # Check whether we support AVX extensions
 LIBGFOR_CHECK_AVX
 
-# Check wether we support AVX2 extensions
+# Check whether we support AVX2 extensions
 LIBGFOR_CHECK_AVX2
 
-# Check wether we support AVX512f extensions
+# Check whether we support AVX512f extensions
 LIBGFOR_CHECK_AVX512F
 
 # Check for FMA3 extensions

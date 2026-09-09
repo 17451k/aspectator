@@ -1,6 +1,6 @@
 // Methods for Exception Support for -*- C++ -*-
 
-// Copyright (C) 2014-2021 Free Software Foundation, Inc.
+// Copyright (C) 2014-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -46,7 +46,6 @@ _txnal_runtime_error_get_msg(void* e);
 #define _GLIBCXX_DEFINE_STDEXCEPT_COPY_OPS 1
 #define __cow_string __cow_stringxxx
 #include <stdexcept>
-#include <system_error>
 #undef __cow_string
 
 namespace std _GLIBCXX_VISIBILITY(default)
@@ -57,8 +56,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   // These operations are noexcept even though copying a COW string is not,
   // but we know that the string member in an exception has not been "leaked"
   // so copying is a simple reference count increment.
-  // For the fully dynamic string moves are not noexcept (due to needing to
-  // allocate an empty string) so we just define the moves as copies here.
 
   logic_error::logic_error(const logic_error& e) noexcept
   : exception(e), _M_msg(e._M_msg) { }
@@ -66,19 +63,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   logic_error& logic_error::operator=(const logic_error& e) noexcept
   { _M_msg = e._M_msg; return *this; }
 
-#if _GLIBCXX_FULLY_DYNAMIC_STRING == 0
   logic_error::logic_error(logic_error&& e) noexcept = default;
 
   logic_error&
   logic_error::operator=(logic_error&& e) noexcept = default;
-#else
-  logic_error::logic_error(logic_error&& e) noexcept
-  : exception(e), _M_msg(e._M_msg) { }
-
-  logic_error&
-  logic_error::operator=(logic_error&& e) noexcept
-  { _M_msg = e._M_msg; return *this; }
-#endif
 
   runtime_error::runtime_error(const runtime_error& e) noexcept
   : exception(e), _M_msg(e._M_msg) { }
@@ -87,19 +75,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   runtime_error::operator=(const runtime_error& e) noexcept
   { _M_msg = e._M_msg; return *this; }
 
-#if _GLIBCXX_FULLY_DYNAMIC_STRING == 0
   runtime_error::runtime_error(runtime_error&& e) noexcept = default;
 
   runtime_error&
   runtime_error::operator=(runtime_error&& e) noexcept = default;
-#else
-  runtime_error::runtime_error(runtime_error&& e) noexcept
-  : exception(e), _M_msg(e._M_msg) { }
-
-  runtime_error&
-  runtime_error::operator=(runtime_error&& e) noexcept
-  { _M_msg = e._M_msg; return *this; }
-#endif
 
   // New C++11 constructors:
 
@@ -147,17 +126,21 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     __cow_string();
     __cow_string(const std::string& s);
+    __cow_string(const char*);
     __cow_string(const char*, size_t n);
     __cow_string(const __cow_string&) noexcept;
     __cow_string& operator=(const __cow_string&) noexcept;
     ~__cow_string();
     __cow_string(__cow_string&&) noexcept;
     __cow_string& operator=(__cow_string&&) noexcept;
+    const char* c_str() const noexcept;
   };
 
   __cow_string::__cow_string() : _M_str() { }
 
   __cow_string::__cow_string(const std::string& s) : _M_str(s) { }
+
+  __cow_string::__cow_string(const char* s) : _M_str(s) { }
 
   __cow_string::__cow_string(const char* s, size_t n) : _M_str(s, n) { }
 
@@ -183,19 +166,17 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     return *this;
   }
 
+  const char*
+  __cow_string::c_str() const noexcept
+  {
+    return _M_str.c_str();
+  }
+
   static_assert(sizeof(__cow_string) == sizeof(std::string),
                 "sizeof(std::string) has changed");
   static_assert(alignof(__cow_string) == alignof(std::string),
                 "alignof(std::string) has changed");
 #endif
-
-  // Return error_category::message() as an SSO string
-  __sso_string
-  error_category::_M_message(int i) const
-  {
-    string msg = this->message(i);
-    return {msg.c_str(), msg.length()};
-  }
 
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace
@@ -218,7 +199,11 @@ _GLIBCXX_END_NAMESPACE_VERSION
 // declared transaction-safe, so we just don't provide transactional clones
 // in this case.
 #if _GLIBCXX_USE_WEAK_REF
-#ifdef _GLIBCXX_USE_C99_STDINT_TR1
+#ifdef _GLIBCXX_USE_C99_STDINT
+
+#include <stdint.h>
+
+using std::size_t;
 
 extern "C" {
 
@@ -477,5 +462,5 @@ CTORDTOR(15underflow_error, std::underflow_error, runtime_error)
 
 }
 
-#endif  // _GLIBCXX_USE_C99_STDINT_TR1
+#endif  // _GLIBCXX_USE_C99_STDINT
 #endif  // _GLIBCXX_USE_WEAK_REF

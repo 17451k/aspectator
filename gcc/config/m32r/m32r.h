@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, Renesas M32R cpu.
-   Copyright (C) 1996-2021 Free Software Foundation, Inc.
+   Copyright (C) 1996-2026 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -222,7 +222,7 @@
 #define UNITS_PER_WORD 4
 
 /* Define this macro if it is advisable to hold scalars in registers
-   in a wider mode than that declared by the program.  In such cases, 
+   in a wider mode than that declared by the program.  In such cases,
    the value is constrained to be within the bounds of the declared
    type, but kept valid in the wider mode.  The signedness of the
    extension may differ from that of the type.  */
@@ -279,9 +279,6 @@
 #define INT_TYPE_SIZE		32
 #define LONG_TYPE_SIZE		32
 #define LONG_LONG_TYPE_SIZE	64
-#define FLOAT_TYPE_SIZE		32
-#define DOUBLE_TYPE_SIZE	64
-#define LONG_DOUBLE_TYPE_SIZE	64
 
 /* Define this as 1 if `char' should by default be signed; else as 0.  */
 #define DEFAULT_SIGNED_CHAR 1
@@ -306,7 +303,7 @@
 #endif
 
 #define FIRST_PSEUDO_REGISTER (M32R_NUM_REGISTERS + SUBTARGET_NUM_REGISTERS)
-	
+
 /* 1 for registers that have pervasive standard uses
    and are not available for the register allocator.
 
@@ -464,7 +461,7 @@ extern enum reg_class m32r_regno_reg_class[FIRST_PSEUDO_REGISTER];
    They give nonzero only if REGNO is a hard reg of the suitable class
    or a pseudo reg currently allocated to a suitable hard reg.
    Since they use reg_renumber, they are safe only once reg_renumber
-   has been allocated, which happens in reginfo.c during register
+   has been allocated, which happens in reginfo.cc during register
    allocation.  */
 #define REGNO_OK_FOR_BASE_P(REGNO) \
   ((REGNO) < FIRST_PSEUDO_REGISTER			\
@@ -769,29 +766,6 @@ L2:     .word STATIC
 /* Globalizing directive for a label.  */
 #define GLOBAL_ASM_OP "\t.global\t"
 
-/* We do not use DBX_LINES_FUNCTION_RELATIVE or
-   dbxout_stab_value_internal_label_diff here because
-   we need to use .debugsym for the line label.  */
-
-#define DBX_OUTPUT_SOURCE_LINE(file, line, counter)			\
-  do									\
-    {									\
-      const char * begin_label =					\
-	XSTR (XEXP (DECL_RTL (current_function_decl), 0), 0);		\
-      char label[64];							\
-      ASM_GENERATE_INTERNAL_LABEL (label, "LM", counter);		\
-									\
-      dbxout_begin_stabn_sline (line);					\
-      assemble_name (file, label);					\
-      putc ('-', file);							\
-      assemble_name (file, begin_label);				\
-      fputs ("\n\t.debugsym ", file);					\
-      assemble_name (file, label);					\
-      putc ('\n', file);						\
-      counter += 1;							\
-     }									\
-  while (0)
-
 /* How to refer to registers in assembler output.
    This sequence is indexed by compiler's hard-register-number (see above).  */
 #ifndef SUBTARGET_REGISTER_NAMES
@@ -824,7 +798,7 @@ L2:     .word STATIC
 }
 
 /* If defined, C string expressions to be used for the `%R', `%L',
-   `%U', and `%I' options of `asm_fprintf' (see `final.c').  These
+   `%U', and `%I' options of `asm_fprintf' (see `final.cc').  These
    are useful when a single `md' file must support multiple assembler
    formats.  In that case, the various `tm.h' files can define these
    macros differently.  */
@@ -930,16 +904,13 @@ L2:     .word STATIC
 
 /* Debugging information.  */
 
-/* Generate DBX and DWARF debugging information.  */
-#define DBX_DEBUGGING_INFO    1
+/* Generate DWARF debugging information.  */
 #define DWARF2_DEBUGGING_INFO 1
 
 /* Use DWARF2 debugging info by default.  */
 #undef  PREFERRED_DEBUGGING_TYPE
 #define PREFERRED_DEBUGGING_TYPE DWARF2_DEBUG
 
-/* Turn off splitting of long stabs.  */
-#define DBX_CONTIN_LENGTH 0
 
 /* Miscellaneous.  */
 

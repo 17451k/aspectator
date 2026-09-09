@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,7 +29,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-package body System.Exp_Mod is
+package body System.Exp_Mod
+  with SPARK_Mode
+is
    use System.Unsigned_Types;
 
    -----------------
@@ -48,10 +50,10 @@ package body System.Exp_Mod is
       function Mult (X, Y : Unsigned) return Unsigned is
         (Unsigned (Long_Long_Unsigned (X) * Long_Long_Unsigned (Y)
                     mod Long_Long_Unsigned (Modulus)));
-      --  Modular multiplication. Note that we can't take advantage of the
-      --  compiler's circuit, because the modulus is not known statically.
 
    begin
+      pragma Assert (Modulus /= 1);
+
       --  We use the standard logarithmic approach, Exp gets shifted right
       --  testing successive low order bits and Factor is the value of the
       --  base raised to the next power of 2.
@@ -68,12 +70,12 @@ package body System.Exp_Mod is
 
             Exp := Exp / 2;
             exit when Exp = 0;
+
             Factor := Mult (Factor, Factor);
          end loop;
       end if;
 
       return Result;
-
    end Exp_Modular;
 
 end System.Exp_Mod;

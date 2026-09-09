@@ -1,5 +1,5 @@
 /* Finding reachable regions and values.
-   Copyright (C) 2020-2021 Free Software Foundation, Inc.
+   Copyright (C) 2020-2026 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -18,36 +18,13 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-#include "config.h"
-#include "system.h"
-#include "coretypes.h"
-#include "tree.h"
-#include "function.h"
-#include "basic-block.h"
-#include "gimple.h"
-#include "gimple-iterator.h"
-#include "diagnostic-core.h"
-#include "graphviz.h"
-#include "options.h"
-#include "cgraph.h"
-#include "tree-dfa.h"
-#include "stringpool.h"
-#include "convert.h"
-#include "target.h"
-#include "fold-const.h"
-#include "tree-pretty-print.h"
-#include "tristate.h"
-#include "bitmap.h"
-#include "selftest.h"
-#include "function.h"
-#include "analyzer/analyzer.h"
-#include "analyzer/analyzer-logging.h"
+#include "analyzer/common.h"
+
 #include "ordered-hash-map.h"
-#include "options.h"
-#include "cgraph.h"
-#include "cfg.h"
-#include "digraph.h"
-#include "json.h"
+#include "diagnostic.h"
+#include "tree-diagnostic.h"
+
+#include "analyzer/analyzer-logging.h"
 #include "analyzer/call-string.h"
 #include "analyzer/program-point.h"
 #include "analyzer/store.h"
@@ -91,7 +68,7 @@ reachable_regions::init_cluster (const region *base_reg)
   if (const symbolic_region *sym_reg = base_reg->dyn_cast_symbolic_region ())
     {
       const svalue *ptr = sym_reg->get_pointer ();
-      if (ptr->implicitly_live_p (NULL, m_model))
+      if (ptr->implicitly_live_p (nullptr, m_model))
 	add (base_reg, true);
       switch (ptr->get_kind ())
 	{
@@ -107,7 +84,7 @@ reachable_regions::init_cluster (const region *base_reg)
 	    const region *other_base_reg = init_sval_reg->get_base_region ();
 	    const binding_cluster *other_cluster
 	      = m_store->get_cluster (other_base_reg);
-	    if (other_cluster == NULL
+	    if (other_cluster == nullptr
 		|| !other_cluster->touched_p ())
 	      add (base_reg, true);
 	  }
@@ -154,7 +131,7 @@ reachable_regions::add (const region *reg, bool is_mutable)
   if (binding_cluster *bind_cluster = m_store->get_cluster (base_reg))
     bind_cluster->for_each_value (handle_sval_cb, this);
   else
-    handle_sval (m_model->get_store_value (reg));
+    handle_sval (m_model->get_store_value (reg, nullptr));
 }
 
 void
@@ -192,10 +169,10 @@ reachable_regions::handle_sval (const svalue *sval)
   if (const compound_svalue *compound_sval
       = sval->dyn_cast_compound_svalue ())
     {
-      for (compound_svalue::iterator_t iter = compound_sval->begin ();
+      for (auto iter = compound_sval->begin ();
 	   iter != compound_sval->end (); ++iter)
 	{
-	  const svalue *iter_sval = (*iter).second;
+	  const svalue *iter_sval = iter.get_svalue ();
 	  handle_sval (iter_sval);
 	}
     }
@@ -252,12 +229,21 @@ reachable_regions::handle_parm (const svalue *sval, tree param_type)
     m_mutable_svals.add (sval);
   else
     m_reachable_svals.add (sval);
-  if (const region_svalue *parm_ptr
-      = sval->dyn_cast_region_svalue ())
+  if (const region *base_reg = sval->maybe_get_deref_base_region ())
+    add (base_reg, is_mutable);
+  /* Treat all svalues within a compound_svalue as reachable.  */
+  if (const compound_svalue *compound_sval
+      = sval->dyn_cast_compound_svalue ())
     {
-      const region *pointee_reg = parm_ptr->get_pointee ();
-      add (pointee_reg, is_mutable);
+      for (auto iter = compound_sval->begin ();
+	   iter != compound_sval->end (); ++iter)
+	{
+	  const svalue *iter_sval = iter.get_svalue ();
+	  handle_sval (iter_sval);
+	}
     }
+  if (const svalue *cast = sval->maybe_undo_cast ())
+    handle_sval (cast);
 }
 
 /* Update the store to mark the clusters that were found to be mutable
@@ -267,26 +253,29 @@ reachable_regions::handle_parm (const svalue *sval, tree param_type)
 void
 reachable_regions::mark_escaped_clusters (region_model_context *ctxt)
 {
-  gcc_assert (ctxt);
   auto_vec<const function_region *> escaped_fn_regs
     (m_mutable_base_regs.elements ());
   for (hash_set<const region *>::iterator iter = m_mutable_base_regs.begin ();
        iter != m_mutable_base_regs.end (); ++iter)
     {
       const region *base_reg = *iter;
-      m_store->mark_as_escaped (base_reg);
+      store_manager *store_mgr = m_model->get_manager ()->get_store_manager ();
+      m_store->mark_as_escaped (*store_mgr, base_reg);
 
       /* If we have a function that's escaped, potentially add
 	 it to the worklist.  */
       if (const function_region *fn_reg = base_reg->dyn_cast_function_region ())
 	escaped_fn_regs.quick_push (fn_reg);
     }
-  /* Sort to ensure deterministic results.  */
-  escaped_fn_regs.qsort (region::cmp_ptr_ptr);
-  unsigned i;
-  const function_region *fn_reg;
-  FOR_EACH_VEC_ELT (escaped_fn_regs, i, fn_reg)
-    ctxt->on_escaped_function (fn_reg->get_fndecl ());
+  if (ctxt)
+    {
+      /* Sort to ensure deterministic results.  */
+      escaped_fn_regs.qsort (region::cmp_ptr_ptr);
+      unsigned i;
+      const function_region *fn_reg;
+      FOR_EACH_VEC_ELT (escaped_fn_regs, i, fn_reg)
+	ctxt->on_escaped_function (fn_reg->get_fndecl ());
+    }
 }
 
 /* Dump SET to PP, sorting it to avoid churn when comparing dumps.  */
@@ -339,12 +328,8 @@ reachable_regions::dump_to_pp (pretty_printer *pp) const
 DEBUG_FUNCTION void
 reachable_regions::dump () const
 {
-  pretty_printer pp;
-  pp_format_decoder (&pp) = default_tree_printer;
-  pp_show_color (&pp) = pp_show_color (global_dc->printer);
-  pp.buffer->stream = stderr;
+  tree_dump_pretty_printer pp (stderr);
   dump_to_pp (&pp);
-  pp_flush (&pp);
 }
 
 } // namespace ana

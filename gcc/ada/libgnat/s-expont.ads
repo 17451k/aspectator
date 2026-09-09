@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,10 +29,22 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  Signed integer exponentiation (checks on)
+--  This package provides functions for signed integer exponentiation. This
+--  is the version of the package with checks enabled.
 
 generic
-
    type Int is range <>;
 
-function System.Expont (Left : Int; Right : Natural) return Int;
+package System.Expont
+  with Pure, SPARK_Mode
+is
+   function Expon (Left : Int; Right : Natural) return Int;
+   --  Calculate ``Left`` ** ``Right``. If ``Left`` is 0 then 0 is returned
+   --  and if ``Right`` is 0 then 1 is returned. In all other cases the result
+   --  is set to 1 and then computed in a loop as follows:
+   --  If ``Right`` is a multiple of 2 then multiply the result with ``Left``.
+   --  Divide ``Right`` by 2.
+   --  If ``Right is 0, return.
+   --  Multiply ``Left`` with itself.
+
+end System.Expont;

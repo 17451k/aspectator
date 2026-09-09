@@ -2,9 +2,10 @@
    inputs produce the right results.  */
 
 /* { dg-do compile } */
-/* { dg-require-effective-target powerpc_p8vector_ok } */
-/* { dg-options "-maltivec -mvsx -mpower8-vector" } */
+/* { dg-options "-maltivec -mvsx" } */
+/* { dg-additional-options "-mdejagnu-cpu=power8" { target { ! has_arch_pwr8 } } } */
 /* { dg-additional-options "-maix64" { target powerpc-ibm-aix* } } */
+/* { dg-require-effective-target powerpc_vsx } */
 
 #include <altivec.h>
 
@@ -20,5 +21,8 @@ test6 (vector unsigned long long x, vector unsigned long long y)
   return vec_mul (x, y);
 }
 
-/* { dg-final { scan-assembler-times "\[ \t\]mulld " 4 { target lp64 } } } */
-
+/* Power10 can generate the vmulld instruction even in 32-bit.  Before power10,
+   we limit the code to lp64, since 32-bit cannot generate the mulld
+   instruction.  */
+/* { dg-final { scan-assembler-times {\mmulld\M}  4 { target { lp64 && { ! has_arch_pwr10 } } } } } */
+/* { dg-final { scan-assembler-times {\mvmulld\M} 2 { target { has_arch_pwr10             } } } } */

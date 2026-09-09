@@ -3,14 +3,15 @@
 /* { dg-require-weak "" } */
 /* { dg-options "-fno-common -Waddress" } */
 /* { dg-skip-if "" { x86_64-*-mingw* } } */
+/* { dg-skip-if PR119369 { amdgcn-*-* } } */
 
-/* { dg-final { scan-assembler "weak\[^ \t\]*\[ \t\]_?ffoo1a" } } */
-/* { dg-final { scan-assembler "weak\[^ \t\]*\[ \t\]_?ffoo1b" } } */
-/* { dg-final { scan-assembler "weak\[^ \t\]*\[ \t\]_?ffoo1c" } } */
-/* { dg-final { scan-assembler-not "weak\[^ \t\]*\[ \t\]_?ffoo1d" } } */
-/* { dg-final { scan-assembler "weak\[^ \t\]*\[ \t\]_?ffoo1e" } } */
-/* { dg-final { scan-assembler "weak\[^ \t\]*\[ \t\]_?ffoo1f" } } */
-/* { dg-final { scan-assembler "weak\[^ \t\]*\[ \t\]_?ffoo1g" } } */
+/* { dg-final { scan-weak "ffoo1a" } } */
+/* { dg-final { scan-weak "ffoo1b" } } */
+/* { dg-final { scan-weak "ffoo1c" } } */
+/* { dg-final { scan-not-weak "ffoo1d" } } */
+/* { dg-final { scan-weak "ffoo1e" } } */
+/* { dg-final { scan-weak "ffoo1f" } } */
+/* { dg-final { scan-weak "ffoo1g" } } */
 
 /* test function addresses with __attribute__((weak)) */
 
@@ -55,7 +56,7 @@ void * foo1e (void)
 extern void * ffoo1f (void);    
 void * foo1f (void)
 {
-  if (ffoo1f) /* { dg-warning "" } */
+  if (ffoo1f) /* { dg-warning "-Waddress" } */
     ffoo1f ();
   return 0;
 }
@@ -68,7 +69,9 @@ void * ffoox1g (void) { return (void *)0; }
 extern void * ffoo1g (void)  __attribute__((weak, alias ("ffoox1g")));
 void * foo1g (void)
 {
-  if (ffoo1g)
+  /* ffoo1g is a weak alias for a symbol defined in this file, expect
+     a -Waddress for the test (which is folded to true).  */
+  if (ffoo1g)       // { dg-warning "-Waddress" }
     ffoo1g ();
   return 0;
 }

@@ -1,5 +1,5 @@
 /* Target Definitions for OpenRISC.
-   Copyright (C) 2018-2021 Free Software Foundation, Inc.
+   Copyright (C) 2018-2026 Free Software Foundation, Inc.
    Contributed by Stafford Horne.
 
    This file is part of GCC.
@@ -21,6 +21,8 @@
 #ifndef GCC_OR1K_H
 #define GCC_OR1K_H
 
+#include "config/or1k/or1k-opts.h"
+
 /* Names to predefine in the preprocessor for this target machine.  */
 #define TARGET_CPU_CPP_BUILTINS()		\
   do						\
@@ -36,6 +38,11 @@
       builtin_assert ("machine=or1k");		\
     }						\
   while (0)
+
+#define TARGET_CMODEL_SMALL \
+  (or1k_code_model == CMODEL_SMALL)
+#define TARGET_CMODEL_LARGE \
+  (or1k_code_model == CMODEL_LARGE)
 
 /* Storage layout.  */
 
@@ -60,9 +67,6 @@
 #define SHORT_TYPE_SIZE 16
 #define LONG_TYPE_SIZE 32
 #define LONG_LONG_TYPE_SIZE 64
-#define FLOAT_TYPE_SIZE 32
-#define DOUBLE_TYPE_SIZE 64
-#define LONG_DOUBLE_TYPE_SIZE 64
 #define WCHAR_TYPE_SIZE 32
 
 #undef SIZE_TYPE
@@ -139,7 +143,7 @@
    : (X) < 24 ? ((X) - 16) * 2 + 17	\
    : ((X) - 24) * 2 + 16)
 
-#define DBX_REGISTER_NUMBER(X)  GCC_TO_HW_REGNO(X)
+#define DEBUGGER_REGNO(X)  GCC_TO_HW_REGNO(X)
 
 #define REGISTER_NAMES { \
   "r0",   "r1",   "r2",   "r3",   "r4",   "r5",   "r6",   "r7",   \
@@ -385,15 +389,13 @@ do {                                                    \
 
 /* Emit rtl for profiling.  Output assembler code to call "_mcount" for
    profiling a function entry.  */
-#define PROFILE_HOOK(LABEL)						\
-  {									\
-    rtx fun;								\
-    fun = gen_rtx_SYMBOL_REF (Pmode, "_mcount");			\
-    emit_library_call (fun, LCT_NORMAL, VOIDmode);			\
-  }
+#define PROFILE_HOOK(LABEL)  or1k_profile_hook()
 
 /* All the work is done in PROFILE_HOOK, but this is still required.  */
 #define FUNCTION_PROFILER(STREAM, LABELNO) do { } while (0)
+
+/* Shift instructions ignore all but the low-order few bits.  */
+#define SHIFT_COUNT_TRUNCATED 1
 
 /* Dwarf 2 Support */
 #define DWARF2_DEBUGGING_INFO 1

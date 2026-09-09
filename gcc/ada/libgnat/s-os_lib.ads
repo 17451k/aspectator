@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1995-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1995-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -48,9 +48,6 @@
 --  be used by other predefined packages. User access to this package is via
 --  a renaming of this package in GNAT.OS_Lib (file g-os_lib.ads).
 
-pragma Compiler_Unit_Warning;
-
-with System;
 with System.Strings;
 
 package System.OS_Lib is
@@ -118,6 +115,12 @@ package System.OS_Lib is
    --  these have Intrinsic convention, so for example it is not permissible
    --  to create accesses to any of these functions.
 
+   function To_Ada (Time : Long_Long_Integer) return OS_Time;
+   --  Convert Long_Long_Integer to OS_Time
+
+   function To_C (Time : OS_Time) return Long_Long_Integer;
+   --  Convert OS_Time to Long_Long_Integer
+
    subtype Year_Type   is Integer range 1900 .. 2099;
    subtype Month_Type  is Integer range    1 ..   12;
    subtype Day_Type    is Integer range    1 ..   31;
@@ -133,12 +136,12 @@ package System.OS_Lib is
    --  Returns current local time in the form YYYY-MM-DD HH:MM:SS. The result
    --  has bounds 1 .. 19.
 
-   function GM_Year    (Date : OS_Time) return Year_Type;
-   function GM_Month   (Date : OS_Time) return Month_Type;
-   function GM_Day     (Date : OS_Time) return Day_Type;
-   function GM_Hour    (Date : OS_Time) return Hour_Type;
-   function GM_Minute  (Date : OS_Time) return Minute_Type;
-   function GM_Second  (Date : OS_Time) return Second_Type;
+   function GM_Year   (Date : OS_Time) return Year_Type;
+   function GM_Month  (Date : OS_Time) return Month_Type;
+   function GM_Day    (Date : OS_Time) return Day_Type;
+   function GM_Hour   (Date : OS_Time) return Hour_Type;
+   function GM_Minute (Date : OS_Time) return Minute_Type;
+   function GM_Second (Date : OS_Time) return Second_Type;
    --  Functions to extract information from OS_Time value in GMT form
 
    procedure GM_Split
@@ -163,15 +166,6 @@ package System.OS_Lib is
    --  Analogous to the Time_Of routine in Ada.Calendar, takes a set of time
    --  component parts to be interpreted in the local time zone, and returns
    --  an OS_Time. Returns Invalid_Time if the creation fails.
-
-   subtype time_t is Long_Integer;
-   --  C time_t type of the time representation
-
-   function To_C (Time : OS_Time) return time_t;
-   --  Convert OS_Time to C time_t type
-
-   function To_Ada (Time : time_t) return OS_Time;
-   --  Convert C time_t type to OS_Time
 
    ----------------
    -- File Stuff --
@@ -485,12 +479,19 @@ package System.OS_Lib is
    --  used. Use Is_Owner_Readable_File/Is_Owner_Writable_File or
    --  Is_Read_Accessible_File/Is_Write_Accessible_File instead.
 
-   function Locate_Exec_On_Path (Exec_Name : String) return String_Access;
+   function Locate_Exec_On_Path
+     (Exec_Name : String;
+      Current_Dir_On_Win : Boolean := False) return String_Access;
    --  Try to locate an executable whose name is given by Exec_Name in the
    --  directories listed in the environment Path. If the Exec_Name does not
    --  have the executable suffix, it will be appended before the search.
    --  Otherwise works like Locate_Regular_File below. If the executable is
    --  not found, null is returned.
+   --
+   --  When Current_Dir_On_Win is passed, attempt to look for the
+   --  executable on the current working directory before looking in
+   --  those listed on the PATH. This mimics the Windows behavior,
+   --  and only has an effect on Windows.
    --
    --  Note that this function allocates memory for the returned value. This
    --  memory needs to be deallocated after use.
@@ -1098,26 +1099,20 @@ private
    pragma Import (C, Current_Process_Id, "__gnat_current_process_id");
 
    type OS_Time is
-     range -(2 ** (Standard'Address_Size - Integer'(1))) ..
-           +(2 ** (Standard'Address_Size - Integer'(1)) - 1);
+     range -(2 ** 63) ..  +(2 ** 63 - 1);
    --  Type used for timestamps in the compiler. This type is used to hold
    --  time stamps, but may have a different representation than C's time_t.
    --  This type needs to match the declaration of OS_Time in adaint.h.
 
-   --  Add pragma Inline statements for comparison operations on OS_Time. It
-   --  would actually be nice to use pragma Import (Intrinsic) here, but this
-   --  was not properly supported till GNAT 3.15a, so that would cause
-   --  bootstrap path problems. To be changed later ???
-
    Invalid_Time : constant OS_Time := -1;
    --  This value should match the return value from __gnat_file_time_*
 
-   pragma Inline ("<");
-   pragma Inline (">");
-   pragma Inline ("<=");
-   pragma Inline (">=");
-   pragma Inline (To_C);
+   pragma Import (Intrinsic, "<");
+   pragma Import (Intrinsic, ">");
+   pragma Import (Intrinsic, "<=");
+   pragma Import (Intrinsic, ">=");
    pragma Inline (To_Ada);
+   pragma Inline (To_C);
 
    type Process_Id is new Integer;
    Invalid_Pid : constant Process_Id := -1;

@@ -4,11 +4,10 @@
  * Translated from MinGW Windows headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_lmstats.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_lmstats.d)
  */
 module core.sys.windows.lmstats;
 version (Windows):
-@system:
 pragma(lib, "netapi32");
 
 import core.sys.windows.lmcons, core.sys.windows.windef;
@@ -37,7 +36,7 @@ struct STAT_SERVER_0{
     DWORD sts0_reqbufneed;
     DWORD sts0_bigbufneed;
 }
-alias STAT_SERVER_0* PSTAT_SERVER_0, LPSTAT_SERVER_0;
+alias PSTAT_SERVER_0 = STAT_SERVER_0*, LPSTAT_SERVER_0 = STAT_SERVER_0*;
 
 // #ifdef LM20_WORKSTATION_STATISTICS
 // typedef struct _STAT_WORKSTATION_0 {
@@ -116,7 +115,7 @@ struct STAT_WORKSTATION_0{
     DWORD FailedUseCount;
     DWORD CurrentCommands;
 }
-alias STAT_WORKSTATION_0* PSTAT_WORKSTATION_0, LPSTAT_WORKSTATION_0;
+alias PSTAT_WORKSTATION_0 = STAT_WORKSTATION_0*, LPSTAT_WORKSTATION_0 = STAT_WORKSTATION_0*;
 
 extern (Windows):
 NET_API_STATUS NetStatisticsGet(LPWSTR,LPWSTR,DWORD,DWORD,PBYTE*);

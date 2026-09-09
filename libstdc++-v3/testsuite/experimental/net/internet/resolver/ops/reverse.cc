@@ -1,4 +1,4 @@
-// Copyright (C) 2015-2021 Free Software Foundation, Inc.
+// Copyright (C) 2015-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,7 +16,9 @@
 // <http://www.gnu.org/licenses/>.
 
 // { dg-do run { target c++14 } }
+// { dg-require-effective-target net_ts_ip }
 // { dg-add-options net_ts }
+// { dg-xfail-run-if "io_context requires a working pipe" { *-*-rtems* } }
 
 #include <experimental/internet>
 #include <testsuite_hooks.h>
@@ -26,8 +28,6 @@ using namespace std::experimental::net;
 void
 test01()
 {
-  bool test __attribute__((unused)) = false;
-
   std::error_code ec;
   io_context ctx;
   ip::tcp::resolver resolv(ctx);

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,37 +23,36 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;     use Atree;
-with Back_End;  use Back_End;
+with Atree;          use Atree;
+with Back_End;       use Back_End;
 with Checks;
 with Comperr;
 with Csets;
-with Debug;     use Debug;
+with Debug;          use Debug;
 with Elists;
-with Errout;    use Errout;
+with Errout;         use Errout;
 with Exp_CG;
 with Fmap;
-with Fname;     use Fname;
-with Fname.UF;  use Fname.UF;
+with Fname.UF;       use Fname.UF;
 with Frontend;
-with Ghost;     use Ghost;
-with Gnatvsn;   use Gnatvsn;
+with Ghost;          use Ghost;
+with Gnatvsn;        use Gnatvsn;
 with Inline;
-with Lib;       use Lib;
-with Lib.Writ;  use Lib.Writ;
+with Lib;            use Lib;
+with Lib.Writ;       use Lib.Writ;
 with Lib.Xref;
-with Namet;     use Namet;
+with Namet;          use Namet;
 with Nlists;
-with Opt;       use Opt;
-with Osint;     use Osint;
-with Osint.C;   use Osint.C;
-with Output;    use Output;
+with Opt;            use Opt;
+with Osint;          use Osint;
+with Osint.C;        use Osint.C;
+with Output;         use Output;
 with Par_SCO;
 with Prepcomp;
 with Repinfo;
 with Repinfo.Input;
 with Restrict;
-with Rident;    use Rident;
+with Rident;         use Rident;
 with Rtsfind;
 with SCOs;
 with Sem;
@@ -65,24 +64,25 @@ with Sem_Eval;
 with Sem_Prag;
 with Sem_Type;
 with Set_Targ;
-with Sinfo;     use Sinfo;
-with Sinput;    use Sinput;
-with Sinput.L;  use Sinput.L;
-with Snames;    use Snames;
-with Sprint;    use Sprint;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinput;         use Sinput;
+with Sinput.L;       use Sinput.L;
+with Snames;         use Snames;
+with Sprint;         use Sprint;
 with Stringt;
-with Stylesw;   use Stylesw;
-with Targparm;  use Targparm;
+with Stylesw;        use Stylesw;
+with Targparm;       use Targparm;
 with Tbuild;
-with Treepr;    use Treepr;
+with Treepr;         use Treepr;
 with Ttypes;
-with Types;     use Types;
+with Types;          use Types;
 with Uintp;
-with Uname;     use Uname;
+with Uname;          use Uname;
 with Urealp;
 with Usage;
-with Validsw;   use Validsw;
-with Warnsw;    use Warnsw;
+with Validsw;        use Validsw;
+with VAST;
+with Warnsw;         use Warnsw;
 
 with System.Assertions;
 with System.OS_Lib;
@@ -144,12 +144,11 @@ procedure Gnat1drv is
    --  Start of processing for Adjust_Global_Switches
 
    begin
-      --  Define pragma GNAT_Annotate as an alias of pragma Annotate, to be
-      --  able to work around bootstrap limitations with the old syntax of
-      --  pragma Annotate, and use pragma GNAT_Annotate in compiler sources
-      --  when needed.
+      --  -gnatd_U disables prepending error messages with "error:"
 
-      Map_Pragma_Name (From => Name_Gnat_Annotate, To => Name_Annotate);
+      if Debug_Flag_Underscore_UU then
+         Unique_Error_Tag := False;
+      end if;
 
       --  -gnatd.M enables Relaxed_RM_Semantics
 
@@ -163,11 +162,10 @@ procedure Gnat1drv is
          Unnest_Subprogram_Mode := True;
       end if;
 
-      --  -gnatd.u enables special C expansion mode
+      --  Force pseudo code generation with -gnatceg
 
-      if Debug_Flag_Dot_U then
-         Modify_Tree_For_C := True;
-         Transform_Function_Array := True;
+      if Generate_C_Header then
+         Operating_Mode := Generate_Code;
       end if;
 
       --  -gnatd_A disables generation of ALI files
@@ -176,25 +174,10 @@ procedure Gnat1drv is
          Disable_ALI_File := True;
       end if;
 
-      --  Set all flags required when generating C code
+      --  -gnatd_o disables backend overflow checks on target; used for testing
 
-      if Generate_C_Code then
-         Modify_Tree_For_C := True;
-         Transform_Function_Array := True;
-         Unnest_Subprogram_Mode := True;
-         Building_Static_Dispatch_Tables := False;
-         Minimize_Expression_With_Actions := True;
-         Expand_Nonbinary_Modular_Ops := True;
-
-         --  Set operating mode to Generate_Code to benefit from full front-end
-         --  expansion (e.g. generics).
-
-         Operating_Mode := Generate_Code;
-
-         --  Suppress alignment checks since we do not have access to alignment
-         --  info on the target.
-
-         Suppress_Options.Suppress (Alignment_Check) := False;
+      if Debug_Flag_Underscore_O then
+         Backend_Overflow_Checks_On_Target := False;
       end if;
 
       --  -gnatd.E sets Error_To_Warning mode, causing selected error messages
@@ -202,13 +185,6 @@ procedure Gnat1drv is
 
       if Debug_Flag_Dot_EE then
          Error_To_Warning := True;
-      end if;
-
-      --  -gnatdJ sets Include_Subprogram_In_Messages, adding the related
-      --  subprogram as part of the error and warning messages.
-
-      if Debug_Flag_JJ then
-         Include_Subprogram_In_Messages := True;
       end if;
 
       --  Disable CodePeer_Mode in Check_Syntax, since we need front-end
@@ -242,16 +218,9 @@ procedure Gnat1drv is
 
          Debug_Flag_Dot_PP := True;
 
-         --  Turn off C tree generation, not compatible with CodePeer mode. We
-         --  do not expect this to happen in normal use, since both modes are
-         --  enabled by special tools, but it is useful to turn off these flags
-         --  this way when we are doing CodePeer tests on existing test suites
-         --  that may have -gnateg set, to avoid the need for special casing.
+         --  Turn off front-end unnesting to be safe
 
-         Modify_Tree_For_C        := False;
-         Transform_Function_Array := False;
-         Generate_C_Code          := False;
-         Unnest_Subprogram_Mode   := False;
+         Unnest_Subprogram_Mode := False;
 
          --  Turn off inlining, confuses CodePeer output and gains nothing
 
@@ -354,9 +323,13 @@ procedure Gnat1drv is
 
          Generate_SCIL := True;
 
-         --  Enable assertions, since they give CodePeer valuable extra info
+         --  Enable assertions, since they give CodePeer valuable extra info;
+         --  however, when switch -gnatd_k is active, then keep assertions
+         --  disabled by default and only enable them when explicitly
+         --  requested by pragma Assertion_Policy, just like in ordinary
+         --  compilation.
 
-         Assertions_Enabled := True;
+         Assertions_Enabled := not Debug_Flag_Underscore_K;
 
          --  Set normal RM validity checking and checking of copies (to catch
          --  e.g. wrong values used in unchecked conversions).
@@ -423,6 +396,12 @@ procedure Gnat1drv is
          if Warning_Mode = Suppress then
             Debug_Flag_MM := True;
          end if;
+
+         --  The implementation of 'Value that uses a perfect hash function
+         --  is significantly more complex and harder to initialize than the
+         --  old implementation. Deactivate it for CodePeer.
+
+         Debug_Flag_Underscore_H := True;
       end if;
 
       --  Enable some individual switches that are implied by relaxed RM
@@ -451,16 +430,9 @@ procedure Gnat1drv is
          CodePeer_Mode := False;
          Generate_SCIL := False;
 
-         --  Turn off C tree generation, not compatible with GNATprove mode. We
-         --  do not expect this to happen in normal use, since both modes are
-         --  enabled by special tools, but it is useful to turn off these flags
-         --  this way when we are doing GNATprove tests on existing test suites
-         --  that may have -gnateg set, to avoid the need for special casing.
+         --  Turn off front-end unnesting to be safe
 
-         Modify_Tree_For_C        := False;
-         Transform_Function_Array := False;
-         Generate_C_Code          := False;
-         Unnest_Subprogram_Mode   := False;
+         Unnest_Subprogram_Mode := False;
 
          --  Turn off inlining, which would confuse formal verification output
          --  and gain nothing.
@@ -536,11 +508,6 @@ procedure Gnat1drv is
 
          Operating_Mode := Check_Semantics;
 
-         --  Enable assertions, since they give valuable extra information for
-         --  formal verification.
-
-         Assertions_Enabled := True;
-
          --  Disable validity checks, since it generates code raising
          --  exceptions for invalid data, which confuses GNATprove. Invalid
          --  data is directly detected by GNATprove's flow analysis.
@@ -548,10 +515,17 @@ procedure Gnat1drv is
          Validity_Checks_On := False;
          Check_Validity_Of_Parameters := False;
 
-         --  Turn off style check options since we are not interested in any
-         --  front-end warnings when we are getting SPARK output.
+         --  Turn off style checks and compiler warnings in GNATprove except:
+         --    - elaboration warnings, which turn into errors on SPARK code
+         --    - suspicious contracts, which are useful for SPARK code
 
          Reset_Style_Check_Options;
+         Restore_Warnings
+           ((Warnings_Package.Elab_Warnings => True,
+             Warnings_Package.Warn_On_Suspicious_Contract => True,
+             Warnings_Package.Warning_Doc_Switch =>
+               Warnsw.Warning_Doc_Switch,
+             others => False));
 
          --  Suppress the generation of name tables for enumerations, which are
          --  not needed for formal verification, and fall outside the SPARK
@@ -564,6 +538,10 @@ procedure Gnat1drv is
          --  which is more complex to formally verify than the original source.
 
          Tagged_Type_Expansion := False;
+
+         --  Force the use of "error:" prefix for error messages
+
+         Unique_Error_Tag := True;
 
          --  Detect that the runtime library support for floating-point numbers
          --  may not be compatible with SPARK analysis of IEEE-754 floats.
@@ -600,12 +578,6 @@ procedure Gnat1drv is
          Ttypes.Target_Strict_Alignment := True;
       end if;
 
-      --  Increase size of allocated entities if debug flag -gnatd.N is set
-
-      if Debug_Flag_Dot_NN then
-         Atree.Num_Extension_Nodes := Atree.Num_Extension_Nodes + 1;
-      end if;
-
       --  Disable static allocation of dispatch tables if -gnatd.t is enabled.
       --  The front end's layout phase currently treats types that have
       --  discriminant-dependent arrays as not being static even when a
@@ -623,35 +595,14 @@ procedure Gnat1drv is
       end if;
 
       --  Set and check exception mechanism. This is only meaningful when
-      --  compiling, and in particular not meaningful for special modes used
-      --  for program analysis rather than compilation: CodePeer mode and
-      --  GNATprove mode.
+      --  generating code.
 
-      if Operating_Mode = Generate_Code
-        and then not (CodePeer_Mode or GNATprove_Mode)
-      then
-         case Targparm.Frontend_Exceptions_On_Target is
-            when True =>
-               case Targparm.ZCX_By_Default_On_Target is
-                  when True =>
-                     Write_Line
-                       ("Run-time library configured incorrectly");
-                     Write_Line
-                       ("(requesting support for Frontend ZCX exceptions)");
-                     raise Unrecoverable_Error;
-
-                  when False =>
-                     Exception_Mechanism := Front_End_SJLJ;
-               end case;
-
-            when False =>
-               case Targparm.ZCX_By_Default_On_Target is
-                  when True =>
-                     Exception_Mechanism := Back_End_ZCX;
-                  when False =>
-                     Exception_Mechanism := Back_End_SJLJ;
-               end case;
-         end case;
+      if Operating_Mode = Generate_Code then
+         if Targparm.ZCX_By_Default_On_Target then
+            Exception_Mechanism := Back_End_ZCX;
+         else
+            Exception_Mechanism := Back_End_SJLJ;
+         end if;
       end if;
 
       --  Set proper status for overflow check mechanism
@@ -705,10 +656,7 @@ procedure Gnat1drv is
          end if;
       end if;
 
-      --  Set default for atomic synchronization. As this synchronization
-      --  between atomic accesses can be expensive, and not typically needed
-      --  on some targets, an optional target parameter can turn the option
-      --  off. Note Atomic Synchronization is implemented as check.
+      --  Set default for atomic synchronization
 
       Suppress_Options.Suppress (Atomic_Synchronization) :=
         not Atomic_Sync_Default_On_Target;
@@ -721,25 +669,10 @@ procedure Gnat1drv is
          Suppress_Options.Suppress (Alignment_Check) := True;
       end if;
 
-      --  Set switch indicating if back end can handle limited types, and
-      --  guarantee that no incorrect copies are made (e.g. in the context
-      --  of an if or case expression).
+      --  Return slot support is disabled if -gnatd_r is specified
 
-      --  Debug flag -gnatd.L decisively sets usage on
-
-      if Debug_Flag_Dot_LL then
-         Back_End_Handles_Limited_Types := True;
-
-      --  If no debug flag, usage off for SCIL cases
-
-      elsif Generate_SCIL then
-         Back_End_Handles_Limited_Types := False;
-
-      --  Otherwise normal gcc back end, for now still turn flag off by
-      --  default, since there are unresolved problems in the front end.
-
-      else
-         Back_End_Handles_Limited_Types := False;
+      if Debug_Flag_Underscore_R then
+         Back_End_Return_Slot := False;
       end if;
 
       --  If the inlining level has not been set by the user, compute it from
@@ -753,29 +686,14 @@ procedure Gnat1drv is
          end if;
       end if;
 
-      --  Treat -gnatn as equivalent to -gnatN for non-GCC targets
-
-      if Inline_Active and not Front_End_Inlining then
-
-         --  We really should have a tag for this, what if we added a new
-         --  back end some day, it would not be true for this test, but it
-         --  would be non-GCC, so this is a bit troublesome ???
-
-         Front_End_Inlining := Generate_C_Code;
-      end if;
-
       --  Set back-end inlining indication
 
       Back_End_Inlining :=
 
-        --  No back-end inlining available on C generation
-
-        not Generate_C_Code
-
         --  No back-end inlining in GNATprove mode, since it just confuses
         --  the formal verification process.
 
-        and then not GNATprove_Mode
+        not GNATprove_Mode
 
         --  No back-end inlining if front-end inlining explicitly enabled.
         --  Done to minimize the output differences to customers still using
@@ -817,6 +735,12 @@ procedure Gnat1drv is
            Ttypes.Standard_Long_Long_Integer_Size;
          Ttypes.System_Max_Binary_Modulus_Power :=
            Ttypes.Standard_Long_Long_Integer_Size;
+      end if;
+
+      --  Forcefully use a 32-bit Duration with only 32-bit integer types
+
+      if Ttypes.System_Max_Integer_Size < 64 then
+         Targparm.Duration_32_Bits_On_Target := True;
       end if;
 
       --  Finally capture adjusted value of Suppress_Options as the initial
@@ -1058,7 +982,7 @@ procedure Gnat1drv is
    --  Local variables
 
    Back_End_Mode : Back_End.Back_End_Mode_Type;
-   Ecode         : Exit_Code_Type;
+   Ecode         : Exit_Code_Type := E_Success;
 
    Main_Unit_Kind : Node_Kind;
    --  Kind of main compilation unit node
@@ -1080,10 +1004,6 @@ begin
 
       --  Lib.Initialize needs to be called before Scan_Compiler_Arguments,
       --  because it initializes a table filled by Scan_Compiler_Arguments.
-
-      --  Atree.Initialize needs to be called after Scan_Compiler_Arguments,
-      --  because the value specified by the -gnaten switch is used by
-      --  Atree.Initialize.
 
       Osint.Initialize;
       Fmap.Reset_Tables;
@@ -1113,6 +1033,13 @@ begin
       Sem_Eval.Initialize;
       Sem_Type.Init_Interp_Tables;
 
+      --  If there was a -gnatem switch, initialize the mappings of unit names
+      --  to file names and of file names to path names from the mapping file.
+
+      if Mapping_File_Name /= null then
+         Fmap.Initialize (Mapping_File_Name.all);
+      end if;
+
       --  Capture compilation date and time
 
       Opt.Compilation_Time := System.OS_Lib.Current_Time_String;
@@ -1130,9 +1057,12 @@ begin
             N : File_Name_Type;
 
          begin
-            Name_Buffer (1 .. 10) := "system.ads";
-            Name_Len := 10;
-            N := Name_Find;
+            N := Fmap.Mapped_File_Name (Name_To_Unit_Name (Name_System));
+
+            if N = No_File then
+               N := Name_Find ("system.ads");
+            end if;
+
             S := Load_Source_File (N);
 
             --  Failed to read system.ads, fatal error
@@ -1239,9 +1169,10 @@ begin
       --  Exit with errors if the main source could not be parsed
 
       if Sinput.Main_Source_File <= No_Source_File then
+         Ecode := E_Errors;
          Errout.Finalize (Last_Call => True);
-         Errout.Output_Messages;
-         Exit_Program (E_Errors);
+         Errout.Output_Messages (Ecode);
+         Exit_Program (Ecode);
       end if;
 
       Main_Unit_Node := Cunit (Main_Unit);
@@ -1259,8 +1190,7 @@ begin
 
       --  Ditto for old C files before regenerating new ones
 
-      if Generate_C_Code then
-         Delete_C_File;
+      if Generate_C_Header then
          Delete_H_File;
       end if;
 
@@ -1269,10 +1199,10 @@ begin
       Errout.Finalize (Last_Call => False);
 
       if Compilation_Errors then
+         Ecode := E_Errors;
          Treepr.Tree_Dump;
-         Post_Compilation_Validation_Checks;
          Errout.Finalize (Last_Call => True);
-         Errout.Output_Messages;
+         Errout.Output_Messages (Ecode);
          Namet.Finalize;
 
          --  Generate ALI file if specially requested
@@ -1281,30 +1211,7 @@ begin
             Write_ALI (Object => False);
          end if;
 
-         Exit_Program (E_Errors);
-      end if;
-
-      --  Set Generate_Code on main unit and its spec. We do this even if are
-      --  not generating code, since Lib-Writ uses this to determine which
-      --  units get written in the ali file.
-
-      Set_Generate_Code (Main_Unit);
-
-      --  If we have a corresponding spec, and it comes from source or it is
-      --  not a generated spec for a child subprogram body, then we need object
-      --  code for the spec unit as well.
-
-      if Nkind (Unit (Main_Unit_Node)) in N_Unit_Body
-        and then not Acts_As_Spec (Main_Unit_Node)
-      then
-         if Nkind (Unit (Main_Unit_Node)) = N_Subprogram_Body
-           and then not Comes_From_Source (Library_Unit (Main_Unit_Node))
-         then
-            null;
-         else
-            Set_Generate_Code
-              (Get_Cunit_Unit_Number (Library_Unit (Main_Unit_Node)));
-         end if;
+         Exit_Program (Ecode);
       end if;
 
       --  Case of no code required to be generated, exit indicating no error
@@ -1312,7 +1219,7 @@ begin
       if Original_Operating_Mode = Check_Syntax then
          Treepr.Tree_Dump;
          Errout.Finalize (Last_Call => True);
-         Errout.Output_Messages;
+         Errout.Output_Messages (Ecode);
          Namet.Finalize;
          Check_Rep_Info;
 
@@ -1389,20 +1296,10 @@ begin
       elsif CodePeer_Mode then
          Back_End_Mode := Generate_Object;
 
-      --  Differentiate use of -gnatceg to generate a C header from an Ada spec
-      --  to the CCG case (standard.h found) where C code generation should
-      --  only be performed on full units.
+      --  Force pseudo code generation with -gnatceg
 
-      elsif Generate_C_Code then
-         Name_Len := 10;
-         Name_Buffer (1 .. Name_Len) := "standard.h";
-
-         if Find_File (Name_Find, Osint.Source, Full_Name => True) = No_File
-         then
-            Back_End_Mode := Generate_Object;
-         else
-            Back_End_Mode := Skip;
-         end if;
+      elsif Generate_C_Header then
+         Back_End_Mode := Generate_Object;
 
       --  It is not an error to analyze in GNATprove mode a spec which requires
       --  a body, when the body is not available. During frame condition
@@ -1421,6 +1318,17 @@ begin
          Back_End_Mode := Skip;
       end if;
 
+      --  Ensure that we properly register a dependency on system.ads, since
+      --  even if we do not semantically depend on this, Targparm has read
+      --  system parameters from the system.ads file.
+
+      Lib.Writ.Ensure_System_Dependency;
+
+      --  Add dependencies, if any, on preprocessing data file and on
+      --  preprocessing definition file(s).
+
+      Prepcomp.Add_Dependencies;
+
       --  At this stage Back_End_Mode is set to indicate if the backend should
       --  be called to generate code. If it is Skip, then code generation has
       --  been turned off, even though code was requested by the original
@@ -1435,18 +1343,27 @@ begin
 
       if Back_End_Mode = Skip then
 
-         --  An ignored Ghost unit is rewritten into a null statement because
-         --  it must not produce an ALI or object file. Do not emit any errors
-         --  related to code generation because the unit does not exist.
+         --  An ignored Ghost unit is rewritten into a null statement. Do
+         --  not emit any errors related to code generation because the
+         --  unit does not exist.
 
          if Is_Ignored_Ghost_Unit (Main_Unit_Node) then
 
             --  Exit the gnat driver with success, otherwise external builders
             --  such as gnatmake and gprbuild will treat the compilation of an
-            --  ignored Ghost unit as a failure. Note that this will produce
-            --  an empty object file for the unit.
+            --  ignored Ghost unit as a failure. Be sure we produce an empty
+            --  object file for the unit, while indicating for the ALI file
+            --  generation that neither spec or body has elaboration code
+            --  (which in ordinary compilation is indicated in Gigi).
+
+            Set_Has_No_Elaboration_Code (Main_Unit_Node);
+
+            if Present (Library_Unit (Main_Unit_Node)) then
+               Set_Has_No_Elaboration_Code (Library_Unit (Main_Unit_Node));
+            end if;
 
             Ecode := E_Success;
+            Back_End.Gen_Or_Update_Object_File;
 
          --  Otherwise the unit is missing a crucial piece that prevents code
          --  generation.
@@ -1472,7 +1389,7 @@ begin
 
                --  Do not generate an ALI file in this case, because it would
                --  become obsolete when the parent is compiled, and thus
-               --  confuse tools such as gnatfind.
+               --  confuse some tools.
 
             elsif Main_Unit_Kind = N_Subprogram_Declaration then
                Write_Str (" (subprogram spec)");
@@ -1500,7 +1417,7 @@ begin
 
          Post_Compilation_Validation_Checks;
          Errout.Finalize (Last_Call => True);
-         Errout.Output_Messages;
+         Errout.Output_Messages (Ecode);
          Treepr.Tree_Dump;
 
          --  Generate ALI file if specially requested, or for missing subunits,
@@ -1518,12 +1435,24 @@ begin
          Namet.Finalize;
          Check_Rep_Info;
 
-         --  Exit the driver with an appropriate status indicator. This will
-         --  generate an empty object file for ignored Ghost units, otherwise
-         --  no object file will be generated.
+         if Ecode /= E_Success then
+            --  If we cannot generate code, exit the driver with an appropriate
+            --  status indicator.
 
-         Exit_Program (Ecode);
+            Exit_Program (Ecode);
+
+         else
+            --  Otherwise use a goto so that finalization occurs normally and
+            --  for instance any late processing in the GCC code can be
+            --  performed.
+
+            goto End_Of_Program;
+         end if;
       end if;
+
+      --  Verify the validity of the tree (if enabled)
+
+      VAST.VAST_If_Enabled;
 
       --  In -gnatc mode we only do annotation if -gnatR is also set, or if
       --  -gnatwz is enabled (default setting) and there is an unchecked
@@ -1546,7 +1475,7 @@ begin
       then
          Post_Compilation_Validation_Checks;
          Errout.Finalize (Last_Call => True);
-         Errout.Output_Messages;
+         Errout.Output_Messages (Ecode);
          Write_ALI (Object => False);
          Tree_Dump;
          Namet.Finalize;
@@ -1555,19 +1484,10 @@ begin
             Check_Rep_Info;
          end if;
 
+         pragma Annotate (Xcov, Dump_Buffers);
+
          return;
       end if;
-
-      --  Ensure that we properly register a dependency on system.ads, since
-      --  even if we do not semantically depend on this, Targparm has read
-      --  system parameters from the system.ads file.
-
-      Lib.Writ.Ensure_System_Dependency;
-
-      --  Add dependencies, if any, on preprocessing data file and on
-      --  preprocessing definition file(s).
-
-      Prepcomp.Add_Dependencies;
 
       if GNATprove_Mode then
 
@@ -1635,8 +1555,16 @@ begin
       --  representation information for List_Rep_Info).
 
       Errout.Finalize (Last_Call => True);
-      Errout.Output_Messages;
-      Repinfo.List_Rep_Info (Ttypes.Bytes_Big_Endian);
+      Errout.Output_Messages
+        ((if Compilation_Errors then E_Errors else E_Success));
+
+      --  Back annotation of representation info is not done in CodePeer and
+      --  SPARK modes.
+
+      if not (Generate_SCIL or GNATprove_Mode) then
+         Repinfo.List_Rep_Info (Ttypes.Bytes_Big_Endian);
+      end if;
+
       Inline.List_Inlining_Info;
 
       --  Only write the library if the backend did not generate any error
@@ -1644,8 +1572,9 @@ begin
       --  there will be no attempt to generate an object file.
 
       if Compilation_Errors then
+         Ecode := E_Errors;
          Treepr.Tree_Dump;
-         Exit_Program (E_Errors);
+         Exit_Program (Ecode);
       end if;
 
       if not GNATprove_Mode then
@@ -1712,12 +1641,14 @@ begin
       Atree.Print_Statistics;
    end if;
 
+   pragma Annotate (Xcov, Dump_Buffers);
+
 --  The outer exception handler handles an unrecoverable error
 
 exception
    when Unrecoverable_Error =>
       Errout.Finalize (Last_Call => True);
-      Errout.Output_Messages;
+      Errout.Output_Messages (E_Errors);
 
       Set_Standard_Error;
       Write_Str ("compilation abandoned");
@@ -1726,6 +1657,9 @@ exception
       Set_Standard_Output;
       Source_Dump;
       Tree_Dump;
+
+      pragma Annotate (Xcov, Dump_Buffers);
+
       Exit_Program (E_Errors);
 
 end Gnat1drv;

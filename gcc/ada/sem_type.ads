@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -56,22 +56,23 @@ package Sem_Type is
    --  identifier, there is a set of possible types corresponding to the types
    --  that the overloaded call may return. We keep a 1-to-1 correspondence
    --  between interpretations and types: for user-defined subprograms the type
-   --  is the declared return type. For operators, the type is determined by
-   --  the type of the arguments. If the arguments themselves are overloaded,
-   --  we enter the operator name in the names table for each possible result
-   --  type. In most cases, arguments are not overloaded and only one
-   --  interpretation is present anyway.
+   --  is the declared result type Typ. For operators, the type is determined
+   --  either only by the result type Typ for arithmetic operators or by the
+   --  result type and the type of the operands Opnd_Typ for comparisoon and
+   --  equality operators. If the operands are themselves overloaded, we enter
+   --  the operator name in the names table for each possible result type.
 
    type Interp is record
       Nam         : Entity_Id;
       Typ         : Entity_Id;
-      Abstract_Op : Entity_Id := Empty;
+      Opnd_Typ    : Entity_Id;
+      Abstract_Op : Entity_Id;
    end record;
 
    --  Entity Abstract_Op is set to the abstract operation which potentially
    --  disables the interpretation in Ada 2005 mode.
 
-   No_Interp : constant Interp := (Empty, Empty, Empty);
+   No_Interp : constant Interp := (Empty, Empty, Empty, Empty);
 
    type Interp_Index is new Int;
 
@@ -85,7 +86,7 @@ package Sem_Type is
    --  with the appropriate use clause. The global variable Candidate_Type is
    --  set in Add_One_Interp whenever an interpretation might be legal for an
    --  operator if the type were directly visible. This variable is used in
-   --  sem_ch4 when no legal interpretation is found.
+   --  Sem_Ch4 when no legal interpretation is found.
 
    Candidate_Type : Entity_Id;
 
@@ -94,7 +95,7 @@ package Sem_Type is
    -----------------
 
    procedure Init_Interp_Tables;
-   --  Invoked by gnatf when processing multiple files
+   --  Initialize data structures for overload resolution
 
    procedure Collect_Interps (N : Node_Id);
    --  Invoked when the name N has more than one visible interpretation. This
@@ -103,19 +104,22 @@ package Sem_Type is
    --  in N. If the name is an expanded name, the homonyms are only those that
    --  belong to the same scope.
 
-   function Is_Invisible_Operator (N : Node_Id; T : Entity_Id) return Boolean;
-   --  Check whether a predefined operation with universal operands appears in
-   --  a context in which the operators of the expected type are not visible.
+   function Is_Visible_Operator (N : Node_Id; Typ : Entity_Id) return Boolean;
+   --  Determine whether a predefined operation is performed in a context where
+   --  the predefined operators of base type Typ are visible. The existence of
+   --  this routine is an implementation artifact. A more straightforward but
+   --  more space-consuming choice would be to make all inherited operators
+   --  explicit in the symbol table. See also Sem_ch8.Has_Implicit_Operator.
 
    procedure List_Interps (Nam : Node_Id; Err : Node_Id);
    --  List candidate interpretations of an overloaded name. Used for various
    --  error reports.
 
    procedure Add_One_Interp
-     (N         : Node_Id;
-      E         : Entity_Id;
-      T         : Entity_Id;
-      Opnd_Type : Entity_Id := Empty);
+     (N        : Node_Id;
+      E        : Entity_Id;
+      T        : Entity_Id;
+      Opnd_Typ : Entity_Id := Empty);
    --  Add (E, T) to the list of interpretations of the node being resolved.
    --  For calls and operators, i.e. for nodes that have a name field, E is an
    --  overloadable entity, and T is its type. For constructs such as indexed
@@ -127,11 +131,8 @@ package Sem_Type is
    --
    --  For operators, the legality of the operation depends on the visibility
    --  of T and its scope. If the operator is an equality or comparison, T is
-   --  always Boolean, and we use Opnd_Type, which is a candidate type for one
+   --  always Boolean, and we use Opnd_Typ, which is a candidate type for one
    --  of the operands of N, to check visibility.
-
-   procedure End_Interp_List;
-   --  End the list of interpretations of current node
 
    procedure Get_First_Interp
      (N  : Node_Id;
@@ -184,10 +185,9 @@ package Sem_Type is
    --  opposed to an operator, type and mode conformance are required.
 
    function Find_Unique_Type (L : Node_Id; R : Node_Id) return Entity_Id;
-   --  Used in second pass of resolution, for equality and comparison nodes. L
-   --  is the left operand, whose type is known to be correct, and R is the
-   --  right operand, which has one interpretation compatible with that of L.
-   --  Return the type intersection of the two.
+   --  Used in type resolution for equality and comparison nodes. L and R are
+   --  the operands, whose type is known to be correct or Any_Type in case of
+   --  ambiguity. Return the type intersection of the two.
 
    function Has_Compatible_Type (N : Node_Id; Typ : Entity_Id) return Boolean;
    --  Verify that some interpretation of the node N has a type compatible with
@@ -223,10 +223,9 @@ package Sem_Type is
      (T1            : Entity_Id;
       T2            : Entity_Id;
       Use_Full_View : Boolean := False) return Boolean;
-   --  T1 is a tagged type (not class-wide). Verify that it is one of the
-   --  ancestors of type T2 (which may or not be class-wide). If Use_Full_View
-   --  is True then the full-view of private parents is used when climbing
-   --  through the parents of T2.
+   --  T1 is a type (not class-wide). Verify that it is one of the ancestors of
+   --  type T2 (which may or not be class-wide). If Use_Full_View is True, then
+   --  the full view of private parents is used when climbing T2's parents.
    --
    --  Note: For analysis purposes the flag Use_Full_View must be set to False
    --  (otherwise we break the privacy contract since this routine returns true
@@ -246,8 +245,7 @@ package Sem_Type is
    --  in the signature of an inherited operation must carry the derived type.
 
    function Is_Subtype_Of (T1 : Entity_Id; T2 : Entity_Id) return Boolean;
-   --  Checks whether T1 is any subtype of T2 directly or indirectly. Applies
-   --  only to scalar subtypes???
+   --  Checks whether T1 is any subtype of T2 directly or indirectly
 
    function Operator_Matches_Spec (Op, New_S : Entity_Id) return Boolean;
    --  Used to resolve subprograms renaming operators, and calls to user
@@ -257,20 +255,25 @@ package Sem_Type is
    procedure Set_Abstract_Op (I : Interp_Index; V : Entity_Id);
    --  Set the abstract operation field of an interpretation
 
-   function Valid_Comparison_Arg (T : Entity_Id) return Boolean;
-   --  A valid argument to an ordering operator must be a discrete type, a
-   --  real type, or a one dimensional array with a discrete component type.
+   function Specific_Type (Typ_1, Typ_2 : Entity_Id) return Entity_Id;
+   --  If Typ_1 and Typ_2 are compatible, return the one that is not universal
+   --  or is not a "class" type (any_character, etc).
 
    function Valid_Boolean_Arg (T : Entity_Id) return Boolean;
-   --  A valid argument of a boolean operator is either some boolean type, or a
-   --  one-dimensional array of boolean type.
+   --  A valid argument of a predefined boolean operator must be a boolean type
+   --  or a 1-dimensional array of boolean type.
+
+   function Valid_Comparison_Arg (T : Entity_Id) return Boolean;
+   --  A valid argument of a predefined comparison operator must be a discrete
+   --  type, real type or a 1-dimensional array with a discrete component type.
+
+   function Valid_Equality_Arg (T : Entity_Id) return Boolean;
+   --  A valid argument of a predefined equality operator must be a nonlimited
+   --  type or an array with a limited private component whose full view is not
+   --  limited.
 
    procedure Write_Interp (It : Interp);
    --  Debugging procedure to display an Interp
-
-   procedure Write_Interp_Ref (Map_Ptr : Int);
-   --  Debugging procedure to display entry in Interp_Map. Would not be needed
-   --  if it were possible to debug instantiations of Table.
 
    procedure Write_Overloads (N : Node_Id);
    --  Debugging procedure to output info on possibly overloaded entities for

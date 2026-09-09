@@ -1,5 +1,5 @@
 /* A self-testing framework, for use by -fself-test.
-   Copyright (C) 2015-2021 Free Software Foundation, Inc.
+   Copyright (C) 2015-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -24,6 +24,8 @@ along with GCC; see the file COPYING3.  If not see
    configuration, hence we guard all of it with #if CHECKING_P.  */
 
 #if CHECKING_P
+
+namespace diagnostics { class file_cache; }
 
 namespace selftest {
 
@@ -91,17 +93,20 @@ extern void assert_str_startswith (const location &loc,
 /* A named temporary file for use in selftests.
    Usable for writing out files, and as the base class for
    temp_source_file.
-   The file is unlinked in the destructor.  */
+   The file is unlinked in the destructor.
+   If the file_cache is non-null, the filename is evicted from
+   the file_cache when the named_temp_file is destroyed.  */
 
 class named_temp_file
 {
  public:
-  named_temp_file (const char *suffix);
+  named_temp_file (const char *suffix, diagnostics::file_cache *fc = nullptr);
   ~named_temp_file ();
   const char *get_filename () const { return m_filename; }
 
  private:
   char *m_filename;
+  diagnostics::file_cache *m_file_cache;
 };
 
 /* A class for writing out a temporary sourcefile for use in selftests
@@ -111,7 +116,9 @@ class temp_source_file : public named_temp_file
 {
  public:
   temp_source_file (const location &loc, const char *suffix,
-		    const char *content);
+		    const char *content, diagnostics::file_cache *fc = nullptr);
+  temp_source_file (const location &loc, const char *suffix,
+		    const char *content, size_t sz);
 };
 
 /* RAII-style class for avoiding introducing locale-specific differences
@@ -141,8 +148,8 @@ class auto_fix_quotes
    of situations:
    - line_table->default_range_bits: some frontends use a non-zero value
    and others use zero
-   - the fallback modes within line-map.c: there are various threshold
-   values for location_t beyond line-map.c changes
+   - the fallback modes within line-map.cc: there are various threshold
+   values for location_t beyond line-map.cc changes
    behavior (disabling of the range-packing optimization, disabling
    of column-tracking).  We can exercise these by starting the line_table
    at interesting values at or near these thresholds.
@@ -171,13 +178,6 @@ class line_table_test
   ~line_table_test ();
 };
 
-/* Helper function for selftests that need a function decl.  */
-
-extern tree make_fndecl (tree return_type,
-			 const char *name,
-			 vec <tree> &param_types,
-			 bool is_variadic = false);
-
 /* Run TESTCASE multiple times, once for each case in our test matrix.  */
 
 extern void
@@ -189,11 +189,6 @@ for_each_line_table_case (void (*testcase) (const line_table_case &));
    location of the failure.  */
 
 extern char *read_file (const location &loc, const char *path);
-
-/* A helper function for writing tests that interact with the
-   garbage collector.  */
-
-extern void forcibly_ggc_collect ();
 
 /* Convert a path relative to SRCDIR/gcc/testsuite/selftests
    to a real path (either absolute, or relative to pwd).
@@ -221,56 +216,59 @@ class test_runner
 
 /* Declarations for specific families of tests (by source file), in
    alphabetical order.  */
-extern void attribute_c_tests ();
-extern void bitmap_c_tests ();
-extern void cgraph_c_tests ();
-extern void convert_c_tests ();
-extern void diagnostic_c_tests ();
-extern void diagnostic_format_json_cc_tests ();
-extern void diagnostic_show_locus_c_tests ();
+extern void attribs_cc_tests ();
+extern void bitmap_cc_tests ();
+extern void cgraph_cc_tests ();
+extern void convert_cc_tests ();
+extern void dbgcnt_cc_tests ();
 extern void digraph_cc_tests ();
-extern void dumpfile_c_tests ();
-extern void edit_context_c_tests ();
-extern void et_forest_c_tests ();
-extern void fibonacci_heap_c_tests ();
-extern void fold_const_c_tests ();
-extern void function_tests_c_tests ();
-extern void ggc_tests_c_tests ();
-extern void gimple_c_tests ();
-extern void hash_map_tests_c_tests ();
-extern void hash_set_tests_c_tests ();
-extern void input_c_tests ();
+extern void dumpfile_cc_tests ();
+extern void et_forest_cc_tests ();
+extern void fibonacci_heap_cc_tests ();
+extern void fold_const_cc_tests ();
+extern void function_tests_cc_tests ();
+extern void gcc_attribute_urlifier_cc_tests ();
+extern void gcc_urlifier_cc_tests ();
+extern void ggc_tests_cc_tests ();
+extern void gimple_cc_tests ();
+extern void gimple_range_tests ();
+extern void graphviz_cc_tests ();
+extern void hash_map_tests_cc_tests ();
+extern void hash_set_tests_cc_tests ();
+extern void input_cc_tests ();
+extern void ipa_modref_tree_cc_tests ();
 extern void json_cc_tests ();
-extern void opt_problem_cc_tests ();
+extern void json_parser_cc_tests ();
+extern void opt_suggestions_cc_tests ();
 extern void optinfo_emit_json_cc_tests ();
-extern void opts_c_tests ();
+extern void opts_cc_tests ();
 extern void ordered_hash_map_tests_cc_tests ();
-extern void predict_c_tests ();
-extern void pretty_print_c_tests ();
-extern void range_tests ();
+extern void path_coverage_cc_tests ();
+extern void predict_cc_tests ();
+extern void pretty_print_cc_tests ();
+extern void pub_sub_cc_tests ();
 extern void range_op_tests ();
-extern void read_rtl_function_c_tests ();
-extern void rtl_tests_c_tests ();
-extern void sbitmap_c_tests ();
-extern void selftest_c_tests ();
-extern void simplify_rtx_c_tests ();
-extern void spellcheck_c_tests ();
-extern void spellcheck_tree_c_tests ();
+extern void range_tests ();
+extern void read_rtl_function_cc_tests ();
+extern void relation_tests ();
+extern void rtl_tests_cc_tests ();
+extern void sbitmap_cc_tests ();
+extern void selftest_cc_tests ();
+extern void simple_diagnostic_path_cc_tests ();
+extern void simplify_rtx_cc_tests ();
+extern void spellcheck_cc_tests ();
+extern void spellcheck_tree_cc_tests ();
 extern void splay_tree_cc_tests ();
-extern void sreal_c_tests ();
-extern void store_merging_c_tests ();
-extern void tree_c_tests ();
-extern void tree_cfg_c_tests ();
-extern void tree_diagnostic_path_cc_tests ();
+extern void sreal_cc_tests ();
+extern void store_merging_cc_tests ();
+extern void tree_cc_tests ();
+extern void tree_cfg_cc_tests ();
 extern void tristate_cc_tests ();
-extern void typed_splay_tree_c_tests ();
-extern void unique_ptr_tests_cc_tests ();
-extern void vec_c_tests ();
-extern void vec_perm_indices_c_tests ();
+extern void typed_splay_tree_cc_tests ();
+extern void vec_cc_tests ();
+extern void vec_perm_indices_cc_tests ();
 extern void wide_int_cc_tests ();
-extern void opt_proposer_c_tests ();
-extern void dbgcnt_c_tests ();
-extern void ipa_modref_tree_c_tests ();
+extern void xml_cc_tests ();
 
 extern int num_passes;
 
@@ -337,6 +335,26 @@ extern int num_passes;
     ::selftest::fail ((LOC), desc_);			       \
   SELFTEST_END_STMT
 
+/* Evaluate VAL1 and VAL2 and compare them, calling
+   ::selftest::pass if they are within ABS_ERROR of each other,
+   ::selftest::fail if they are not.  */
+
+#define ASSERT_NEAR(VAL1, VAL2, ABS_ERROR)	\
+  ASSERT_NEAR_AT ((SELFTEST_LOCATION), (VAL1), (VAL2), (ABS_ERROR))
+
+/* Like ASSERT_NEAR, but treat LOC as the effective location of the
+   selftest.  */
+
+#define ASSERT_NEAR_AT(LOC, VAL1, VAL2, ABS_ERROR)	       \
+  SELFTEST_BEGIN_STMT					       \
+  const char *desc_ = "ASSERT_NEAR (" #VAL1 ", " #VAL2 ", " #ABS_ERROR ")"; \
+  double error = fabs ((VAL1) - (VAL2));				\
+  if (error < (ABS_ERROR))						\
+    ::selftest::pass ((LOC), desc_);					\
+  else									\
+    ::selftest::fail ((LOC), desc_);					\
+  SELFTEST_END_STMT
+
 /* Evaluate VAL1 and VAL2 and compare them with known_eq, calling
    ::selftest::pass if they are always equal,
    ::selftest::fail if they might be non-equal.  */
@@ -367,6 +385,18 @@ extern int num_passes;
     ::selftest::pass (SELFTEST_LOCATION, desc_);	       \
   else							       \
     ::selftest::fail (SELFTEST_LOCATION, desc_);	       \
+  SELFTEST_END_STMT
+
+/* Like ASSERT_NE, but treat LOC as the effective location of the
+   selftest.  */
+
+#define ASSERT_NE_AT(LOC, VAL1, VAL2)		       \
+  SELFTEST_BEGIN_STMT					       \
+  const char *desc_ = "ASSERT_NE (" #VAL1 ", " #VAL2 ")"; \
+  if ((VAL1) != (VAL2))				       \
+    ::selftest::pass ((LOC), desc_);			       \
+  else							       \
+    ::selftest::fail ((LOC), desc_);			       \
   SELFTEST_END_STMT
 
 /* Evaluate VAL1 and VAL2 and compare them with maybe_ne, calling

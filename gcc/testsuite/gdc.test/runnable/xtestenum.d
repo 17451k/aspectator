@@ -1,4 +1,11 @@
-// PERMUTE_ARGS:
+/*
+PERMUTE_ARGS:
+RUN_OUTPUT:
+---
+foo
+Success
+---
+*/
 
 extern(C) int printf(const char*, ...);
 
@@ -45,7 +52,7 @@ enum E3 : string
 
 void test3()
 {
-    printf("%.*s\n", E3.E3a.length, E3.E3a.ptr);
+    printf("%.*s\n", cast(int)E3.E3a.length, E3.E3a.ptr);
 
     assert(E3.E3a == "foo");
     assert(E3.E3b == "bar");
@@ -149,6 +156,19 @@ class C7379
 }
 
 /***********************************/
+// https://issues.dlang.org/show_bug.cgi?id=23515
+
+enum Easing : void function()
+{
+    identity1 = (){},
+}
+
+void test23515()
+{
+    Easing.identity1();
+}
+
+/***********************************/
 
 int main()
 {
@@ -159,6 +179,7 @@ int main()
     test5();
     test6();
     test7();
+    test23515();
 
     printf("Success\n");
     return 0;

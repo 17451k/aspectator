@@ -1,8 +1,7 @@
 /* PR tree-optimization/91567 - Spurious -Wformat-overflow warnings building
    glibc (32-bit only)
    { dg-do compile }
-   { dg-options "-O2 -Wall -ftrack-macro-expansion=0" }
-   { dg-require-effective-target alloca } */
+   { dg-options "-O2 -Wall -ftrack-macro-expansion=0" } */
 
 typedef __SIZE_TYPE__ size_t;
 
@@ -18,7 +17,18 @@ void g (char *s1, char *s2)
   if (n + d + 1 >= 1025)
     return;
 
-  sprintf (b, "%s.%s", s1, s2);     // { dg-bogus "\\\[-Wformat-overflow" }
+  /* Ranger can find ranges here:
+     [1] n_6: size_t [0, 1023]
+     [2] d_8: size_t [0, 1023]
+
+     Whereas evrp can't really:
+     [1] n_6: size_t [0, 9223372036854775805]
+     [2] d_8: size_t [0, 9223372036854775805]
+
+     This is causing the sprintf warning pass to issue a false
+     positive here.  */
+
+  sprintf (b, "%s.%s", s1, s2);     // { dg-bogus "\\\[-Wformat-overflow" "" { xfail *-*-* } }
 
   f (b);
 }

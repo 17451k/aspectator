@@ -1,3 +1,4 @@
+// { dg-additional-options "-Wno-deprecated-openmp" }
 #include <omp.h>
 #include <stdlib.h>
 
@@ -76,7 +77,7 @@ main ()
       m[1] += 3 * b;
     }
     use (&a, &b, &c, &d, e, f, g, h);
-    #pragma omp parallel firstprivate (u1, u2)
+    #pragma omp parallel firstprivate (u1, u2) private (i)
     {
       int w = omp_get_thread_num ();
       int x = 19;

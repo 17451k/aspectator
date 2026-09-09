@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -244,7 +244,7 @@ package body System.File_IO is
 
          if File.Shared_Status = Yes then
             declare
-               P   : AFCB_Ptr;
+               P : AFCB_Ptr;
 
             begin
                P := Open_Files;
@@ -350,6 +350,7 @@ package body System.File_IO is
       declare
          Filename : aliased constant String := File.Name.all;
          Is_Temporary_File : constant Boolean := File.Is_Temporary_File;
+         Encoding : constant CRTL.Filename_Encoding := File.Encoding;
 
       begin
          Close (File_Ptr);
@@ -360,7 +361,7 @@ package body System.File_IO is
          --  it's a temporary file, then closing it already unlinked it.
 
          if not Is_Temporary_File then
-            if unlink (Filename'Address) = -1 then
+            if System.CRTL.unlink (Filename'Address, Encoding) = -1 then
                raise Use_Error with OS_Lib.Errno_Message;
             end if;
          end if;
@@ -576,7 +577,6 @@ package body System.File_IO is
       Default : Boolean) return Boolean
    is
       V1, V2 : Natural;
-      pragma Unreferenced (V2);
 
    begin
       Form_Parameter (Form, Keyword, V1, V2);
@@ -1042,6 +1042,11 @@ package body System.File_IO is
                      elsif Shared = Yes
                        and then P.Shared_Status = Yes
                      then
+                        if Mode /= P.Mode then
+                           raise Use_Error
+                             with "sharing file in different modes";
+                        end if;
+
                         Stream := P.Stream;
 
                         Record_AFCB;

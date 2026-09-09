@@ -1,8 +1,12 @@
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/fail18970.d(22): Error: no property `y` for type `S`
-fail_compilation/fail18970.d(29): Error: no property `yyy` for type `S2`
+fail_compilation/fail18970.d(26): Error: no property `y` for `S()` of type `fail18970.S`
+fail_compilation/fail18970.d(19): Error: undefined identifier `x`
+fail_compilation/fail18970.d(26): Error: template instance `fail18970.S.opDispatch!"y"` error instantiating
+fail_compilation/fail18970.d(33): Error: no property `yyy` for `this` of type `fail18970.S2`
+fail_compilation/fail18970.d(38): Error: undefined identifier `x`
+fail_compilation/fail18970.d(33): Error: template instance `fail18970.S2.opDispatch!"yyy"` error instantiating
 ---
 */
 

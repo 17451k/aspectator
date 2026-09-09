@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -35,7 +35,9 @@
 --  is bit-by-bit or character-by-character and therefore rather slow.
 --  Generally for character sets we favor the full 32-byte representation.
 
-package body Ada.Strings.Maps is
+package body Ada.Strings.Maps
+  with SPARK_Mode
+is
 
    ---------
    -- "-" --
@@ -102,9 +104,7 @@ package body Ada.Strings.Maps is
      (Element : Character;
       Set     : Character_Set) return Boolean
    is
-   begin
-      return Set (Element);
-   end Is_In;
+      (Set (Element));
 
    ---------------
    -- Is_Subset --
@@ -122,11 +122,9 @@ package body Ada.Strings.Maps is
    -- To_Domain --
    ---------------
 
-   function To_Domain (Map : Character_Mapping) return Character_Sequence
-   is
+   function To_Domain (Map : Character_Mapping) return Character_Sequence is
       Result : String (1 .. Map'Length);
       J      : Natural;
-
    begin
       J := 0;
       for C in Map'Range loop
@@ -176,8 +174,7 @@ package body Ada.Strings.Maps is
    -- To_Range --
    --------------
 
-   function To_Range (Map : Character_Mapping) return Character_Sequence
-   is
+   function To_Range (Map : Character_Mapping) return Character_Sequence is
       Result : String (1 .. Map'Length);
       J      : Natural;
    begin
@@ -226,10 +223,10 @@ package body Ada.Strings.Maps is
          end loop;
 
          if Set (C) then
-            Max_Ranges (Range_Num). High := C;
+            Max_Ranges (Range_Num).High := C;
             exit;
          else
-            Max_Ranges (Range_Num). High := Character'Pred (C);
+            Max_Ranges (Range_Num).High := Character'Pred (C);
          end if;
       end loop;
 
@@ -259,12 +256,8 @@ package body Ada.Strings.Maps is
    ------------
 
    function To_Set (Ranges : Character_Ranges) return Character_Set is
-      Result : Character_Set;
+      Result : Character_Set := Null_Set;
    begin
-      for C in Result'Range loop
-         Result (C) := False;
-      end loop;
-
       for R in Ranges'Range loop
          for C in Ranges (R).Low .. Ranges (R).High loop
             Result (C) := True;
@@ -275,12 +268,8 @@ package body Ada.Strings.Maps is
    end To_Set;
 
    function To_Set (Span : Character_Range) return Character_Set is
-      Result : Character_Set;
+      Result : Character_Set := Null_Set;
    begin
-      for C in Result'Range loop
-         Result (C) := False;
-      end loop;
-
       for C in Span.Low .. Span.High loop
          Result (C) := True;
       end loop;
@@ -311,10 +300,6 @@ package body Ada.Strings.Maps is
 
    function Value
      (Map     : Character_Mapping;
-      Element : Character) return Character
-   is
-   begin
-      return Map (Element);
-   end Value;
+      Element : Character) return Character is (Map (Element));
 
 end Ada.Strings.Maps;

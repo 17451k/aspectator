@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Free Software Foundation, Inc.
+// Copyright (C) 2021-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,7 +15,6 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++20" }
 // { dg-do compile { target c++20 } }
 
 // PR libstdc++/100768 - Range iterator operations should be function objects
@@ -114,15 +113,15 @@ test01()
   // deleted overloads in namespace ns3 (because it is an associated namespace
   // and those functions are exact matches for the arguments).
   using namespace std::ranges;
-  advance(iter, 1);
-  advance(iter, 3, sentinel);
-  distance(iter, sentinel);
-  distance(range);
-  next(iter);
-  next(iter, -1);
-  next(iter, sentinel);
-  next(iter, 5, sentinel);
-  prev(iter);
-  prev(iter, 0);
-  prev(iter, 0, sentinel);
+  (void) advance(iter, 1);
+  (void) advance(iter, 3, sentinel);
+  (void) distance(iter, sentinel);
+  (void) distance(range);
+  (void) next(iter);
+  (void) next(iter, -1);
+  (void) next(iter, sentinel);
+  (void) next(iter, 5, sentinel);
+  (void) prev(iter);
+  (void) prev(iter, 0);
+  (void) prev(iter, 0, sentinel);
 }

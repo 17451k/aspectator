@@ -32,7 +32,7 @@ case $1 in
     # TODO: These targets need porting.
     dce|mipssde|rtems|tpf|vxworks)
 	    DCFG_THREAD_MODEL="Single" ;;
-    *)	    as_fn_error "Thread implementation '$1' not recognised" "$LINENO" 5 ;;
+    *)	    AC_MSG_ERROR([Thread implementation '$1' not recognised]) ;;
 esac
 AC_SUBST(DCFG_THREAD_MODEL)
 ])
@@ -54,9 +54,10 @@ AC_DEFUN([DRUNTIME_OS_DETECT],
 
 # DRUNTIME_OS_SOURCES
 # -------------------
-# Detect target OS and add DRUNTIME_OS_AIX DRUNTIME_OS_DARWIN
-# DRUNTIME_OS_FREEBSD DRUNTIME_OS_LINUX DRUNTIME_OS_MINGW
-# DRUNTIME_OS_SOLARIS DRUNTIME_OS_OPENBSD conditionals.
+# Detect target OS and add DRUNTIME_OS_AIX DRUNTIME_OS_ANDROID
+# DRUNTIME_OS_DARWIN DRUNTIME_OS_DRAGONFLYBSD DRUNTIME_OS_FREEBSD
+# DRUNTIME_OS_LINUX DRUNTIME_OS_MINGW DRUNTIME_OS_NETBSD
+# DRUNTIME_OS_OPENBSD DRUNTIME_OS_SOLARIS conditionals.
 # If the system is posix, add DRUNTIME_OS_POSIX conditional.
 AC_DEFUN([DRUNTIME_OS_SOURCES],
 [
@@ -117,6 +118,33 @@ AC_DEFUN([DRUNTIME_OS_SOURCES],
       ;;
   esac
   AM_CONDITIONAL([DRUNTIME_OS_POSIX], [test "$druntime_target_posix" = "yes"])
+])
+
+
+# DRUNTIME_OS_FEATURES
+# -----------------------
+# Perform various feature checks on the target platform.
+AC_DEFUN([DRUNTIME_OS_FEATURES],
+[
+  AC_REQUIRE([DRUNTIME_OS_DETECT])
+  OS_DFLAGS=
+
+  case "$druntime_cv_target_os" in
+    linux*)  druntime_target_os_parsed="linux"
+      AC_MSG_CHECKING([for getrandom])
+      AC_LANG_PUSH([C])
+      AC_TRY_COMPILE([#include <sys/syscall.h>
+#include <unistd.h>],[
+        syscall (__NR_getrandom);
+      ],
+        [AC_MSG_RESULT([yes])],
+        [AC_MSG_RESULT([no])
+         OS_DFLAGS=-fversion=linux_legacy_emulate_getrandom])
+      AC_LANG_POP([C])
+      ;;
+  esac
+
+  AC_SUBST(OS_DFLAGS)
 ])
 
 

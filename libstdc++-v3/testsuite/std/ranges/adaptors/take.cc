@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,8 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do run { target c++2a } }
+// { dg-do run { target c++20 } }
 
 #include <algorithm>
 #include <forward_list>
@@ -62,7 +61,7 @@ test03()
   int x[] = {0,1,2,3,4,5};
   auto is_odd = [] (int i) { return i%2 == 1; };
   auto v = x | views::filter(is_odd) | views::take(3);
-  ranges::begin(v);
+  (void) ranges::begin(v);
   using R = decltype(v);
   static_assert(ranges::view<R>);
   static_assert(!ranges::sized_range<R>);
@@ -94,8 +93,10 @@ test05()
 
   // Verify that _Sentinel<false> is implicitly convertible to _Sentinel<true>.
   static_assert(!ranges::common_range<decltype(v)>);
+#if ! __cpp_lib_ranges_as_const
   static_assert(!std::same_as<decltype(ranges::end(v)),
 			      decltype(ranges::cend(v))>);
+#endif
   auto b = ranges::cend(v);
   b = ranges::end(v);
 }
@@ -117,6 +118,20 @@ test06()
   static_assert(!requires { views::all | take; });
 }
 
+void
+test07()
+{
+  // PR libstdc++/111550
+  struct Five {
+    operator int() & { return 5; }
+    operator int() && = delete;
+  };
+  auto take_five = views::take(Five{});
+  auto r = take_five(views::iota(0));
+  auto take_five_piped = views::take(Five{}) | views::transform(std::identity{});
+  auto s = take_five_piped(views::iota(0));
+}
+
 int
 main()
 {
@@ -126,4 +141,5 @@ main()
   test04();
   test05();
   test06();
+  test07();
 }

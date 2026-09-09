@@ -38,25 +38,25 @@
     higher-numbered conformance levels are more usable (i.e., require
     less recompilation) but are more complicated to implement than
     the lower-numbered conformance levels.
-      </p><div class="orderedlist"><ol class="orderedlist" type="1"><li class="listitem"><p><span class="emphasis"><em>Full recompilation</em></span>: The user must recompile his or
-	her entire application and all C++ libraries it depends on,
+      </p><div class="orderedlist"><ol class="orderedlist" type="1"><li class="listitem"><p><span class="emphasis"><em>Full recompilation</em></span>: The user must recompile
+	their entire application and all C++ libraries it depends on,
 	including the C++ standard library that ships with the
 	compiler. This must be done even if only a small part of the
 	program can use debugging features.</p></li><li class="listitem"><p><span class="emphasis"><em>Full user recompilation</em></span>: The user must recompile
-	his or her entire application and all C++ libraries it depends
+	their entire application and all C++ libraries it depends
 	on, but not the C++ standard library itself. This must be done
 	even if only a small part of the program can use debugging
 	features. This can be achieved given a full recompilation
 	system by compiling two versions of the standard library when
 	the compiler is installed and linking against the appropriate
 	one, e.g., a multilibs approach.</p></li><li class="listitem"><p><span class="emphasis"><em>Partial recompilation</em></span>: The user must recompile the
-	parts of his or her application and the C++ libraries it
+	parts of their application and the C++ libraries it
 	depends on that will use the debugging facilities
 	directly. This means that any code that uses the debuggable
 	standard containers would need to be recompiled, but code
 	that does not use them (but may, for instance, use IOStreams)
 	would not have to be recompiled.</p></li><li class="listitem"><p><span class="emphasis"><em>Per-use recompilation</em></span>: The user must recompile the
-	parts of his or her application and the C++ libraries it
+	parts of their application and the C++ libraries it
 	depends on where debugging should occur, and any other code
 	that interacts with those containers. This means that a set of
 	translation units that accesses a particular standard
@@ -390,16 +390,18 @@ test02()
   Library (STL), implemented by Cay S. Horstmann on top of the
   Hewlett-Packard STL. Though it inspired much work in this area, it
   has not been kept up-to-date for use with modern compilers or C++
-  standard library implementations.</p></li><li class="listitem"><p><a class="link" href="http://www.stlport.org/" target="_top">STLport</a>: STLport is a free
+  standard library implementations.</p></li><li class="listitem"><p>STLport: STLport was a free
   implementation of the C++ standard library derived from the <a class="link" href="https://web.archive.org/web/20171225062613/http://www.sgi.com/tech/stl/" target="_top">SGI implementation</a>, and
-  ported to many other platforms. It includes a debug mode that uses a
+  ported to many other platforms. It included a debug mode that used a
   wrapper model (that in some ways inspired the libstdc++ debug mode
-  design), although at the time of this writing the debug mode is
-  somewhat incomplete and meets only the "Full user recompilation" (2)
+  design), although its debug mode was
+  somewhat incomplete and met only the "Full user recompilation" (2)
   recompilation guarantee by requiring the user to link against a
   different library in debug mode vs. release mode.</p></li><li class="listitem"><p>Metrowerks CodeWarrior: The C++ standard library
-  that ships with Metrowerks CodeWarrior includes a debug mode. It is
+  that shipped with Metrowerks CodeWarrior included a debug mode. It was
   a full debug-mode implementation (including debugging for
-  CodeWarrior extensions) and is easy to use, although it meets only
+  CodeWarrior extensions) and was easy to use, although it met only
   the "Full recompilation" (1) recompilation
-  guarantee.</p></li></ul></div></div></div><div class="navfooter"><hr /><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="debug_mode_using.html">Prev</a> </td><td width="20%" align="center"><a accesskey="u" href="debug_mode.html">Up</a></td><td width="40%" align="right"> <a accesskey="n" href="parallel_mode.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Using </td><td width="20%" align="center"><a accesskey="h" href="../index.html">Home</a></td><td width="40%" align="right" valign="top"> Chapter 18. Parallel Mode</td></tr></table></div></body></html>
+  guarantee.</p></li><li class="listitem"><p>The MSVC STL and LLVM libc++ implementations of the
+  C++ Standard Library both include some form of debug mode.
+  </p></li></ul></div></div></div><div class="navfooter"><hr /><table width="100%" summary="Navigation footer"><tr><td width="40%" align="left"><a accesskey="p" href="debug_mode_using.html">Prev</a> </td><td width="20%" align="center"><a accesskey="u" href="debug_mode.html">Up</a></td><td width="40%" align="right"> <a accesskey="n" href="parallel_mode.html">Next</a></td></tr><tr><td width="40%" align="left" valign="top">Using </td><td width="20%" align="center"><a accesskey="h" href="../index.html">Home</a></td><td width="40%" align="right" valign="top"> Chapter 18. Parallel Mode</td></tr></table></div></body></html>

@@ -1,9 +1,8 @@
 /*
-REQUIRED_ARGS: -de
 TEST_OUTPUT:
 ---
-fail_compilation/test11176.d(12): Deprecation: b.ptr cannot be used in @safe code, use &b[0] instead
-fail_compilation/test11176.d(16): Deprecation: b.ptr cannot be used in @safe code, use &b[0] instead
+fail_compilation/test11176.d(12): Error: using `b.ptr` (instead of `&b[0])` is not allowed in a `@safe` function
+fail_compilation/test11176.d(16): Error: using `b.ptr` (instead of `&b[0])` is not allowed in a `@safe` function
 ---
 */
 
@@ -13,7 +12,10 @@ fail_compilation/test11176.d(16): Deprecation: b.ptr cannot be used in @safe cod
     return *b.ptr;
 }
 
-@safe ubyte oops(ubyte[3] b) {
+@safe ubyte oops(ubyte[0] b) {
     return *b.ptr;
 }
 
+@safe ubyte cool(ubyte[1] b) {
+    return *b.ptr;
+}

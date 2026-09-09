@@ -1,6 +1,6 @@
 // -*- C++ -*- compatibility header.
 
-// Copyright (C) 2015-2021 Free Software Foundation, Inc.
+// Copyright (C) 2015-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -26,12 +26,20 @@
  *  This is a Standard C++ Library header.
  */
 
-#include <cuchar>
-
 #ifndef _GLIBCXX_UCHAR_H
 #define _GLIBCXX_UCHAR_H 1
 
+#include <cuchar>
+
 #ifdef _GLIBCXX_NAMESPACE_C
+
+#if (_GLIBCXX_USE_CHAR8_T \
+     && (_GLIBCXX_USE_UCHAR_C8RTOMB_MBRTOC8_FCHAR8_T \
+	 || (__cplusplus >= 202002 \
+	     && _GLIBCXX_USE_UCHAR_C8RTOMB_MBRTOC8_CXX20)))
+using std::mbrtoc8;
+using std::c8rtomb;
+#endif // _GLIBCXX_USE_CHAR8_T
 
 #if _GLIBCXX_USE_C11_UCHAR_CXX11
 using std::mbrtoc16;

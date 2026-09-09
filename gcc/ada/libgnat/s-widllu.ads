@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -34,11 +34,16 @@
 with System.Width_U;
 with System.Unsigned_Types;
 
-package System.Wid_LLU is
-
+package System.Wid_LLU
+  with SPARK_Mode
+is
    subtype Long_Long_Unsigned is Unsigned_Types.Long_Long_Unsigned;
 
-   function Width_Long_Long_Unsigned is new Width_U (Long_Long_Unsigned);
-   pragma Pure_Function (Width_Long_Long_Unsigned);
+   package Width_Uns is new Width_U (Long_Long_Unsigned);
+
+   function Width_Long_Long_Unsigned
+     (Lo, Hi : Long_Long_Unsigned)
+      return Natural
+      renames Width_Uns.Width;
 
 end System.Wid_LLU;

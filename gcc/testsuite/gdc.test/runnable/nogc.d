@@ -1,3 +1,9 @@
+/*
+RUN_OUTPUT:
+---
+Success
+---
+*/
 
 extern(C) int printf(const char*, ...);
 
@@ -9,7 +15,7 @@ extern(C) int printf(const char*, ...);
 }
 
 /***********************/
-// 3032
+// https://issues.dlang.org/show_bug.cgi?id=3032
 
 void test3032() @nogc
 {
@@ -23,7 +29,7 @@ void test3032() @nogc
 }
 
 /***********************/
-// 12642
+// https://issues.dlang.org/show_bug.cgi?id=12642
 
 __gshared int[1] data12642;
 
@@ -44,7 +50,7 @@ void test12642() @nogc
 }
 
 /***********************/
-// 12936
+// https://issues.dlang.org/show_bug.cgi?id=12936
 
 void test12936() @nogc
 {
@@ -62,12 +68,37 @@ void test12936() @nogc
 
 /***********************/
 
+version(none) // Pending future enhancements:
+void testIndexedArrayLiteral() @nogc
+{
+    int i = 2;
+    int x = [10, 20, 30, 40][i];
+    assert(x == 30);
+
+    enum arr = [100, 200, 300, 400][1 .. $];
+	assert(arr[i] == 400);
+}
+
+void testArrayLiteralLvalue()
+{
+    // https://github.com/dlang/dmd/pull/16784
+    // Test that this array literal is *not* put on the stack because
+    // it gets its address taken
+    static int* getPtr(int i) => &[1, 2, 3][i];
+    int* x = getPtr(1);
+    int* y = getPtr(1);
+    assert(x != y);
+}
+
+/***********************/
+
 int main()
 {
     test1();
     test3032();
     test12642();
     test12936();
+    testArrayLiteralLvalue();
 
     printf("Success\n");
     return 0;

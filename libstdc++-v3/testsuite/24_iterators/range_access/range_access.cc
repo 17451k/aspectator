@@ -1,6 +1,6 @@
 // { dg-do compile { target c++11 } }
 
-// Copyright (C) 2010-2021 Free Software Foundation, Inc.
+// Copyright (C) 2010-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -25,8 +25,8 @@ void
 test01()
 {
   int arr[3] = {1, 2, 3};
-  std::begin(arr);
-  std::end(arr);
+  (void) std::begin(arr);
+  (void) std::end(arr);
 
   static_assert( noexcept(std::begin(arr)), "LWG 2280" );
   static_assert( noexcept(std::end(arr)), "LWG 2280" );
@@ -57,4 +57,22 @@ test02()
   E e;
   require_int( std::end(e) );
   require_long( std::end(const_cast<const E&>(e)) );
+
+  static_assert( ! noexcept(std::begin(b)), "throws" );
+  static_assert( ! noexcept(std::begin(const_cast<const B&>(b))), "throws" );
+  static_assert( ! noexcept(std::end(e)), "throws" );
+  static_assert( ! noexcept(std::end(const_cast<const E&>(e))), "throws" );
+
+  struct S
+  {
+    int* begin() noexcept { return nullptr; }
+    int* begin() const noexcept { return nullptr; }
+    int* end() noexcept { return nullptr; }
+    int* end() const noexcept { return nullptr; }
+  };
+  S s;
+  static_assert( noexcept(std::begin(s)), "nothrow" );
+  static_assert( noexcept(std::begin(const_cast<const S&>(s))), "nothrow" );
+  static_assert( noexcept(std::end(s)), "nothrow" );
+  static_assert( noexcept(std::end(const_cast<const S&>(s))), "nothrow" );
 }

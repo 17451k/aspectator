@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler.  Vxworks PowerPC version.
-   Copyright (C) 1996-2021 Free Software Foundation, Inc.
+   Copyright (C) 1996-2026 Free Software Foundation, Inc.
    Contributed by CodeSourcery, LLC.
 
 This file is part of GCC.
@@ -33,6 +33,21 @@ along with GCC; see the file COPYING3.  If not see
 /*-------------------------------------------------------------*/
 /* Common definitions first.                                   */
 /*-------------------------------------------------------------*/
+
+/* Default to 64 bits when the target is powerpc64*-wrs-vxworks*,
+   and to 32 bits otherwise.  */
+#undef SUBTARGET_DRIVER_SELF_SPECS
+#if TARGET_VXWORKS64
+#define SUBTARGET_DRIVER_SELF_SPECS "%{!m64:%{!m32:-m64}}"
+#else
+#define SUBTARGET_DRIVER_SELF_SPECS "%{!m32:%{!m64:-m32}}"
+#endif
+
+/* Having used the build-time TARGET_VXWORKS64 to choose the default ABI above,
+   redefine it so that it matches whichever ABI is selected for each
+   compilation.  */
+#undef TARGET_VXWORKS64
+#define TARGET_VXWORKS64 TARGET_64BIT
 
 /* CPP predefined macros.  */
 
@@ -147,10 +162,6 @@ along with GCC; see the file COPYING3.  If not see
 #undef FUNCTION_PROFILER
 #define FUNCTION_PROFILER(FILE,LABELNO) VXWORKS_FUNCTION_PROFILER(FILE,LABELNO)
 
-/* Initialize library function table.  */
-#undef TARGET_INIT_LIBFUNCS
-#define TARGET_INIT_LIBFUNCS rs6000_vxworks_init_libfuncs
-
 /* Nor sdata, for kernel mode.  We use this in
    SUBSUBTARGET_INITIALIZE_OPTIONS, after rs6000_rtp has been initialized.  */
 #undef SDATA_DEFAULT_SIZE
@@ -159,7 +170,7 @@ along with GCC; see the file COPYING3.  If not see
 #undef SUB3TARGET_OVERRIDE_OPTIONS
 #define SUB3TARGET_OVERRIDE_OPTIONS           \
   do {                                          \
-  if (!global_options_set.x_g_switch_value)     \
+  if (!OPTION_SET_P (g_switch_value))     \
     g_switch_value = SDATA_DEFAULT_SIZE;        \
   VXWORKS_OVERRIDE_OPTIONS;                     \
   } while (0)
@@ -210,7 +221,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #undef  STARTFILE_PREFIX_SPEC
 #define STARTFILE_PREFIX_SPEC						\
- "%{mrtp:%{!shared:%:getenv(WIND_BASE /target/lib/usr/lib/ppc/PPC32/common)}}"
+ "%{mrtp:%{!shared:/lib%{msmp:_smp}/usr/lib/ppc/PPC32/common}}"
 
 /* For aggregates passing, use the same, consistent ABI as Linux.  */
 #define AGGREGATE_PADDING_FIXED 0
@@ -231,7 +242,7 @@ along with GCC; see the file COPYING3.  If not see
 #define LINK_SPEC VXWORKS_LINK_SPEC " " VXWORKS_RELAX_LINK_SPEC
 
 #undef TARGET_DEFAULT
-#define TARGET_DEFAULT (MASK_EABI | MASK_STRICT_ALIGN)
+#define TARGET_DEFAULT (OPTION_MASK_EABI | MASK_STRICT_ALIGN)
 
 #undef PROCESSOR_DEFAULT
 #define PROCESSOR_DEFAULT PROCESSOR_PPC604
@@ -256,19 +267,45 @@ along with GCC; see the file COPYING3.  If not see
 #undef DOT_SYMBOLS
 #define DOT_SYMBOLS 0
 
-#undef LINK_OS_VXWORKS_SPEC
-#define LINK_OS_VXWORKS_SPEC \
-  " %{!mrtp:-r} %{mrtp:-q -static} %{!Xbind-lazy:-z now}"
+/* Allow code model to be selected.  */
+#undef TARGET_CMODEL
+#define TARGET_CMODEL rs6000_current_cmodel
+#undef SET_CMODEL
+#define SET_CMODEL(opt) rs6000_current_cmodel = opt
+
+/* For link specs, we leverage the linux configuration bits through
+   LINK_OS_EXTRA_SPEC32/64 and need to cancel the default %(link_os)
+   expansion in VXWORKS_LINK_SPEC.  */
+
+#undef VXWORKS_LINK_OS_SPEC
+#define VXWORKS_LINK_OS_SPEC ""
 
 #undef LINK_OS_EXTRA_SPEC32
-#define LINK_OS_EXTRA_SPEC32 LINK_OS_VXWORKS_SPEC " " VXWORKS_RELAX_LINK_SPEC
+#define LINK_OS_EXTRA_SPEC32 VXWORKS_LINK_SPEC " " VXWORKS_RELAX_LINK_SPEC
 
 #undef LINK_OS_EXTRA_SPEC64
-#define LINK_OS_EXTRA_SPEC64 LINK_OS_VXWORKS_SPEC
+#define LINK_OS_EXTRA_SPEC64 VXWORKS_LINK_SPEC
 
-/* linux64.h enables this, not supported in vxWorks.  */
-#undef TARGET_FLOAT128_ENABLE_TYPE
-#define TARGET_FLOAT128_ENABLE_TYPE 0
+/* Leave TARGET_FLOAT128_ENABLE_TYPE alone here, possibly inherited from
+   a linux configuration file.  This lets compilation tests pass and will
+   trigger visible link errors (hence remain harmless) if the support isn't
+   really there.  */
+
+/* Select a format to encode pointers in exception handling data.  CODE
+   is 0 for data, 1 for code labels, 2 for function pointers.  GLOBAL is
+   true if the symbol may be affected by dynamic relocations.
+
+   This is essentially the linux64.h version with an extra guard on
+   TARGET_VXWORKS_RTP to avoid DW_EH_PE_indirect in 64bit DKMs as they
+   could result in references from one DKM to resolve to symbols exposed
+   by a previsouly loaded DKM even if the symbol is also provided by the
+   DKM where the reference takes place.  */
+#undef ASM_PREFERRED_EH_DATA_FORMAT
+#define ASM_PREFERRED_EH_DATA_FORMAT(CODE, GLOBAL) \
+  ((TARGET_64BIT && TARGET_VXWORKS_RTP) || flag_pic			\
+   ? (((GLOBAL) ? DW_EH_PE_indirect : 0) | DW_EH_PE_pcrel		\
+      | (TARGET_64BIT ? DW_EH_PE_udata8 : DW_EH_PE_sdata4))		\
+   : DW_EH_PE_absptr)
 
 #endif /* TARGET_VXWORKS7 */
 

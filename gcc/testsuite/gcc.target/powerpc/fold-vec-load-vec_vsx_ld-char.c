@@ -1,8 +1,8 @@
 /* Verify that overloaded built-ins for vec_vsx_ld with char
    inputs produce the right code.  */
 
-/* { dg-require-effective-target powerpc_vsx_ok } */
 /* { dg-options "-mvsx -O2" } */
+/* { dg-require-effective-target powerpc_vsx } */
 
 #include <altivec.h>
 #define BUILD_VAR_TEST(TESTNAME1, RETTYPE, VAR_OFFSET, LOADFROM)	\
@@ -35,5 +35,5 @@ BUILD_VAR_TEST( test10,  vector unsigned char, signed long long, vector unsigned
 BUILD_VAR_TEST( test11,  vector unsigned char, signed int, vector unsigned char);
 BUILD_CST_TEST( test12,  vector unsigned char, 12, vector unsigned char);
 
-/* { dg-final { scan-assembler-times {\mlxvw4x\M|\mlxvd2x\M|\mlxvx\M|\mlvx\M} 12 } } */
+/* { dg-final { scan-assembler-times {\mlxvw4x\M|\mlxvd2x\M|\mlxvx\M|\mlvx\M|\mplxv\M} 12 } } */
 

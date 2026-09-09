@@ -4,11 +4,10 @@
  * Translated from MinGW Windows headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_lmremutl.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_lmremutl.d)
  */
 module core.sys.windows.lmremutl;
 version (Windows):
-@system:
 pragma(lib, "netapi32");
 
 // D Conversion Note: DESC_CHAR is defined as TCHAR.
@@ -33,9 +32,9 @@ enum USE_SPECIFIC_TRANSPORT = 0x80000000;
 //[No] typedef WCHAR DESC_CHAR;
 //[No] #endif
 // FIXME (D): Is this OK?
-alias TCHAR DESC_CHAR;
+alias DESC_CHAR = TCHAR;
 
-alias DESC_CHAR* LPDESC;
+alias LPDESC = DESC_CHAR*;
 
 struct TIME_OF_DAY_INFO {
     DWORD tod_elapsedt;
@@ -51,9 +50,9 @@ struct TIME_OF_DAY_INFO {
     DWORD tod_year;
     DWORD tod_weekday;
 }
-alias TIME_OF_DAY_INFO* PTIME_OF_DAY_INFO, LPTIME_OF_DAY_INFO;
+alias PTIME_OF_DAY_INFO = TIME_OF_DAY_INFO*, LPTIME_OF_DAY_INFO = TIME_OF_DAY_INFO*;
 
-extern (Windows) {
+extern (Windows) nothrow @nogc {
     NET_API_STATUS NetRemoteTOD(LPCWSTR, PBYTE*);
     NET_API_STATUS NetRemoteComputerSupports(LPCWSTR, DWORD, PDWORD);
     NET_API_STATUS RxRemoteApi(DWORD, LPCWSTR, LPDESC, LPDESC, LPDESC,

@@ -1,5 +1,5 @@
 /* Definitions for option handling for ARM.
-   Copyright (C) 1991-2021 Free Software Foundation, Inc.
+   Copyright (C) 1991-2026 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -35,6 +35,7 @@
  */
 enum arm_fp16_format_type
 {
+  ARM_FP16_FORMAT_DEFAULT = -1,
   ARM_FP16_FORMAT_NONE = 0,
   ARM_FP16_FORMAT_IEEE = 1,
   ARM_FP16_FORMAT_ALTERNATIVE = 2
@@ -46,7 +47,6 @@ enum arm_abi_type
   ARM_ABI_APCS,
   ARM_ABI_ATPCS,
   ARM_ABI_AAPCS,
-  ARM_ABI_IWMMXT,
   ARM_ABI_AAPCS_LINUX
 };
 
@@ -61,12 +61,20 @@ enum float_abi_type
 enum arm_tp_type {
   TP_AUTO,
   TP_SOFT,
-  TP_CP15
+  TP_TPIDRURW,
+  TP_TPIDRURO,
+  TP_TPIDRPRW
 };
 
 /* Which TLS scheme to use.  */
 enum arm_tls_type {
   TLS_GNU,
   TLS_GNU2
+};
+
+/* Where to get the canary for the stack protector.  */
+enum stack_protector_guard {
+  SSP_TLSREG,                  /* per-thread canary in TLS register */
+  SSP_GLOBAL                   /* global canary */
 };
 #endif

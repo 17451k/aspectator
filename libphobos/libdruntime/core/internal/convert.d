@@ -3,18 +3,17 @@
  * This module provides functions to converting different values to const(ubyte)[]
  *
  * Copyright: Copyright Igor Stepanov 2013-2013.
- * License:   $(WEB www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
+ * License:   $(HTTP www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
  * Authors:   Igor Stepanov
  * Source: $(DRUNTIMESRC core/internal/_convert.d)
  */
 module core.internal.convert;
-import core.internal.traits : Unqual;
 
 /+
 A @nogc function can allocate memory during CTFE.
 +/
 @nogc nothrow pure @trusted
-private ubyte[] ctfe_alloc()(size_t n)
+private ubyte[] ctfe_alloc(size_t n)
 {
     if (!__ctfe)
     {
@@ -34,8 +33,7 @@ private ubyte[] ctfe_alloc()(size_t n)
 }
 
 @trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const ref T val) if (is(Unqual!T == float) || is(Unqual!T == double) || is(Unqual!T == real) ||
-                                        is(Unqual!T == ifloat) || is(Unqual!T == idouble) || is(Unqual!T == ireal))
+const(ubyte)[] toUbyte(T)(const scope ref T val) if (__traits(isFloating, T) && (is(T : real) || is(T : ireal)))
 {
     if (__ctfe)
     {
@@ -84,7 +82,7 @@ const(ubyte)[] toUbyte(T)(const ref T val) if (is(Unqual!T == float) || is(Unqua
             ubyte[] buff = ctfe_alloc(T.sizeof);
             enum msbSize = double.sizeof;
 
-            static if (is(Unqual!T == ireal))
+            static if (is(T : ireal))
                 double hi = toPrec!double(val.im);
             else
                 double hi = toPrec!double(val);
@@ -101,7 +99,7 @@ const(ubyte)[] toUbyte(T)(const ref T val) if (is(Unqual!T == float) || is(Unqua
             }
             else
             {
-                static if (is(Unqual!T == ireal))
+                static if (is(T : ireal))
                     double low = toPrec!double(val.im - hi);
                 else
                     double low = toPrec!double(val - hi);
@@ -183,7 +181,7 @@ const(ubyte)[] toUbyte(T)(const ref T val) if (is(Unqual!T == float) || is(Unqua
 }
 
 @safe pure nothrow @nogc
-private Float parse(bool is_denormalized = false, T)(T x) if (is(Unqual!T == ifloat) || is(Unqual!T == idouble) || is(Unqual!T == ireal))
+private Float parse(bool is_denormalized = false, T:ireal)(T x)
 {
     return parse(x.im);
 }
@@ -191,6 +189,7 @@ private Float parse(bool is_denormalized = false, T)(T x) if (is(Unqual!T == ifl
 @safe pure nothrow @nogc
 private Float parse(bool is_denormalized = false, T:real)(T x_) if (floatFormat!T != FloatFormat.Real80)
 {
+    import core.internal.traits : Unqual;
     Unqual!T x = x_;
     static assert(floatFormat!T != FloatFormat.DoubleDouble,
            "doubledouble float format not supported in CTFE");
@@ -249,6 +248,7 @@ private Float parse(bool is_denormalized = false, T:real)(T x_) if (floatFormat!
 @safe pure nothrow @nogc
 private Float parse(bool _ = false, T:real)(T x_) if (floatFormat!T == FloatFormat.Real80)
 {
+    import core.internal.traits : Unqual;
     Unqual!T x = x_;
     //HACK @@@3632@@@
 
@@ -472,14 +472,14 @@ private Float denormalizedMantissa(T)(T x, uint sign) if (floatFormat!T == Float
         return Float(fl.mantissa2 & 0x00FFFFFFFFFFFFFFUL , 0, sign, 1);
 }
 
-version (unittest)
+@system unittest
 {
-    private const(ubyte)[] toUbyte2(T)(T val)
+    static const(ubyte)[] toUbyte2(T)(T val)
     {
         return toUbyte(val).dup;
     }
 
-    private void testNumberConvert(string v)()
+    static void testNumberConvert(string v)()
     {
         enum ctval = mixin(v);
 
@@ -495,7 +495,7 @@ version (unittest)
         assert(rtbytes[0..testsize] == ctbytes[0..testsize]);
     }
 
-    private void testConvert()
+    static void testConvert()
     {
         /**Test special values*/
         testNumberConvert!("-float.infinity");
@@ -572,11 +572,6 @@ version (unittest)
         testNumberConvert!("real.min_normal/19");
         testNumberConvert!("real.min_normal/17");
 
-        /**Test imaginary values: convert algorithm is same with real values*/
-        testNumberConvert!("0.0Fi");
-        testNumberConvert!("0.0i");
-        testNumberConvert!("0.0Li");
-
         /**True random values*/
         testNumberConvert!("-0x9.0f7ee55df77618fp-13829L");
         testNumberConvert!("0x7.36e6e2640120d28p+8797L");
@@ -605,11 +600,7 @@ version (unittest)
         testNumberConvert!("cast(float)0x9.54bb0d88806f714p-7088L");
     }
 
-
-    unittest
-    {
-        testConvert();
-    }
+    testConvert();
 }
 
 
@@ -654,61 +645,57 @@ package template floatSize(T) if (is(T:real) || is(T:ireal))
 
 //  all toUbyte functions must be evaluable at compile time
 @trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const T[] arr) if (T.sizeof == 1)
+const(ubyte)[] toUbyte(T)(return scope const T[] arr) if (T.sizeof == 1)
 {
+    pragma(inline, true);
     return cast(const(ubyte)[])arr;
 }
 
-@trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const T[] arr) if (T.sizeof > 1)
+private const(ubyte)[] toUbyte_array_ctfe(T)(return scope const T[] arr)
 {
-    if (__ctfe)
+    pragma(inline, false);
+    ubyte[] ret = ctfe_alloc(T.sizeof * arr.length);
+    static if (is(T EType == enum)) // Odd style is to avoid template instantiation in most cases.
+        alias E = OriginalType!EType;
+    else
+        alias E = T;
+    static if (is(E == struct) || is(E == union) || __traits(isStaticArray, E) || !is(typeof(arr[0] is null)))
     {
-        ubyte[] ret = ctfe_alloc(T.sizeof * arr.length);
-        static if (is(T EType == enum)) // Odd style is to avoid template instantiation in most cases.
-            alias E = OriginalType!EType;
-        else
-            alias E = T;
-        static if (is(E == struct) || is(E == union) || __traits(isStaticArray, E) || !is(typeof(arr[0] is null)))
+        size_t offset = 0;
+        foreach (ref cur; arr)
         {
-            size_t offset = 0;
-            foreach (ref cur; arr)
-            {
-                ret[offset .. offset + T.sizeof] = toUbyte(cur)[0 .. T.sizeof];
-                offset += T.sizeof;
-            }
+            ret[offset .. offset + T.sizeof] = toUbyte(cur)[0 .. T.sizeof];
+            offset += T.sizeof;
         }
-        else
-        {
-            foreach (cur; arr)
-                assert(cur is null, "Unable to compute byte representation of non-null pointer at compile time");
-        }
-        return ret;
     }
     else
     {
-        return (cast(const(ubyte)*)(arr.ptr))[0 .. T.sizeof*arr.length];
+        foreach (cur; arr)
+            assert(cur is null, "Unable to compute byte representation of non-null pointer at compile time");
     }
+    return ret;
 }
 
 @trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const ref T val) if (__traits(isIntegral, T) && !is(T == enum) && !is(T == __vector))
+const(ubyte)[] toUbyte(T)(return scope const T[] arr) if (T.sizeof > 1)
 {
+    pragma(inline, true);
+    return __ctfe ? toUbyte_array_ctfe(arr)
+                  : (cast(const(ubyte)*)(arr.ptr))[0 .. T.sizeof*arr.length];
+}
+
+private const(ubyte)[] toUbyte_integral_ctfe(T)(const return ref scope T val)
+{
+    pragma(inline, false);
     static if (T.sizeof == 1)
     {
-        if (__ctfe)
-        {
-            ubyte[] result = ctfe_alloc(1);
-            result[0] = cast(ubyte) val;
-            return result;
-        }
-        else
-        {
-            return (cast(const(ubyte)*)(&val))[0 .. T.sizeof];
-        }
+        ubyte[] result = ctfe_alloc(1);
+        result[0] = cast(ubyte) val;
+        return result;
     }
-    else if (__ctfe)
+    else
     {
+        import core.internal.traits : Unqual;
         ubyte[] tmp = ctfe_alloc(T.sizeof);
         Unqual!T val_ = val;
         for (size_t i = 0; i < T.sizeof; ++i)
@@ -721,18 +708,20 @@ const(ubyte)[] toUbyte(T)(const ref T val) if (__traits(isIntegral, T) && !is(T 
         }
         return tmp;
     }
-    else
-    {
-        return (cast(const(ubyte)*)(&val))[0 .. T.sizeof];
-    }
 }
 
 @trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const ref T val) if (is(T == __vector))
+const(ubyte)[] toUbyte(T)(const ref scope T val) if (__traits(isIntegral, T) && !is(T == enum) && !is(T == __vector))
 {
-    if (!__ctfe)
-        return (cast(const ubyte*) &val)[0 .. T.sizeof];
-    else static if (is(typeof(val[0]) : void))
+    pragma(inline, true);
+    return __ctfe ? toUbyte_integral_ctfe(val)
+                  : (cast(const ubyte*) &val)[0 .. T.sizeof];
+}
+
+private const(ubyte)[] toUbyte_vector_ctfe(T)(const return ref scope T val)
+{
+    pragma(inline, false);
+    static if (is(typeof(val[0]) : void))
         assert(0, "Unable to compute byte representation of " ~ T.stringof ~ " at compile time.");
     else
     {
@@ -750,37 +739,26 @@ const(ubyte)[] toUbyte(T)(const ref T val) if (is(T == __vector))
 }
 
 @trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const ref T val) if (is(Unqual!T == cfloat) || is(Unqual!T == cdouble) ||is(Unqual!T == creal))
+const(ubyte)[] toUbyte(T)(const ref scope T val) if (is(T == __vector))
 {
-    if (__ctfe)
-    {
-        auto re = val.re;
-        auto im = val.im;
-        auto a = re.toUbyte();
-        auto b = im.toUbyte();
-        ubyte[] result = ctfe_alloc(a.length + b.length);
-        result[0 .. a.length] = a[0 .. a.length];
-        result[a.length .. $] = b[0 .. b.length];
-        return result;
-    }
-    else
-    {
-        return (cast(const(ubyte)*)&val)[0 .. T.sizeof];
-    }
+    pragma(inline, true);
+    return __ctfe ? toUbyte_vector_ctfe(val)
+                  : (cast(const ubyte*) &val)[0 .. T.sizeof];
+}
+
+private const(ubyte)[] toUbyte_enum_ctfe(T)(const return ref scope T val)
+{
+    pragma(inline, false);
+    static if (is(T V == enum)){}
+    return toUbyte(*cast(const V*) &val);
 }
 
 @trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const ref T val) if (is(T == enum))
+const(ubyte)[] toUbyte(T)(const ref return scope T val) if (is(T == enum))
 {
-    if (__ctfe)
-    {
-        static if (is(T V == enum)){}
-        return toUbyte(cast(const V) val);
-    }
-    else
-    {
-        return (cast(const(ubyte)*)&val)[0 .. T.sizeof];
-    }
+    pragma(inline, true);
+    return __ctfe ? toUbyte_enum_ctfe(val)
+                  : (cast(const(ubyte)*)&val)[0 .. T.sizeof];
 }
 
 nothrow pure @safe unittest
@@ -789,51 +767,53 @@ nothrow pure @safe unittest
     enum Month : uint { jan = 1}
     Month m = Month.jan;
     const bytes = toUbyte(m);
-    enum ctfe_works = (() => { Month x = Month.jan; return toUbyte(x).length > 0; })();
+    enum ctfe_works = (() { Month x = Month.jan; return toUbyte(x).length > 0; })();
+}
+
+private const(ubyte)[] toUbyte_delegate_ctfe(T)(const return ref scope T val)
+{
+    pragma(inline, false);
+    if (val !is null) assert(0, "Unable to compute byte representation of non-null pointer at compile time");
+    return ctfe_alloc(T.sizeof);
 }
 
 @trusted pure nothrow @nogc
 const(ubyte)[] toUbyte(T)(const ref T val) if (is(T == delegate) || is(T : V*, V) && __traits(getAliasThis, T).length == 0)
 {
-    if (__ctfe)
+    pragma(inline, true);
+    return __ctfe ? toUbyte_delegate_ctfe(val)
+                  : (cast(const(ubyte)*)&val)[0 .. T.sizeof];
+}
+
+private const(ubyte)[] toUbyte_aggregate_ctfe(T)(const return ref scope T val)
+{
+    pragma(inline, false);
+    ubyte[] bytes = ctfe_alloc(T.sizeof);
+    foreach (key, ref cur; val.tupleof)
     {
-        if (val !is null) assert(0, "Unable to compute byte representation of non-null pointer at compile time");
-        return ctfe_alloc(T.sizeof);
+        static if (is(typeof(cur) EType == enum)) // Odd style is to avoid template instantiation in most cases.
+            alias CurType = OriginalType!EType;
+        else
+            alias CurType = typeof(cur);
+        static if (is(CurType == struct) || is(CurType == union) || __traits(isStaticArray, CurType) || !is(typeof(cur is null)))
+        {
+            bytes[val.tupleof[key].offsetof .. val.tupleof[key].offsetof + CurType.sizeof] = toUbyte(cur)[];
+        }
+        else
+        {
+            assert(cur is null, "Unable to compute byte representation of non-null reference field at compile time");
+            //skip, because val bytes are zeros
+        }
     }
-    else
-    {
-        return (cast(const(ubyte)*)&val)[0 .. T.sizeof];
-    }
+    return bytes;
 }
 
 @trusted pure nothrow @nogc
-const(ubyte)[] toUbyte(T)(const ref T val) if (is(T == struct) || is(T == union))
+const(ubyte)[] toUbyte(T)(const return ref scope T val) if (is(T == struct) || is(T == union))
 {
-    if (__ctfe)
-    {
-        ubyte[] bytes = ctfe_alloc(T.sizeof);
-        foreach (key, ref cur; val.tupleof)
-        {
-            static if (is(typeof(cur) EType == enum)) // Odd style is to avoid template instantiation in most cases.
-                alias CurType = OriginalType!EType;
-            else
-                alias CurType = typeof(cur);
-            static if (is(CurType == struct) || is(CurType == union) || __traits(isStaticArray, CurType) || !is(typeof(cur is null)))
-            {
-                bytes[val.tupleof[key].offsetof .. val.tupleof[key].offsetof + CurType.sizeof] = toUbyte(cur)[];
-            }
-            else
-            {
-                assert(cur is null, "Unable to compute byte representation of non-null reference field at compile time");
-                //skip, because val bytes are zeros
-            }
-        }
-        return bytes;
-    }
-    else
-    {
-        return (cast(const(ubyte)*)&val)[0 .. T.sizeof];
-    }
+    pragma(inline, true);
+    return __ctfe ? toUbyte_aggregate_ctfe(val)
+                  : (cast(const(ubyte)*)&val)[0 .. T.sizeof];
 }
 
 // Strips off all `enum`s from type `T`.

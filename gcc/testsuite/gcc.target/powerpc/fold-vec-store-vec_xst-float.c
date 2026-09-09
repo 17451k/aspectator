@@ -1,8 +1,8 @@
 /* Verify that overloaded built-ins for vec_xst with float
    inputs produce the right code.  */
 
-/* { dg-require-effective-target powerpc_vsx_ok } */
 /* { dg-options "-mvsx -O2" } */
+/* { dg-require-effective-target powerpc_vsx } */
 
 #include <altivec.h>
 #define BUILD_VAR_TEST(TESTNAME1, VALUE, VAR_OFFSET, SAVETO)		\
@@ -27,4 +27,4 @@ BUILD_VAR_TEST( test7,  vector float, signed long long, vector float );
 BUILD_VAR_TEST( test8,  vector float, signed int, vector float );
 BUILD_CST_TEST( test9,  vector float, 12, vector float );
 
-/* { dg-final { scan-assembler-times {\mstxvd2x\M|\mstxvx\M|\mstvx\M} 6 } } */
+/* { dg-final { scan-assembler-times {\mstxvd2x\M|\mstxvx\M|\mstvx\M|\mpstxv\M} 6 } } */

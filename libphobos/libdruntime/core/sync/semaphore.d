@@ -29,25 +29,26 @@ else version (WatchOS)
 
 version (Windows)
 {
-    private import core.sys.windows.basetsd /+: HANDLE+/;
-    private import core.sys.windows.winbase /+: CloseHandle, CreateSemaphoreA, INFINITE,
+    import core.sys.windows.basetsd /+: HANDLE+/;
+    import core.sys.windows.winbase /+: CloseHandle, CreateSemaphoreA, INFINITE,
         ReleaseSemaphore, WAIT_OBJECT_0, WaitForSingleObject+/;
-    private import core.sys.windows.windef /+: BOOL, DWORD+/;
-    private import core.sys.windows.winerror /+: WAIT_TIMEOUT+/;
+    import core.sys.windows.windef /+: BOOL, DWORD+/;
+    import core.sys.windows.winerror /+: WAIT_TIMEOUT+/;
 }
 else version (Darwin)
 {
-    private import core.sync.config;
-    private import core.stdc.errno;
-    private import core.sys.posix.time;
-    private import core.sys.darwin.mach.semaphore;
+    import core.stdc.errno : EINTR, errno;
+    import core.sync.config;
+    import core.sys.darwin.mach.kern_return : KERN_ABORTED, KERN_OPERATION_TIMED_OUT;
+    import core.sys.darwin.mach.semaphore : mach_task_self, mach_timespec_t, semaphore_create, semaphore_destroy,
+        semaphore_signal, semaphore_t, semaphore_timedwait, semaphore_wait, SYNC_POLICY_FIFO;
 }
 else version (Posix)
 {
-    private import core.sync.config;
-    private import core.stdc.errno;
-    private import core.sys.posix.pthread;
-    private import core.sys.posix.semaphore;
+    import core.stdc.errno : EAGAIN, EINTR, errno, ETIMEDOUT;
+    import core.sync.config;
+    import core.sys.posix.semaphore : sem_destroy, sem_init, sem_post, sem_t, sem_timedwait, sem_trywait, sem_wait;
+    import core.sys.posix.time : clock_gettime, CLOCK_REALTIME, timespec;
 }
 else
 {
@@ -197,7 +198,7 @@ class Semaphore
     {
         assert( !period.isNegative );
     }
-    body
+    do
     {
         version (Windows)
         {
@@ -254,7 +255,8 @@ class Semaphore
         else version (Posix)
         {
             timespec t = void;
-            mktspec( t, period );
+            clock_gettime( CLOCK_REALTIME, &t );
+            mvtspec( t, period );
 
             while ( true )
             {
@@ -359,10 +361,10 @@ protected:
 // Unit Tests
 ////////////////////////////////////////////////////////////////////////////////
 
-
-version (unittest)
+unittest
 {
-    import core.thread, core.atomic;
+    import core.atomic;
+    import core.thread;
 
     void testWait()
     {
@@ -447,10 +449,6 @@ version (unittest)
         assert(alertedOne && !alertedTwo);
     }
 
-
-    unittest
-    {
-        testWait();
-        testWaitTimeout();
-    }
+    testWait();
+    testWaitTimeout();
 }

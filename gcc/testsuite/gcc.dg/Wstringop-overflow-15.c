@@ -4,8 +4,7 @@
    for either kind of VLAs (member and non-member).
    Diagnosing the accesses is the subject of pr82608.
    { dg-do compile }
-   { dg-options "-O2 -Wall -Wno-array-bounds" }
-   { dg-require-effective-target alloca } */
+   { dg-options "-O2 -Wall -Wno-array-bounds" } */
 
 void sink (void*);
 
@@ -29,8 +28,13 @@ void vla_bounded (int n)
 
   a[0] = 0;
   a[1] = 1;
+  a[31] = 31;
+
+  sink (&a);
+
   a[n] = n;         // { dg-warning "\\\[-Wstringop-overflow" "pr82608" { xfail *-*-* } }
-  a[69] = n;        // { dg-warning "\\\[-Wstringop-overflow" "pr82608" { xfail *-*-* } }
+  a[32] = 32;       // { dg-warning "\\\[-Wstringop-overflow" "pr82608" }
+  a[69] = 69;       // { dg-warning "\\\[-Wstringop-overflow" "pr82608" }
 
   sink (&a);
 }
@@ -56,8 +60,13 @@ void member_vla_bounded (int n)
 
   s.a[0] = 0;
   s.a[1] = 1;
+  s.a[31] = 31;
+
+  sink (&s);
+
   s.a[n] = n;       // { dg-warning "\\\[-Wstringop-overflow" "pr82608" { xfail *-*-* } }
-  s.a[69] = n;      // { dg-warning "\\\[-Wstringop-overflow" "pr82608" { xfail *-*-* } }
+  s.a[32] = 32;     // { dg-warning "\\\[-Wstringop-overflow" "pr82608" }
+  s.a[69] = 69;     // { dg-warning "\\\[-Wstringop-overflow" "pr82608" }
 
   sink (&s);
 }

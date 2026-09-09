@@ -33,7 +33,6 @@ version (Posix):
 extern (C):
 nothrow:
 @nogc:
-@system:
 
 //
 // Required
@@ -154,7 +153,7 @@ version (CRuntime_Glibc)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        char*   h_addr() @property { return h_addr_list[0]; } // non-standard
+        char*   h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -238,7 +237,7 @@ else version (Darwin)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        char*   h_addr() @property { return h_addr_list[0]; } // non-standard
+        char*   h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -322,7 +321,7 @@ else version (FreeBSD)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        extern (D) char* h_addr() @property { return h_addr_list[0]; } // non-standard
+        extern (D) char* h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -406,7 +405,7 @@ else version (NetBSD)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        extern (D) char* h_addr() @property { return h_addr_list[0]; } // non-standard
+        extern (D) char* h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -513,7 +512,7 @@ else version (OpenBSD)
         int       h_addrtype;
         int       h_length;
         char**    h_addr_list;
-        extern (D) char* h_addr() @property { return h_addr_list[0]; } // non-standard
+        extern (D) char* h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -567,6 +566,7 @@ else version (OpenBSD)
     enum AI_NUMERICHOST     = 0x4;
     enum AI_EXT             = 0x8;
     enum AI_NUMERICSERV     = 0x10;
+    enum AI_V4MAPPED        = 0; // Not supported
     enum AI_FQDN            = 0x20;
     enum AI_ADDRCONFIG      = 0x40;
     enum AI_MASK            = AI_PASSIVE | AI_CANONNAME | AI_NUMERICHOST | AI_NUMERICSERV | AI_FQDN | AI_ADDRCONFIG;
@@ -608,7 +608,7 @@ else version (DragonFlyBSD)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        extern (D) char* h_addr() @property { return h_addr_list[0]; } // non-standard
+        extern (D) char* h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -706,7 +706,7 @@ else version (Solaris)
         int h_length;
         char** h_addr_list;
 
-        extern (D) char* h_addr() @property { return h_addr_list[0]; } // non-standard
+        extern (D) char* h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -793,7 +793,7 @@ else version (CRuntime_Bionic)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        extern (D) char* h_addr() @property { return h_addr_list[0]; } // non-standard
+        extern (D) char* h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -874,7 +874,7 @@ else version (CRuntime_Musl)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        char*   h_addr() @property { return h_addr_list[0]; } // non-standard
+        char*   h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent
@@ -952,7 +952,7 @@ else version (CRuntime_UClibc)
         int     h_addrtype;
         int     h_length;
         char**  h_addr_list;
-        extern (D) char* h_addr() @property { return h_addr_list[0]; } // non-standard
+        extern (D) char* h_addr()() @property { return h_addr_list[0]; } // non-standard
     }
 
     struct netent

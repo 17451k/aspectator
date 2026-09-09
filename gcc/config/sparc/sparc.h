@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for Sun SPARC.
-   Copyright (C) 1987-2021 Free Software Foundation, Inc.
+   Copyright (C) 1987-2026 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com).
    64-bit SPARC-V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
    at Cygnus Support.
@@ -26,10 +26,6 @@ along with GCC; see the file COPYING3.  If not see
    whatever definitions are necessary.  */
 
 #define TARGET_CPU_CPP_BUILTINS() sparc_target_macros ()
-
-/* Target hooks for D language.  */
-#define TARGET_D_CPU_VERSIONS sparc_d_target_versions
-#define TARGET_D_REGISTER_CPU_TARGET_INFO sparc_d_register_target_info
 
 /* Specify this in a cover file to provide bi-architecture (32/64) support.  */
 /* #define SPARC_BI_ARCH */
@@ -120,21 +116,22 @@ along with GCC; see the file COPYING3.  If not see
 #define TARGET_CPU_leon		4
 #define TARGET_CPU_leon3	5
 #define TARGET_CPU_leon3v7	6
-#define TARGET_CPU_sparclite	7
-#define TARGET_CPU_f930		7       /* alias */
-#define TARGET_CPU_f934		7       /* alias */
-#define TARGET_CPU_sparclite86x	8
-#define TARGET_CPU_sparclet	9
-#define TARGET_CPU_tsc701	9       /* alias */
-#define TARGET_CPU_v9		10	/* generic v9 implementation */
-#define TARGET_CPU_sparcv9	10	/* alias */
-#define TARGET_CPU_sparc64	10	/* alias */
-#define TARGET_CPU_ultrasparc	11
-#define TARGET_CPU_ultrasparc3	12
-#define TARGET_CPU_niagara	13
-#define TARGET_CPU_niagara2	14
-#define TARGET_CPU_niagara3	15
-#define TARGET_CPU_niagara4	16
+#define TARGET_CPU_leon5	7
+#define TARGET_CPU_sparclite	8
+#define TARGET_CPU_f930		8       /* alias */
+#define TARGET_CPU_f934		8       /* alias */
+#define TARGET_CPU_sparclite86x	9
+#define TARGET_CPU_sparclet	10
+#define TARGET_CPU_tsc701	10       /* alias */
+#define TARGET_CPU_v9		11	/* generic v9 implementation */
+#define TARGET_CPU_sparcv9	11	/* alias */
+#define TARGET_CPU_sparc64	11	/* alias */
+#define TARGET_CPU_ultrasparc	12
+#define TARGET_CPU_ultrasparc3	13
+#define TARGET_CPU_niagara	14
+#define TARGET_CPU_niagara2	15
+#define TARGET_CPU_niagara3	16
+#define TARGET_CPU_niagara4	17
 #define TARGET_CPU_niagara7	19
 #define TARGET_CPU_m8		20
 
@@ -177,19 +174,19 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 #if TARGET_CPU_DEFAULT == TARGET_CPU_niagara3
 #define CPP_CPU64_DEFAULT_SPEC "-D__sparc_v9__"
-#define ASM_CPU64_DEFAULT_SPEC "-Av9" AS_NIAGARA3_FLAG
+#define ASM_CPU64_DEFAULT_SPEC "-Av9d"
 #endif
 #if TARGET_CPU_DEFAULT == TARGET_CPU_niagara4
 #define CPP_CPU64_DEFAULT_SPEC "-D__sparc_v9__"
-#define ASM_CPU64_DEFAULT_SPEC AS_NIAGARA4_FLAG
+#define ASM_CPU64_DEFAULT_SPEC "-xarch=sparc4"
 #endif
 #if TARGET_CPU_DEFAULT == TARGET_CPU_niagara7
 #define CPP_CPU64_DEFAULT_SPEC "-D__sparc_v9__"
-#define ASM_CPU64_DEFAULT_SPEC AS_NIAGARA7_FLAG
+#define ASM_CPU64_DEFAULT_SPEC "-xarch=sparc5"
 #endif
 #if TARGET_CPU_DEFAULT == TARGET_CPU_m8
 #define CPP_CPU64_DEFAULT_SPEC "-D__sparc_v9__"
-#define ASM_CPU64_DEFAULT_SPEC AS_M8_FLAG
+#define ASM_CPU64_DEFAULT_SPEC "-xarch=sparc6"
 #endif
 
 #else
@@ -229,7 +226,8 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 
 #if TARGET_CPU_DEFAULT == TARGET_CPU_leon \
- || TARGET_CPU_DEFAULT == TARGET_CPU_leon3
+ || TARGET_CPU_DEFAULT == TARGET_CPU_leon3 \
+ || TARGET_CPU_DEFAULT == TARGET_CPU_leon5
 #define CPP_CPU32_DEFAULT_SPEC "-D__leon__ -D__sparc_v8__"
 #define ASM_CPU32_DEFAULT_SPEC AS_LEON_FLAG
 #endif
@@ -285,6 +283,7 @@ along with GCC; see the file COPYING3.  If not see
 %{mcpu=hypersparc:-D__hypersparc__ -D__sparc_v8__} \
 %{mcpu=leon:-D__leon__ -D__sparc_v8__} \
 %{mcpu=leon3:-D__leon__ -D__sparc_v8__} \
+%{mcpu=leon5:-D__leon__ -D__sparc_v8__} \
 %{mcpu=leon3v7:-D__leon__} \
 %{mcpu=v9:-D__sparc_v9__} \
 %{mcpu=ultrasparc:-D__sparc_v9__} \
@@ -337,6 +336,7 @@ along with GCC; see the file COPYING3.  If not see
 %{mcpu=hypersparc:-Av8} \
 %{mcpu=leon:" AS_LEON_FLAG "} \
 %{mcpu=leon3:" AS_LEON_FLAG "} \
+%{mcpu=leon5:" AS_LEON_FLAG "} \
 %{mcpu=leon3v7:" AS_LEONV7_FLAG "} \
 %{mv8plus:-Av8plus} \
 %{mcpu=v9:-Av9} \
@@ -344,10 +344,10 @@ along with GCC; see the file COPYING3.  If not see
 %{mcpu=ultrasparc3:%{!mv8plus:-Av9b}} \
 %{mcpu=niagara:%{!mv8plus:-Av9b}} \
 %{mcpu=niagara2:%{!mv8plus:-Av9b}} \
-%{mcpu=niagara3:%{!mv8plus:-Av9" AS_NIAGARA3_FLAG "}} \
-%{mcpu=niagara4:%{!mv8plus:" AS_NIAGARA4_FLAG "}} \
-%{mcpu=niagara7:%{!mv8plus:" AS_NIAGARA7_FLAG "}} \
-%{mcpu=m8:%{!mv8plus:" AS_M8_FLAG "}} \
+%{mcpu=niagara3:%{!mv8plus:-Av9d}} \
+%{mcpu=niagara4:%{!mv8plus:-xarch=sparc4}} \
+%{mcpu=niagara7:%{!mv8plus:-xarch=sparc5}} \
+%{mcpu=m8:%{!mv8plus:-xarch=sparc6}} \
 %{!mcpu*:%(asm_cpu_default)} \
 "
 
@@ -409,7 +409,9 @@ along with GCC; see the file COPYING3.  If not see
 
 /* Because libgcc can generate references back to libc (via .umul etc.) we have
    to list libc again after the second libgcc.  */
-#define LINK_GCC_C_SEQUENCE_SPEC "%G %{!nolibc:%L} %G %{!nolibc:%L}"
+#define LINK_GCC_C_SEQUENCE_SPEC \
+  "%G %{!nolibc:" LINK_LIBATOMIC_SPEC "%L} \
+  %G %{!nolibc:" LINK_LIBATOMIC_SPEC "%L}"
 
 
 #define PTRDIFF_TYPE (TARGET_ARCH64 ? "long int" : "int")
@@ -429,7 +431,7 @@ along with GCC; see the file COPYING3.  If not see
   (MASK_FPU + MASK_HARD_QUAD + MASK_VIS + MASK_VIS2 + MASK_VIS3	\
    + MASK_VIS4 + MASK_CBCOND + MASK_FMAF + MASK_FSMULD		\
    + MASK_POPC + MASK_SUBXC)
- 
+
 /* TARGET_HARD_MUL: Use 32-bit hardware multiply instructions but not %y.  */
 #define TARGET_HARD_MUL				\
   (TARGET_SPARCLITE || TARGET_SPARCLET		\
@@ -489,12 +491,11 @@ along with GCC; see the file COPYING3.  If not see
 #define INT_TYPE_SIZE		32
 #define LONG_TYPE_SIZE		(TARGET_ARCH64 ? 64 : 32)
 #define LONG_LONG_TYPE_SIZE	64
-#define FLOAT_TYPE_SIZE		32
-#define DOUBLE_TYPE_SIZE	64
 
-/* LONG_DOUBLE_TYPE_SIZE is defined per OS even though the
-   SPARC ABI says that it is 128-bit wide.  */
-/* #define LONG_DOUBLE_TYPE_SIZE	128 */
+/* SPARC_LONG_DOUBLE_TYPE_SIZE is defined per OS even though the
+   SPARC ABI says that it is 128-bit wide.  LONG_DOUBLE_TYPE_SIZE
+   get poisoned, so add SPARC_ prefix.  */
+/* #define SPARC_LONG_DOUBLE_TYPE_SIZE	128 */
 
 /* The widest floating-point format really supported by the hardware.  */
 #define WIDEST_HARDWARE_FP_SIZE 64
@@ -551,9 +552,7 @@ along with GCC; see the file COPYING3.  If not see
    the smaller of COMPUTED and `BIGGEST_ALIGNMENT' */
 #define ROUND_TYPE_ALIGN(STRUCT, COMPUTED, SPECIFIED)	\
  (TARGET_FASTER_STRUCTS ?				\
-  ((TREE_CODE (STRUCT) == RECORD_TYPE			\
-    || TREE_CODE (STRUCT) == UNION_TYPE                 \
-    || TREE_CODE (STRUCT) == QUAL_UNION_TYPE)           \
+  (RECORD_OR_UNION_TYPE_P (STRUCT)	   \
    && TYPE_FIELDS (STRUCT) != 0                         \
      ? MAX (MAX ((COMPUTED), (SPECIFIED)), BIGGEST_ALIGNMENT) \
      : MAX ((COMPUTED), (SPECIFIED)))			\
@@ -735,6 +734,13 @@ along with GCC; see the file COPYING3.  If not see
    - v9: 128 bytes for the in and local registers + 6*8 bytes for the integer
      parameter regs.  */
 #define STACK_POINTER_OFFSET (FIRST_PARM_OFFSET(0) + SPARC_STACK_BIAS)
+
+/* Unbias the stack pointer if needed, and move past the register save area,
+   that is never in use while a function is active, so that it is regarded as a
+   callee save area rather than as part of the function's own stack area.  This
+   enables __strub_leave() to do a better job of clearing the stack frame of a
+   previously-called sibling.  */
+#define STACK_ADDRESS_OFFSET STACK_POINTER_OFFSET
 
 /* Base register for access to local variables of the function.  */
 #define HARD_FRAME_POINTER_REGNUM 30
@@ -965,13 +971,12 @@ extern enum reg_class sparc_regno_reg_class[FIRST_PSEUDO_REGISTER];
   96, 97, 98, 99,			/* %fcc0-3 */	\
   100, 0, 14, 30, 31, 101, 102 }	/* %icc, %g0, %o6, %i6, %i7, %sfp, %gsr */
 
-#define ADJUST_REG_ALLOC_ORDER order_regs_for_local_alloc ()
+#define ADJUST_REG_ALLOC_ORDER sparc_order_regs_for_local_alloc ()
 
 extern char sparc_leaf_regs[];
 #define LEAF_REGISTERS sparc_leaf_regs
 
-extern char leaf_reg_remap[];
-#define LEAF_REG_REMAP(REGNO) (leaf_reg_remap[REGNO])
+#define LEAF_REG_REMAP(REGNO) sparc_leaf_reg_remap (REGNO)
 
 /* The class value for index registers, and the one for base regs.  */
 #define INDEX_REG_CLASS GENERAL_REGS
@@ -1274,32 +1279,13 @@ do {									\
 
 /* Select a format to encode pointers in exception handling data.  CODE
    is 0 for data, 1 for code labels, 2 for function pointers.  GLOBAL is
-   true if the symbol may be affected by dynamic relocations.
-
-   If assembler and linker properly support .uaword %r_disp32(foo),
-   then use PC relative 32-bit relocations instead of absolute relocs
-   for shared libraries.  On sparc64, use pc relative 32-bit relocs even
-   for binaries, to save memory.
-
-   binutils 2.12 would emit a R_SPARC_DISP32 dynamic relocation if the
-   symbol %r_disp32() is against was not local, but .hidden.  In that
-   case, we have to use DW_EH_PE_absptr for pic personality.  */
-#ifdef HAVE_AS_SPARC_UA_PCREL
-#ifdef HAVE_AS_SPARC_UA_PCREL_HIDDEN
+   true if the symbol may be affected by dynamic relocations.  */
 #define ASM_PREFERRED_EH_DATA_FORMAT(CODE,GLOBAL)			\
   (flag_pic								\
    ? (GLOBAL ? DW_EH_PE_indirect : 0) | DW_EH_PE_pcrel | DW_EH_PE_sdata4\
    : ((TARGET_ARCH64 && ! GLOBAL)					\
       ? (DW_EH_PE_pcrel | DW_EH_PE_sdata4)				\
       : DW_EH_PE_absptr))
-#else
-#define ASM_PREFERRED_EH_DATA_FORMAT(CODE,GLOBAL)			\
-  (flag_pic								\
-   ? (GLOBAL ? DW_EH_PE_absptr : (DW_EH_PE_pcrel | DW_EH_PE_sdata4))	\
-   : ((TARGET_ARCH64 && ! GLOBAL)					\
-      ? (DW_EH_PE_pcrel | DW_EH_PE_sdata4)				\
-      : DW_EH_PE_absptr))
-#endif
 
 /* Emit a PC-relative relocation.  */
 #define ASM_OUTPUT_DWARF_PCREL(FILE, SIZE, LABEL)	\
@@ -1309,7 +1295,6 @@ do {									\
     assemble_name (FILE, LABEL);			\
     fputc (')', FILE);					\
   } while (0)
-#endif
 
 /* Addressing modes, and classification of registers for them.  */
 
@@ -1319,7 +1304,7 @@ do {									\
    They give nonzero only if REGNO is a hard reg of the suitable class
    or a pseudo reg currently allocated to a suitable hard reg.
    Since they use reg_renumber, they are safe only once reg_renumber
-   has been allocated, which happens in reginfo.c during register
+   has been allocated, which happens in reginfo.cc during register
    allocation.  */
 
 #define REGNO_OK_FOR_INDEX_P(REGNO) \
@@ -1363,7 +1348,7 @@ do {									\
 
 /* Try a machine-dependent way of reloading an illegitimate address
    operand.  If we find one, push the reload and jump to WIN.  This
-   macro is used in only one place: `find_reloads_address' in reload.c.  */
+   macro is used in only one place: `find_reloads_address' in reload.cc.  */
 #define LEGITIMIZE_RELOAD_ADDRESS(X,MODE,OPNUM,TYPE,IND_LEVELS,WIN)	   \
 do {									   \
   int win;								   \
@@ -1507,14 +1492,6 @@ do {									   \
 #define ADDITIONAL_REGISTER_NAMES \
 {{"ccr", SPARC_ICC_REG}, {"cc", SPARC_ICC_REG}}
 
-/* On Sun 4, this limit is 2048.  We use 1000 to be safe, since the length
-   can run past this up to a continuation point.  Once we used 1500, but
-   a single entry in C++ can run more than 500 bytes, due to the length of
-   mangled symbol names.  dbxout.c should really be fixed to do
-   continuations when they are actually needed instead of trying to
-   guess...  */
-#define DBX_CONTIN_LENGTH 1000
-
 /* This is how to output a command to make the user-level label named NAME
    defined for reference from other files.  */
 
@@ -1643,40 +1620,13 @@ extern int sparc_indent_opcode;
       }					\
   } while (0)
 
-/* TLS support defaulting to original Sun flavor.  GNU extensions
-   must be activated in separate configuration files.  */
-#ifdef HAVE_AS_TLS
-#define TARGET_TLS 1
-#else
-#define TARGET_TLS 0
+#ifndef HAVE_AS_TLS
+#define HAVE_AS_TLS 0
 #endif
 
-#define TARGET_SUN_TLS TARGET_TLS
-#define TARGET_GNU_TLS 0
-
-#ifdef HAVE_AS_FMAF_HPC_VIS3
-#define AS_NIAGARA3_FLAG "d"
-#else
-#define AS_NIAGARA3_FLAG "b"
-#endif
-
-#ifdef HAVE_AS_SPARC4
-#define AS_NIAGARA4_FLAG "-xarch=sparc4"
-#else
-#define AS_NIAGARA4_FLAG "-Av9" AS_NIAGARA3_FLAG
-#endif
-
-#ifdef HAVE_AS_SPARC5_VIS4
-#define AS_NIAGARA7_FLAG "-xarch=sparc5"
-#else
-#define AS_NIAGARA7_FLAG AS_NIAGARA4_FLAG
-#endif
-
-#ifdef HAVE_AS_SPARC6
-#define AS_M8_FLAG "-xarch=sparc6"
-#else
-#define AS_M8_FLAG AS_NIAGARA7_FLAG
-#endif
+/* TLS support defaults to GNU extensions.  The original Sun flavor must be
+   activated in separate configuration files.  */
+#define TARGET_TLS HAVE_AS_TLS
 
 #ifdef HAVE_AS_LEON
 #define AS_LEON_FLAG "-Aleon"
@@ -1704,3 +1654,6 @@ extern int sparc_indent_opcode;
 #define SPARC_LOW_FE_EXCEPT_VALUES 0
 
 #define TARGET_SUPPORTS_WIDE_INT 1
+
+/* Define this to 1 to accept ABI changes to match the vendor compiler.  */
+#define SUN_V9_ABI_COMPATIBILITY 0

@@ -125,7 +125,7 @@ void test4()
 }
 
 /**************************************/
-// 12070
+// https://issues.dlang.org/show_bug.cgi?id=12070
 
 void test12070()
 {
@@ -160,13 +160,38 @@ void test12070()
 }
 
 /**************************************/
-// 12124
+// https://issues.dlang.org/show_bug.cgi?id=12124
 
 struct S12124
 {
     this(int) {}
     S12124 opCall()() { static assert(0); }
     // speculative opCall instantiation for diagnostic message should not cause false errors
+}
+
+/**************************************/
+// https://github.com/dlang/dmd/issues/20927
+
+struct NoStatic0 { auto opCall() => 2; }
+struct NoStatic1 { int x; NoStatic1 opCall() => NoStatic1(3); }
+
+struct Yes0 { static opCall() => 2; }
+struct Yes1 { static opCall()() => 2; }
+struct Yes2
+{
+    auto call()(int x) => this.init;
+    template call() { static call() => 2; }
+    alias opCall = call;
+}
+
+void test20927()
+{
+    assert(NoStatic0() == NoStatic0.init);
+    assert(NoStatic1()() == NoStatic1(3));
+
+    assert(Yes0() == 2);
+    assert(Yes1() == 2);
+    assert(Yes2() == 2);
 }
 
 /**************************************/
@@ -181,4 +206,5 @@ void main()
     test3c();
     test4();
     test12070();
+    test20927();
 }

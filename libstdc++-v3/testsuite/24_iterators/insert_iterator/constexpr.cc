@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,8 +15,8 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do compile { target c++2a } }
+// { dg-do compile { target c++20 } }
+// { dg-add-options no_pch }
 
 #include <iterator>
 
@@ -51,8 +51,7 @@ constexpr bool
 test01()
 {
   container c;
-  std::insert_iterator<container> iter;
-  iter = std::inserter(c, c.begin());
+  std::insert_iterator<container> iter = std::inserter(c, c.begin());
   *iter++ = 1;
   int i = 2;
   *iter = i;

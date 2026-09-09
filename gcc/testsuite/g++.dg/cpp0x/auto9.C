@@ -15,8 +15,8 @@ const std::type_info &t2 = typeid (auto *);	// { dg-error "auto" }
 
 struct A
 {
-  operator auto ();				// { dg-error "auto" "" { target { ! c++14 } } }
-  operator auto *();				// { dg-error "auto" "" { target { ! c++14 } } }
+  operator auto ();				// { dg-error "auto" }
+  operator auto *();				// { dg-error "auto" }
 };
 
 struct A2
@@ -45,7 +45,7 @@ foo ()
   C<int> c;
   dynamic_cast<auto> (c);			// { dg-error "auto" }
   reinterpret_cast<auto> (c);			// { dg-error "auto" }
-  int i = auto (0);				// { dg-error "auto" }
+  int i = auto (0);				// { dg-error "auto" "" { target c++20_down } }
   auto p1 = new (auto);				// { dg-error "auto" }
   auto p2 = new (auto) (42);			// { dg-error "invalid use of|deduce" }
   offsetof (auto, fld);				// { dg-error "auto" }

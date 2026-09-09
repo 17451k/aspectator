@@ -15,9 +15,9 @@ program test
   character(len=99) :: val3
   integer :: res
 
-  call co_reduce(val1, operator=fr, result_image=num_images(), stat=stat1, errmsg=errmesg1)
-  call co_reduce(val2, operator=gz, result_image=4, stat=stat2, errmsg=errmesg2)
-  call co_reduce(val3, operator=hc, result_image=res,stat=stat3, errmsg=errmesg3)
+  call co_reduce(val1, operation=fr, result_image=num_images(), stat=stat1, errmsg=errmesg1)
+  call co_reduce(val2, operation=gz, result_image=4, stat=stat2, errmsg=errmesg2)
+  call co_reduce(val3, operation=hc, result_image=res,stat=stat3, errmsg=errmesg3)
 contains
   pure real function fr(x,y)
     real, value :: x, y
@@ -33,6 +33,6 @@ contains
   end function hc
 end program test
 
-! { dg-final { scan-tree-dump-times "_gfortran_caf_co_reduce \\(&desc.., fr, 4, _gfortran_caf_num_images \\(0, -1\\), &stat1, errmesg1, 0, 6\\);" 1 "original" } }
+! { dg-final { scan-tree-dump-times "_gfortran_caf_co_reduce \\(&desc.., fr, 4, _gfortran_caf_num_images \\(0B, 0B\\), &stat1, errmesg1, 0, 6\\);" 1 "original" } }
 ! { dg-final { scan-tree-dump-times "_gfortran_caf_co_reduce \\(&val2, gz, 0, 4, &stat2, errmesg2, 0, 7\\);" 1 "original" } }
 ! { dg-final { scan-tree-dump-times "_gfortran_caf_co_reduce \\(&desc.., hc, 1, res, &stat3, errmesg3, 99, 8\\);" 1 "original" } }

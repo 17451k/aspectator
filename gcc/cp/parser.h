@@ -1,5 +1,5 @@
 /* Data structures and function exported by the C++ Parser.
-   Copyright (C) 2010-2021 Free Software Foundation, Inc.
+   Copyright (C) 2010-2026 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -107,12 +107,24 @@ struct GTY (()) cp_lexer {
   /* The next lexer in a linked list of lexers.  */
   struct cp_lexer *next;
 
+  /* Set for omp::decl attribute parsing to the decl to which it
+     appertains.  */
+  tree in_omp_decl_attribute;
+
   /* True if we should output debugging information.  */
   bool debugging_p;
 
   /* True if we're in the context of parsing a pragma, and should not
      increment past the end-of-line marker.  */
   bool in_pragma;
+
+  /* True if we're in the context of OpenMP directives written as C++11
+     attributes turned into pragma.  */
+  bool in_omp_attribute_pragma;
+
+  /* True for in_omp_attribute_pragma lexer that should be destroyed
+     when it is no longer in use.  */
+  bool orphan_p;
 };
 
 
@@ -169,7 +181,10 @@ struct GTY(()) cp_unparsed_functions_entry {
   vec<tree, va_gc> *nsdmis;
 
   /* Functions with noexcept-specifiers that require post-processing.  */
-  vec<tree, va_gc> *noexcepts;
+  vec<cp_default_arg_entry, va_gc> *noexcepts;
+
+  /* Functions with contract attributes that require post-processing.  */
+  vec<tree, va_gc> *contracts;
 };
 
 
@@ -208,13 +223,21 @@ struct cp_omp_declare_simd_data {
   bool error_seen; /* Set if error has been reported.  */
   bool fndecl_seen; /* Set if one fn decl/definition has been seen already.  */
   bool variant_p; /* Set for #pragma omp declare variant.  */
+  location_t loc;
   vec<cp_token_cache_ptr> tokens;
-  tree clauses;
+  tree *attribs[2];
 };
 
 /* Helper data structure for parsing #pragma acc routine.  */
 struct cp_oacc_routine_data : cp_omp_declare_simd_data {
-  location_t loc;
+  tree clauses;
+};
+
+/* Helper data structure for parsing #pragma omp begin declare variant.  */
+struct GTY(()) omp_begin_declare_variant_map_entry {
+  tree variant;		/* The variant decl.  */
+  tree id;		/* Name of base function.  */
+  tree ctx;		/* The context selector associated with the variant.  */
 };
 
 /* The cp_parser structure represents the C++ parser.  */
@@ -296,8 +319,12 @@ struct GTY(()) cp_parser {
 
   /* TRUE if the declaration we are parsing is part of a
      linkage-specification of the form `extern string-literal
-     declaration'.  */
+     name-declaration'.  */
   bool in_unbraced_linkage_specification_p;
+
+  /* TRUE if the declaration we are parsing is part of an
+     export-declaration of the form 'export name-declaration'.  */
+  bool in_unbraced_export_declaration_p;
 
   /* TRUE if we are presently parsing a declarator, after the
      direct-declarator.  */
@@ -308,14 +335,16 @@ struct GTY(()) cp_parser {
 
   /* Set to IN_ITERATION_STMT if parsing an iteration-statement,
      to IN_OMP_BLOCK if parsing OpenMP structured block and
-     IN_OMP_FOR if parsing OpenMP loop.  If parsing a switch statement,
+     IN_OMP_FOR if parsing OpenMP loop, IN_EXPANSION_STMT if parsing an
+     expansion-statement.  If parsing a switch statement,
      this is bitwise ORed with IN_SWITCH_STMT, unless parsing an
      iteration-statement, OpenMP block or loop within that switch.  */
 #define IN_SWITCH_STMT		1
 #define IN_ITERATION_STMT	2
 #define IN_OMP_BLOCK		4
 #define IN_OMP_FOR		8
-#define IN_IF_STMT             16
+#define IN_IF_STMT	       16
+#define IN_EXPANSION_STMT      32
   unsigned char in_statement;
 
   /* TRUE if we are presently parsing the body of a switch statement.
@@ -382,7 +411,7 @@ struct GTY(()) cp_parser {
   /* When parsing #pragma acc routine, this is a pointer to a helper data
      structure.  */
   cp_oacc_routine_data * GTY((skip)) oacc_routine;
-  
+
   /* Nonzero if parsing a parameter list where 'auto' should trigger an implicit
      template parameter.  */
   bool auto_is_implicit_function_template_parm_p;
@@ -391,6 +420,13 @@ struct GTY(()) cp_parser {
      parameter list containing generic type specifiers (`auto' or concept
      identifiers) rather than an explicit template parameter list.  */
   bool fully_implicit_function_template_p;
+
+  /* TRUE if omp::directive, omp::decl or omp::sequence attributes may not
+     appear.  */
+  bool omp_attrs_forbidden_p;
+
+  /* TRUE if an OpenMP array section is allowed.  */
+  bool omp_array_section_p;
 
   /* Tracks the function's template parameter list when declaring a function
      using generic type parameters.  This is either a new chain in the case of a
@@ -420,9 +456,23 @@ struct GTY(()) cp_parser {
      specification, if any, or UNKNOWN_LOCATION otherwise.  */
   location_t innermost_linkage_specification_location;
 
+  /* Pointer to state for parsing omp_loops.  Managed by
+     cp_parser_omp_for_loop in parser.cc and not used outside that file.  */
+  struct omp_for_parse_data * GTY((skip)) omp_for_parse_state;
+
+  /* Non-null only when parsing the body of an OpenMP metadirective.
+     Managed by cp_parser_omp_metadirective in parser.cc and not used
+     outside that file.  */
+  struct omp_metadirective_parse_data * GTY((skip))
+    omp_metadirective_state;
+
+  /* Recorded information about functions in OpenMP "begin declare variant"
+     constructs that still need to be registered with their base functions.  */
+  vec<omp_begin_declare_variant_map_entry, va_gc> *
+    omp_begin_declare_variant_map;
 };
 
-/* In parser.c  */
+/* In parser.cc  */
 extern void debug (cp_token &ref);
 extern void debug (cp_token *ptr);
 extern void cp_lexer_debug_tokens (vec<cp_token, va_gc> *);

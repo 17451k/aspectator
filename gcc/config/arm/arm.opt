@@ -1,6 +1,6 @@
 ; Options for the ARM port of the compiler.
 
-; Copyright (C) 2005-2021 Free Software Foundation, Inc.
+; Copyright (C) 2005-2026 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -20,6 +20,15 @@
 
 HeaderInclude
 config/arm/arm-opts.h
+
+HeaderInclude
+config/arm/aarch-common.h
+
+TargetVariable
+enum aarch_function_type aarch_ra_sign_scope = AARCH_FUNCTION_NONE
+
+TargetVariable
+unsigned aarch_enable_bti = 0
 
 Enum
 Name(tls_type) Type(enum arm_tls_type)
@@ -49,9 +58,6 @@ EnumValue
 Enum(arm_abi_type) String(aapcs) Value(ARM_ABI_AAPCS)
 
 EnumValue
-Enum(arm_abi_type) String(iwmmxt) Value(ARM_ABI_IWMMXT)
-
-EnumValue
 Enum(arm_abi_type) String(aapcs-linux) Value(ARM_ABI_AAPCS_LINUX)
 
 mabort-on-noreturn
@@ -66,11 +72,12 @@ Target Mask(APCS_FRAME)
 Generate APCS conformant stack frames.
 
 mapcs-reentrant
-Target Mask(APCS_REENT)
-Generate re-entrant, PIC code.
+Target Mask(APCS_REENT) Undocumented
+Unimplemented option to generate re-entrant, PIC code.
 
 mapcs-stack-check
 Target Mask(APCS_STACK) Undocumented
+Unimplemented option to generate stack checking code on function entry.
 
 march=
 Target Save RejectNegative Negative(march=) ToLower Joined Var(arm_arch_string)
@@ -82,7 +89,7 @@ EnumValue
 Enum(arm_arch) String(native) Value(-1) DriverOnly
 
 ; Set to the name of target architecture which is required for
-; multilib linking.  This option is undocumented becuase it
+; multilib linking.  This option is undocumented because it
 ; should not be used by the users.
 mlibarch=
 Target RejectNegative JoinedOrMissing NoDWARFRecord DriverOnly Undocumented
@@ -133,7 +140,7 @@ Target Var(TARGET_FLIP_THUMB) Undocumented
 Switch ARM/Thumb modes on alternating functions for compiler testing.
 
 mfp16-format=
-Target RejectNegative Joined Enum(arm_fp16_format_type) Var(arm_fp16_format) Init(ARM_FP16_FORMAT_NONE)
+Target RejectNegative Joined Enum(arm_fp16_format_type) Var(arm_fp16_format) Init(ARM_FP16_FORMAT_DEFAULT)
 Specify the __fp16 floating-point format.
 
 Enum
@@ -218,7 +225,16 @@ EnumValue
 Enum(arm_tp_type) String(auto) Value(TP_AUTO)
 
 EnumValue
-Enum(arm_tp_type) String(cp15) Value(TP_CP15)
+Enum(arm_tp_type) String(tpidrurw) Value(TP_TPIDRURW)
+
+EnumValue
+Enum(arm_tp_type) String(cp15) Value(TP_TPIDRURO)
+
+EnumValue
+Enum(arm_tp_type) String(tpidruro) Value(TP_TPIDRURO)
+
+EnumValue
+Enum(arm_tp_type) String(tpidrprw) Value(TP_TPIDRPRW)
 
 mtpcs-frame
 Target Mask(TPCS_FRAME)
@@ -233,7 +249,7 @@ Target Save RejectNegative Negative(mtune=) ToLower Joined Var(arm_tune_string)
 Tune code for the given processor.
 
 mprint-tune-info
-Target RejectNegative Var(print_tune_info) Init(0)
+Target RejectNegative Var(print_tune_info) Init(0) Undocumented
 Print CPU tuning information as comment in assembler file.  This is
 an option used only for regression testing of the compiler and not
 intended for ordinary use in compiling code.
@@ -268,12 +284,26 @@ Target Var(fix_cm3_ldrd) Init(2)
 Avoid overlapping destination and address registers on LDRD instructions
 that may trigger Cortex-M3 errata.
 
+mfix-cmse-cve-2021-35465
+Target Var(fix_vlldm) Init(2)
+Mitigate issues with VLLDM on some M-profile devices (CVE-2021-35465).
+
+mfix-cortex-a57-aes-1742098
+Target Var(fix_aes_erratum_1742098) Init(2) Save
+Mitigate issues with AES instructions on Cortex-A57 and Cortex-A72
+(Arm erratum #1742098).
+
+mfix-cortex-a72-aes-1655431
+Target Alias(mfix-cortex-a57-aes-1742098)
+Mitigate issues with AES instructions on Cortex-A57 and Cortex-A72
+(Arm erratum #1655431).
+
 munaligned-access
 Target Var(unaligned_access) Init(2) Save
 Enable unaligned word and halfword accesses to packed data.
 
 mneon-for-64bits
-Target WarnRemoved
+Target WarnRemoved Undocumented
 This option is deprecated and has no effect.
 
 mslow-flash-data
@@ -300,6 +330,10 @@ mbranch-cost=
 Target RejectNegative Joined UInteger Var(arm_branch_cost) Init(-1)
 Cost to assume for a branch insn.
 
+mbranch-protection=
+Target RejectNegative Joined Var(arm_branch_protection_string) Save
+Use branch-protection features.
+
 mgeneral-regs-only
 Target RejectNegative Mask(GENERAL_REGS_ONLY) Save
 Generate code which uses the core registers only (r0-r14).
@@ -307,3 +341,28 @@ Generate code which uses the core registers only (r0-r14).
 mfdpic
 Target Mask(FDPIC)
 Enable Function Descriptor PIC mode.
+
+mstack-protector-guard=
+Target RejectNegative Joined Enum(stack_protector_guard) Var(arm_stack_protector_guard) Init(SSP_GLOBAL)
+Use given stack-protector guard.
+
+Enum
+Name(stack_protector_guard) Type(enum stack_protector_guard)
+Valid arguments to -mstack-protector-guard=:
+
+EnumValue
+Enum(stack_protector_guard) String(tls) Value(SSP_TLSREG)
+
+EnumValue
+Enum(stack_protector_guard) String(global) Value(SSP_GLOBAL)
+
+mstack-protector-guard-offset=
+Target Joined RejectNegative String Var(arm_stack_protector_guard_offset_str)
+Use an immediate to offset from the TLS register. This option is for use with
+fstack-protector-guard=tls and not for use in user-land code.
+
+mdlstp
+Target Var(dlstp_enabled) Init(1) Undocumented
+
+TargetVariable
+long arm_stack_protector_guard_offset = 0

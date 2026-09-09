@@ -1,5 +1,5 @@
 ;; ARM VFP instruction patterns
-;; Copyright (C) 2003-2021 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2026 Free Software Foundation, Inc.
 ;; Written by CodeSourcery.
 ;;
 ;; This file is part of GCC.
@@ -73,20 +73,25 @@
 
 (define_insn "*thumb2_movhi_vfp"
  [(set
-   (match_operand:HI 0 "nonimmediate_operand"
+   (match_operand:MVE_7_HI 0 "nonimmediate_operand"
     "=rk, r, l, r, m, r, *t, r, *t, Up, r")
-   (match_operand:HI 1 "general_operand"
-    "rk, I, Py, n, r, m, r, *t, *t, r, Up"))]
+   (match_operand:MVE_7_HI 1 "general_operand"
+    "rk, IDB, Py, n, r, m, r, *t, *t, r, Up"))]
  "TARGET_THUMB2 && TARGET_VFP_BASE
   && !TARGET_VFP_FP16INST
-  && (register_operand (operands[0], HImode)
-       || register_operand (operands[1], HImode))"
+  && (register_operand (operands[0], <MODE>mode)
+       || register_operand (operands[1], <MODE>mode))"
 {
   switch (which_alternative)
     {
     case 0:
-    case 1:
     case 2:
+      return "mov%?\t%0, %1\t%@ movhi";
+    case 1:
+      if (VALID_MVE_PRED_MODE (<MODE>mode))
+        operands[1] = mve_bool_vec_to_const (operands[1]);
+      else
+        operands[1] = gen_lowpart (HImode, operands[1]);
       return "mov%?\t%0, %1\t%@ movhi";
     case 3:
       return "movw%?\t%0, %L1\t%@ movhi";
@@ -100,9 +105,9 @@
     case 8:
       return "vmov%?.f32\t%0, %1\t%@ int";
     case 9:
-      return "vmsr%?\t P0, %1\t@ movhi";
+      return "vmsr%?\tp0, %1\t@ movhi";
     case 10:
-      return "vmrs%?\t %0, P0\t@ movhi";
+      return "vmrs%?\t%0, p0\t@ movhi";
     default:
       gcc_unreachable ();
     }
@@ -173,19 +178,24 @@
 
 (define_insn "*thumb2_movhi_fp16"
  [(set
-   (match_operand:HI 0 "nonimmediate_operand"
+   (match_operand:MVE_7_HI 0 "nonimmediate_operand"
     "=rk, r, l, r, m, r, *t, r, *t, Up, r")
-   (match_operand:HI 1 "general_operand"
-    "rk, I, Py, n, r, m, r, *t, *t, r, Up"))]
+   (match_operand:MVE_7_HI 1 "general_operand"
+    "rk, IDB, Py, n, r, m, r, *t, *t, r, Up"))]
  "TARGET_THUMB2 && (TARGET_VFP_FP16INST || TARGET_HAVE_MVE)
-  && (register_operand (operands[0], HImode)
-       || register_operand (operands[1], HImode))"
+  && (register_operand (operands[0], <MODE>mode)
+       || register_operand (operands[1], <MODE>mode))"
 {
   switch (which_alternative)
     {
     case 0:
-    case 1:
     case 2:
+      return "mov%?\t%0, %1\t%@ movhi";
+    case 1:
+      if (VALID_MVE_PRED_MODE (<MODE>mode))
+        operands[1] = mve_bool_vec_to_const (operands[1]);
+      else
+        operands[1] = gen_lowpart (HImode, operands[1]);
       return "mov%?\t%0, %1\t%@ movhi";
     case 3:
       return "movw%?\t%0, %L1\t%@ movhi";
@@ -199,9 +209,9 @@
     case 8:
       return "vmov%?.f32\t%0, %1\t%@ int";
     case 9:
-      return "vmsr%?\t P0, %1\t%@ movhi";
+      return "vmsr%?\tp0, %1\t%@ movhi";
     case 10:
-      return "vmrs%?\t%0, P0\t%@ movhi";
+      return "vmrs%?\t%0, p0\t%@ movhi";
     default:
       gcc_unreachable ();
     }
@@ -224,7 +234,7 @@
 ;; problems because small constants get converted into adds.
 (define_insn "*arm_movsi_vfp"
   [(set (match_operand:SI 0 "nonimmediate_operand" "=rk,r,r,r,rk,m ,*t,r,*t,*t, *Uv")
-      (match_operand:SI 1 "general_operand"	   "rk, I,K,j,mi,rk,r,*t,*t,*Uvi,*t"))]
+      (match_operand:SI 1 "general_operand"	   "rk, I,K,j,mi,rk,r,t,*t,*Uvi,*t"))]
   "TARGET_ARM && TARGET_HARD_FLOAT
    && (   s_register_operand (operands[0], SImode)
        || s_register_operand (operands[1], SImode))"
@@ -302,9 +312,9 @@
     case 12: case 13:
       return output_move_vfp (operands);
     case 14:
-      return \"vmsr\\t P0, %1\";
+      return \"vmsr\\tp0, %1\";
     case 15:
-      return \"vmrs\\t %0, P0\";
+      return \"vmrs\\t%0, p0\";
     case 16:
       return \"mcr\\tp10, 7, %1, cr1, cr0, 0\\t @SET_FPSCR\";
     case 17:
@@ -357,7 +367,7 @@
     case 8:
       return \"vmov%?\\t%Q0, %R0, %P1\\t%@ int\";
     case 9:
-      if (TARGET_VFP_SINGLE || TARGET_HAVE_MVE)
+      if (TARGET_VFP_SINGLE && !TARGET_HAVE_MVE)
 	return \"vmov%?.f32\\t%0, %1\\t%@ int\;vmov%?.f32\\t%p0, %p1\\t%@ int\";
       else
 	return \"vmov%?.f64\\t%P0, %P1\\t%@ int\";
@@ -375,7 +385,7 @@
 			       (symbol_ref "arm_count_output_move_double_insns (operands) * 4")
                               (eq_attr "alternative" "9")
                                (if_then_else
-                                 (match_test "TARGET_VFP_SINGLE")
+                                 (match_test "TARGET_VFP_SINGLE && !TARGET_HAVE_MVE")
                                  (const_int 8)
                                  (const_int 4))]
                               (const_int 4)))
@@ -414,12 +424,12 @@
     case 6: /* S register from immediate.  */
       return \"vmov.f16\\t%0, %1\t%@ __<fporbf>\";
     case 7: /* S register from memory.  */
-      if (TARGET_HAVE_MVE)
+      if (!auto_inc_p (XEXP (operands[1], 0)))
 	return \"vldr.16\\t%0, %1\";
       else
 	return \"vld1.16\\t{%z0}, %A1\";
     case 8: /* Memory from S register.  */
-      if (TARGET_HAVE_MVE)
+      if (!auto_inc_p (XEXP (operands[0], 0)))
 	return \"vstr.16\\t%1, %0\";
       else
 	return \"vst1.16\\t{%z1}, %A0\";
@@ -734,7 +744,7 @@
       case 6: case 7: case 9:
 	return output_move_double (operands, true, NULL);
       case 8:
-	if (TARGET_VFP_SINGLE)
+	if (TARGET_VFP_SINGLE && !TARGET_HAVE_MVE)
 	  return \"vmov%?.f32\\t%0, %1\;vmov%?.f32\\t%p0, %p1\";
 	else
 	  return \"vmov%?.f64\\t%P0, %P1\";
@@ -748,7 +758,7 @@
    (set (attr "length") (cond [(eq_attr "alternative" "6,7,9") (const_int 8)
 			       (eq_attr "alternative" "8")
 				(if_then_else
-				 (match_test "TARGET_VFP_SINGLE")
+				 (match_test "TARGET_VFP_SINGLE && !TARGET_HAVE_MVE")
 				 (const_int 8)
 				 (const_int 4))]
 			      (const_int 4)))
@@ -1703,12 +1713,15 @@
    (set_attr "type" "mov_reg")]
 )
 
+;; Both this and the next instruction are treated by GCC in the same
+;; way as a blockage pattern.  That's perhaps stronger than it needs
+;; to be, but we do not want accesses to the VFP register bank to be
+;; moved across either instruction.
+
 (define_insn "lazy_store_multiple_insn"
-  [(set (match_operand:SI 0 "s_register_operand" "+&rk")
-	(post_dec:SI (match_dup 0)))
-   (unspec_volatile [(const_int 0)
-		     (mem:SI (post_dec:SI (match_dup 0)))]
-		    VUNSPEC_VLSTM)]
+  [(unspec_volatile
+    [(mem:BLK (match_operand:SI 0 "s_register_operand" "rk"))]
+    VUNSPEC_VLSTM)]
   "use_cmse && reload_completed"
   "vlstm%?\\t%0"
   [(set_attr "predicable" "yes")
@@ -1716,14 +1729,16 @@
 )
 
 (define_insn "lazy_load_multiple_insn"
-  [(set (match_operand:SI 0 "s_register_operand" "+&rk")
-	(post_inc:SI (match_dup 0)))
-   (unspec_volatile:SI [(const_int 0)
-			(mem:SI (match_dup 0))]
-		       VUNSPEC_VLLDM)]
+  [(unspec_volatile
+    [(mem:BLK (match_operand:SI 0 "s_register_operand" "rk,rk"))]
+    VUNSPEC_VLLDM)]
   "use_cmse && reload_completed"
-  "vlldm%?\\t%0"
-  [(set_attr "predicable" "yes")
+  "@
+   vscclrm\\t{vpr}\;vlldm\\t%0
+   vlldm\\t%0"
+  [(set_attr "arch" "fix_vlldm,*")
+   (set_attr "predicable" "no")
+   (set_attr "length" "8,4")
    (set_attr "type" "load_4")]
 )
 
@@ -2123,13 +2138,13 @@
 (define_insn_and_split "no_literal_pool_df_immediate"
   [(set (match_operand:DF 0 "s_register_operand" "=w")
 	(match_operand:DF 1 "const_double_operand" "F"))
-   (clobber (match_operand:DF 2 "s_register_operand" "=r"))]
+   (clobber (match_operand:DI 2 "s_register_operand" "=r"))]
   "arm_disable_literal_pool
    && TARGET_VFP_BASE
    && !arm_const_double_rtx (operands[1])
    && !(TARGET_VFP_DOUBLE && vfp3_const_double_rtx (operands[1]))"
   "#"
-  ""
+  "&& 1"
   [(const_int 0)]
 {
   long buf[2];
@@ -2138,8 +2153,9 @@
   unsigned HOST_WIDE_INT ival = zext_hwi (buf[order], 32);
   ival |= (zext_hwi (buf[1 - order], 32) << 32);
   rtx cst = gen_int_mode (ival, DImode);
-  emit_move_insn (simplify_gen_subreg (DImode, operands[2], DFmode, 0), cst);
-  emit_move_insn (operands[0], operands[2]);
+  emit_move_insn (operands[2], cst);
+  emit_move_insn (operands[0],
+		  simplify_gen_subreg (DFmode, operands[2], DImode, 0));
   DONE;
 }
 )
@@ -2154,7 +2170,7 @@
    && TARGET_VFP_BASE
    && !vfp3_const_double_rtx (operands[1])"
   "#"
-  ""
+  "&& 1"
   [(const_int 0)]
 {
   long buf;

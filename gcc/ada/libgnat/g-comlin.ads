@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 1999-2020, AdaCore                     --
+--                     Copyright (C) 1999-2026, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -1045,7 +1045,7 @@ private
 
    type Depth is range 1 .. Max_Depth;
 
-   type Level is record
+   type Level is limited record
       Name_Last : Natural := 0;
       Dir       : GNAT.Directory_Operations.Dir_Type;
    end record;
@@ -1087,7 +1087,7 @@ private
       --  separators in the pattern.
    end record;
 
-   type Opt_Parser_Data (Arg_Count : Natural) is record
+   type Opt_Parser_Data (Arg_Count : Natural) is limited record
       Arguments : GNAT.OS_Lib.Argument_List_Access;
       --  null if reading from the command line
 
@@ -1097,11 +1097,11 @@ private
       --  This type and this variable are provided to store the current switch
       --  and parameter.
 
-      Is_Switch : Is_Switch_Type (1 .. Arg_Count) := (others => False);
+      Is_Switch : Is_Switch_Type (1 .. Arg_Count) := [others => False];
       --  Indicates wich arguments on the command line are considered not be
       --  switches or parameters to switches (leaving e.g. filenames,...)
 
-      Section : Section_Type (1 .. Arg_Count) := (others => 1);
+      Section : Section_Type (1 .. Arg_Count) := [others => 1];
       --  Contains the number of the section associated with the current
       --  switch. If this number is 0, then it is a section delimiter, which is
       --  never returned by GetOpt.

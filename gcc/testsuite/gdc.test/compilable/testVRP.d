@@ -4,6 +4,7 @@
 // https://issues.dlang.org/show_bug.cgi?id=3147
 // https://issues.dlang.org/show_bug.cgi?id=6000
 // https://issues.dlang.org/show_bug.cgi?id=5225
+// https://issues.dlang.org/show_bug.cgi?id=24855
 
 void add()
 {
@@ -100,6 +101,10 @@ void divideFail()
     short w;
     byte y;
     static assert(!__traits(compiles, y = w / -1));
+    static assert(!__traits(compiles, y = y / w));
+
+    short z;
+    static assert(!__traits(compiles, z = w / z + 1));
 }
 
 void plus1Fail()
@@ -371,7 +376,7 @@ void bug1977_comment20()
 }
 
 /******************************************/
-// 9617
+// https://issues.dlang.org/show_bug.cgi?id=9617
 
 void test9617()
 {

@@ -1,6 +1,6 @@
 // Debugging multiset implementation -*- C++ -*-
 
-// Copyright (C) 2003-2021 Free Software Foundation, Inc.
+// Copyright (C) 2003-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -32,7 +32,7 @@
 #include <debug/safe_sequence.h>
 #include <debug/safe_container.h>
 #include <debug/safe_iterator.h>
-#include <utility>
+#include <bits/stl_pair.h>
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
@@ -113,13 +113,14 @@ namespace __debug
       multiset(const allocator_type& __a)
       : _Base(__a) { }
 
-      multiset(const multiset& __m, const allocator_type& __a)
+      multiset(const multiset& __m,
+	       const __type_identity_t<allocator_type>& __a)
       : _Base(__m, __a) { }
 
-      multiset(multiset&& __m, const allocator_type& __a)
-      noexcept( noexcept(_Base(std::move(__m._M_base()), __a)) )
-      : _Safe(std::move(__m._M_safe()), __a),
-	_Base(std::move(__m._M_base()), __a) { }
+      multiset(multiset&& __m, const __type_identity_t<allocator_type>& __a)
+      noexcept( noexcept(_Base(std::move(__m), __a)) )
+      : _Safe(std::move(__m), __a),
+	_Base(std::move(__m), __a) { }
 
       multiset(initializer_list<value_type> __l, const allocator_type& __a)
 	: _Base(__l, __a)
@@ -131,6 +132,25 @@ namespace __debug
 	: _Base(__gnu_debug::__base(
 		  __glibcxx_check_valid_constructor_range(__first, __last)),
 		__gnu_debug::__base(__last), __a) { }
+
+#if __glibcxx_containers_ranges // C++ >= 23
+      /**
+       * @brief Construct a multiset from a range.
+       * @since C++23
+       */
+      template<std::__detail::__container_compatible_range<value_type> _Rg>
+	multiset(std::from_range_t __t, _Rg&& __rg,
+		 const _Compare& __c,
+		 const allocator_type& __a = allocator_type())
+	: _Base(__t, std::forward<_Rg>(__rg), __c, __a)
+	{ }
+
+      template<std::__detail::__container_compatible_range<value_type> _Rg>
+	multiset(std::from_range_t __t, _Rg&& __rg,
+		 const allocator_type& __a = allocator_type())
+	: _Base(__t, std::forward<_Rg>(__rg), __a)
+	{ }
+#endif
 
       ~multiset() = default;
 #endif
@@ -151,15 +171,7 @@ namespace __debug
       multiset(_Base_ref __x)
       : _Base(__x._M_ref) { }
 
-#if __cplusplus < 201103L
-      multiset&
-      operator=(const multiset& __x)
-      {
-	this->_M_safe() = __x;
-	_M_base() = __x;
-	return *this;
-      }
-#else
+#if __cplusplus >= 201103L
       multiset&
       operator=(const multiset&) = default;
 
@@ -169,7 +181,7 @@ namespace __debug
       multiset&
       operator=(initializer_list<value_type> __l)
       {
-	_M_base() = __l;
+	_Base::operator=(__l);
 	this->_M_invalidate_all();
 	return *this;
       }
@@ -299,7 +311,7 @@ namespace __debug
       { _Base::insert(__l); }
 #endif
 
-#if __cplusplus > 201402L
+#ifdef __glibcxx_node_extract // >= C++17 && HOSTED
       using node_type = typename _Base::node_type;
 
       node_type
@@ -318,6 +330,18 @@ namespace __debug
 	  return extract(__position);
 	return {};
       }
+
+# ifdef __glibcxx_associative_heterogeneous_erasure
+      template <__heterogeneous_tree_key<multiset> _Kt>
+	node_type
+	extract(_Kt&& __key)
+	{
+	  const auto __position = find(__key);
+	  if (__position != end())
+	    return extract(__position);
+	  return {};
+	}
+#endif
 
       iterator
       insert(node_type&& __nh)
@@ -339,8 +363,15 @@ namespace __debug
       erase(const_iterator __position)
       {
 	__glibcxx_check_erase(__position);
-	this->_M_invalidate_if(_Equal(__position.base()));
-	return { _Base::erase(__position.base()), this };
+	return { erase(__position.base()), this };
+      }
+
+      _Base_iterator
+      erase(_Base_const_iterator __position)
+      {
+	__glibcxx_check_erase2(__position);
+	this->_M_invalidate_if(_Equal(__position));
+	return _Base::erase(__position);
       }
 #else
       void
@@ -367,6 +398,23 @@ namespace __debug
 	  }
 	return __count;
       }
+
+# ifdef __glibcxx_associative_heterogeneous_erasure
+      template <__heterogeneous_tree_key<multiset> _Kt>
+	size_type
+	erase(_Kt&& __x)
+	{
+	  auto __victims = _Base::equal_range(__x);
+	  size_type __count = 0;
+	  for (auto __victim = __victims.first; __victim != __victims.second;)
+	    {
+	      this->_M_invalidate_if(_Equal(__victim));
+	      _Base::erase(__victim++);
+	      ++__count;
+	    }
+	  return __count;
+	}
+# endif
 
 #if __cplusplus >= 201103L
       _GLIBCXX_ABI_TAG_CXX11
@@ -438,7 +486,7 @@ namespace __debug
       find(const key_type& __x) const
       { return const_iterator(_Base::find(__x), this); }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -466,7 +514,7 @@ namespace __debug
       lower_bound(const key_type& __x) const
       { return const_iterator(_Base::lower_bound(__x), this); }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -492,7 +540,7 @@ namespace __debug
       upper_bound(const key_type& __x) const
       { return const_iterator(_Base::upper_bound(__x), this); }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -528,7 +576,7 @@ namespace __debug
 			      const_iterator(__res.second, this));
       }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -594,6 +642,17 @@ namespace __debug
     multiset(initializer_list<_Key>, _Allocator)
     -> multiset<_Key, less<_Key>, _Allocator>;
 
+#if __glibcxx_containers_ranges // C++ >= 23
+  template<ranges::input_range _Rg,
+	   __not_allocator_like _Compare = less<ranges::range_value_t<_Rg>>,
+	   __allocator_like _Alloc = std::allocator<ranges::range_value_t<_Rg>>>
+    multiset(from_range_t, _Rg&&, _Compare = _Compare(), _Alloc = _Alloc())
+      -> multiset<ranges::range_value_t<_Rg>, _Compare, _Alloc>;
+
+  template<ranges::input_range _Rg, __allocator_like _Alloc>
+    multiset(from_range_t, _Rg&&, _Alloc)
+      -> multiset<ranges::range_value_t<_Rg>, less<ranges::range_value_t<_Rg>>, _Alloc>;
+#endif
 #endif // deduction guides
 
   template<typename _Key, typename _Compare, typename _Allocator>

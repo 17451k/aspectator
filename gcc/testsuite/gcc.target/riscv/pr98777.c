@@ -1,5 +1,6 @@
 /* { dg-do compile } */
-/* { dg-options "-fstrict-aliasing -O" } */
+/* { dg-options "-fstrict-aliasing -std=gnu17" } */
+/* { dg-skip-if "" { *-*-* } { "-O0" } } */
 
 typedef struct {
   _Complex e;

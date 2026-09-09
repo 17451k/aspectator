@@ -6,7 +6,7 @@
  *                                                                          *
  *                              C Header File                               *
  *                                                                          *
- *          Copyright (C) 1992-2020, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2026, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -101,11 +101,7 @@ extern "C" {
 #endif
 
 /* Type corresponding to GNAT.OS_Lib.OS_Time */
-#if defined (_WIN64)
 typedef long long OS_Time;
-#else
-typedef long OS_Time;
-#endif
 
 #define __int64 long long
 GNAT_STRUCT_STAT;
@@ -176,7 +172,7 @@ extern int    __gnat_open_new_temp		   (char *, int);
 extern int    __gnat_mkdir			   (char *, int);
 extern int    __gnat_stat			   (char *,
 						    GNAT_STRUCT_STAT *);
-extern int    __gnat_unlink                        (char *);
+extern int    __gnat_unlink                        (char *, int encoding);
 extern int    __gnat_rename                        (char *, char *);
 extern int    __gnat_chdir                         (char *);
 extern int    __gnat_rmdir                         (char *);
@@ -205,7 +201,7 @@ extern OS_Time __gnat_file_time_name                (char *);
 extern OS_Time __gnat_file_time_fd                  (int);
 /* return -1 in case of error */
 
-extern void   __gnat_set_file_time_name		   (char *, time_t);
+extern void   __gnat_set_file_time_name		   (char *, OS_Time);
 
 extern int    __gnat_dup			            (int);
 extern int    __gnat_dup2			            (int, int);
@@ -244,7 +240,7 @@ extern int    __gnat_portable_wait                 (int *);
 extern int    __gnat_portable_no_block_wait        (int *);
 extern int    __gnat_current_process_id            (void);
 extern char  *__gnat_locate_exec                   (char *, char *);
-extern char  *__gnat_locate_exec_on_path           (char *);
+extern char  *__gnat_locate_exec_on_path           (char *, int);
 extern char  *__gnat_locate_regular_file           (char *, char *);
 extern void   __gnat_maybe_glob_args               (int *, char ***);
 extern void   __gnat_os_exit			   (int);
@@ -258,8 +254,6 @@ extern char  *__gnat_to_host_dir_spec              (char *, int);
 extern char  *__gnat_to_host_file_spec             (char *);
 extern char  *__gnat_to_canonical_path_spec	   (char *);
 extern void   __gnat_adjust_os_resource_limits	   (void);
-extern void   convert_addresses			   (const char *, void *, int,
-						    void *, int *);
 extern int    __gnat_copy_attribs		   (char *, char *, int);
 extern int    __gnat_feof		  	   (FILE *);
 extern int    __gnat_ferror                        (FILE *);

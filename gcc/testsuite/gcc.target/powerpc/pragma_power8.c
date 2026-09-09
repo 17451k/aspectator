@@ -1,6 +1,9 @@
 /* { dg-do compile } */
 /* { dg-require-effective-target lp64 } */
-/* { dg-require-effective-target powerpc_p8vector_ok } */
+/* Ensure there is no explicit -mno-vsx etc., otherwise
+   the below bif __builtin_vec_vcmpeq_p replies on power8
+   vsx would fail.  */
+/* { dg-require-effective-target powerpc_vsx } */
 /* { dg-options "-mdejagnu-cpu=power6 -maltivec -O2" } */
 
 #include <altivec.h>
@@ -19,6 +22,7 @@ test1 (vector int a, vector int b)
 #pragma GCC target ("cpu=power7")
 /* Force a re-read of altivec.h with new cpu target. */
 #undef _ALTIVEC_H
+#undef _RS6000_VECDEFINES_H
 #include <altivec.h>
 #ifdef _ARCH_PWR7
 vector signed int
@@ -33,6 +37,7 @@ test2 (vector signed int a, vector signed int b)
 #pragma GCC target ("cpu=power8")
 /* Force a re-read of altivec.h with new cpu target. */
 #undef _ALTIVEC_H
+#undef _RS6000_VECDEFINES_H
 #include <altivec.h>
 #ifdef _ARCH_PWR8
 vector int

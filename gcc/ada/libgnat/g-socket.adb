@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 2001-2020, AdaCore                     --
+--                     Copyright (C) 2001-2026, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -47,6 +47,7 @@ with GNAT.Sockets.Poll;
 with System;               use System;
 with System.Communication; use System.Communication;
 with System.CRTL;          use System.CRTL;
+with System.C_Time;
 with System.Task_Lock;
 
 package body GNAT.Sockets is
@@ -71,31 +72,34 @@ package body GNAT.Sockets is
    --  Correspondence tables
 
    Levels : constant array (Level_Type) of C.int :=
-              (Socket_Level               => SOSC.SOL_SOCKET,
+              [Socket_Level               => SOSC.SOL_SOCKET,
                IP_Protocol_For_IP_Level   => SOSC.IPPROTO_IP,
                IP_Protocol_For_IPv6_Level => SOSC.IPPROTO_IPV6,
                IP_Protocol_For_UDP_Level  => SOSC.IPPROTO_UDP,
                IP_Protocol_For_TCP_Level  => SOSC.IPPROTO_TCP,
                IP_Protocol_For_ICMP_Level => SOSC.IPPROTO_ICMP,
                IP_Protocol_For_IGMP_Level => SOSC.IPPROTO_IGMP,
-               IP_Protocol_For_RAW_Level  => SOSC.IPPROTO_RAW);
+               IP_Protocol_For_RAW_Level  => SOSC.IPPROTO_RAW];
 
    Modes : constant array (Mode_Type) of C.int :=
-             (Socket_Stream   => SOSC.SOCK_STREAM,
+             [Socket_Stream   => SOSC.SOCK_STREAM,
               Socket_Datagram => SOSC.SOCK_DGRAM,
-              Socket_Raw      => SOSC.SOCK_RAW);
+              Socket_Raw      => SOSC.SOCK_RAW];
 
    Shutmodes : constant array (Shutmode_Type) of C.int :=
-                 (Shut_Read       => SOSC.SHUT_RD,
+                 [Shut_Read       => SOSC.SHUT_RD,
                   Shut_Write      => SOSC.SHUT_WR,
-                  Shut_Read_Write => SOSC.SHUT_RDWR);
+                  Shut_Read_Write => SOSC.SHUT_RDWR];
 
    Requests : constant array (Request_Name) of SOSC.IOCTL_Req_T :=
-                (Non_Blocking_IO => SOSC.FIONBIO,
-                 N_Bytes_To_Read => SOSC.FIONREAD);
+                [Non_Blocking_IO => SOSC.FIONBIO,
+                 N_Bytes_To_Read => SOSC.FIONREAD];
 
    Options : constant array (Specific_Option_Name) of C.int :=
-               (Keep_Alive          => SOSC.SO_KEEPALIVE,
+               [Keep_Alive          => SOSC.SO_KEEPALIVE,
+                Keep_Alive_Count    => SOSC.TCP_KEEPCNT,
+                Keep_Alive_Idle     => SOSC.TCP_KEEPIDLE,
+                Keep_Alive_Interval => SOSC.TCP_KEEPINTVL,
                 Reuse_Address       => SOSC.SO_REUSEADDR,
                 Broadcast           => SOSC.SO_BROADCAST,
                 Send_Buffer         => SOSC.SO_SNDBUF,
@@ -117,15 +121,16 @@ package body GNAT.Sockets is
                 IPv6_Only           => SOSC.IPV6_V6ONLY,
                 Send_Timeout        => SOSC.SO_SNDTIMEO,
                 Receive_Timeout     => SOSC.SO_RCVTIMEO,
-                Busy_Polling        => SOSC.SO_BUSY_POLL);
+                Busy_Polling        => SOSC.SO_BUSY_POLL,
+                Bind_To_Device      => SOSC.SO_BINDTODEVICE];
    --  ??? Note: for OpenSolaris, Receive_Packet_Info should be IP_RECVPKTINFO,
    --  but for Linux compatibility this constant is the same as IP_PKTINFO.
 
    Flags : constant array (0 .. 3) of C.int :=
-             (0 => SOSC.MSG_OOB,     --  Process_Out_Of_Band_Data
+             [0 => SOSC.MSG_OOB,     --  Process_Out_Of_Band_Data
               1 => SOSC.MSG_PEEK,    --  Peek_At_Incoming_Data
               2 => SOSC.MSG_WAITALL, --  Wait_For_A_Full_Reception
-              3 => SOSC.MSG_EOR);    --  Send_End_Of_Record
+              3 => SOSC.MSG_EOR];    --  Send_End_Of_Record
 
    Socket_Error_Id : constant Exception_Id := Socket_Error'Identity;
    Host_Error_Id   : constant Exception_Id := Host_Error'Identity;
@@ -175,25 +180,20 @@ package body GNAT.Sockets is
    function Value (S : System.Address) return String;
    --  Same as Interfaces.C.Strings.Value but taking a System.Address
 
-   function To_Timeval (Val : Timeval_Duration) return Timeval;
-   --  Separate Val in seconds and microseconds
-
-   function To_Duration (Val : Timeval) return Timeval_Duration;
-   --  Reconstruct a Duration value from a Timeval record (seconds and
-   --  microseconds).
-
    function Dedot (Value : String) return String
    is (if Value /= "" and then Value (Value'Last) = '.'
        then Value (Value'First .. Value'Last - 1)
        else Value);
    --  Removes dot at the end of error message
 
-   procedure Raise_Host_Error (H_Error : Integer; Name : String);
+   procedure Raise_Host_Error (H_Error : Integer; Name : String)
+   with No_Return;
    --  Raise Host_Error exception with message describing error code (note
    --  hstrerror seems to be obsolete) from h_errno. Name is the name
    --  or address that was being looked up.
 
-   procedure Raise_GAI_Error (RC : C.int; Name : String);
+   procedure Raise_GAI_Error (RC : C.int; Name : String)
+   with No_Return;
    --  Raise Host_Error with exception message in case of errors in
    --  getaddrinfo and getnameinfo.
 
@@ -522,7 +522,7 @@ package body GNAT.Sockets is
       Res  : C.int;
       Last : C.int;
       RSig : Socket_Type := No_Socket;
-      TVal : aliased Timeval;
+      TVal : aliased System.C_Time.timeval;
       TPtr : Timeval_Access;
 
    begin
@@ -537,7 +537,7 @@ package body GNAT.Sockets is
       if Timeout = Forever then
          TPtr := null;
       else
-         TVal := To_Timeval (Timeout);
+         TVal := System.C_Time.To_Timeval (Timeout);
          TPtr := TVal'Unchecked_Access;
       end if;
 
@@ -1031,7 +1031,6 @@ package body GNAT.Sockets is
 
       R     : C.int;
       Iter  : Addrinfo_Access;
-      Found : Boolean;
 
       function To_Array return Address_Info_Array;
       --  Convert taken from OS addrinfo list A into Address_Info_Array
@@ -1041,8 +1040,6 @@ package body GNAT.Sockets is
       --------------
 
       function To_Array return Address_Info_Array is
-         Result : Address_Info_Array (1 .. 8);
-
          procedure Unsupported;
          --  Calls Unknown callback if defiend
 
@@ -1060,6 +1057,9 @@ package body GNAT.Sockets is
                   Integer (Iter.ai_addrlen));
             end if;
          end Unsupported;
+
+         Found  : Boolean;
+         Result : Address_Info_Array (1 .. 8);
 
       --  Start of processing for To_Array
 
@@ -1082,8 +1082,8 @@ package body GNAT.Sockets is
                if Result (J).Addr.Family = Family_Unspec then
                   Unsupported;
                else
+                  Found := False;
                   for M in Modes'Range loop
-                     Found := False;
                      if Modes (M) = Iter.ai_socktype then
                         Result (J).Mode := M;
                         Found := True;
@@ -1181,8 +1181,8 @@ package body GNAT.Sockets is
       Numeric_Serv : Boolean := False) return Host_Service
    is
       SA  : aliased Sockaddr;
-      H   : aliased C.char_array := (1 .. SOSC.NI_MAXHOST => C.nul);
-      S   : aliased C.char_array := (1 .. SOSC.NI_MAXSERV => C.nul);
+      H   : aliased C.char_array := [1 .. SOSC.NI_MAXHOST => C.nul];
+      S   : aliased C.char_array := [1 .. SOSC.NI_MAXSERV => C.nul];
       RC  : C.int;
       Len : C.int;
    begin
@@ -1408,17 +1408,21 @@ package body GNAT.Sockets is
       use type C.unsigned;
       use type C.unsigned_char;
 
+      --  SOSC.IF_NAMESIZE may be not defined, ensure that we have at least
+      --  a valid range for VS declared below.
+      NS  : constant Interfaces.C.size_t :=
+              (if SOSC.IF_NAMESIZE = -1 then 256 else SOSC.IF_NAMESIZE);
       V8  : aliased Two_Ints;
       V4  : aliased C.int;
       U4  : aliased C.unsigned;
       V1  : aliased C.unsigned_char;
-      VT  : aliased Timeval;
+      VS  : aliased C.char_array (1 .. NS); -- for devices name
+      VT  : aliased System.C_Time.timeval;
       Len : aliased C.int;
       Add : System.Address;
       Res : C.int;
       Opt : Option_Type (Name);
       Onm : Interfaces.C.int;
-
    begin
       if Name in Specific_Option_Name then
          Onm := Options (Name);
@@ -1442,6 +1446,9 @@ package body GNAT.Sockets is
             | Error
             | Generic_Option
             | Keep_Alive
+            | Keep_Alive_Count
+            | Keep_Alive_Idle
+            | Keep_Alive_Interval
             | Multicast_If_V4
             | Multicast_If_V6
             | Multicast_Loop_V4
@@ -1483,6 +1490,11 @@ package body GNAT.Sockets is
          =>
             Len := V8'Size / 8;
             Add := V8'Address;
+
+         when Bind_To_Device
+         =>
+            Len := VS'Length;
+            Add := VS'Address;
       end case;
 
       Res :=
@@ -1510,6 +1522,15 @@ package body GNAT.Sockets is
             | IPv6_Only
          =>
             Opt.Enabled := (V4 /= 0);
+
+         when Keep_Alive_Count =>
+            Opt.Count := Natural (V4);
+
+         when Keep_Alive_Idle =>
+            Opt.Idle_Seconds := Natural (V4);
+
+         when Keep_Alive_Interval =>
+            Opt.Interval_Seconds := Natural (V4);
 
          when Busy_Polling =>
             Opt.Microseconds := Natural (V4);
@@ -1555,19 +1576,28 @@ package body GNAT.Sockets is
             | Send_Timeout
          =>
             if Is_Windows then
-
-               --  Timeout is in milliseconds, actual value is 500 ms +
-               --  returned value (unless it is 0).
-
                if U4 = 0 then
                   Opt.Timeout := 0.0;
+
                else
-                  Opt.Timeout :=  Duration (U4) / 1000 + 0.500;
+                  if Minus_500ms_Windows_Timeout then
+                     --  Timeout is in milliseconds, actual value is 500 ms +
+                     --  returned value (unless it is 0).
+
+                     U4 := U4 + 500;
+                  end if;
+
+                  Opt.Timeout := Duration (U4) / 1000;
                end if;
 
+            elsif System.C_Time.In_Timeval_Duration (VT) then
+               Opt.Timeout := System.C_Time.To_Duration (VT);
             else
-               Opt.Timeout := To_Duration (VT);
+               Opt.Timeout := Forever;
             end if;
+
+         when Bind_To_Device =>
+            Opt.Device := ASU.To_Unbounded_String (C.To_Ada (VS));
       end case;
 
       return Opt;
@@ -1602,7 +1632,7 @@ package body GNAT.Sockets is
             when Family_Inet   => 4 * Value.Sin_V4'Length,
             when Family_Inet6  => 6 * 5 + 4 * 4);
             --  1234:1234:1234:1234:1234:1234:123.123.123.123
-      Dst : aliased C.char_array := (1 .. C.size_t (Size) => C.nul);
+      Dst : aliased C.char_array := [1 .. C.size_t (Size) => C.nul];
       Ia  : aliased In_Addr_Union (Value.Family);
    begin
       case Value.Family is
@@ -1924,7 +1954,7 @@ package body GNAT.Sockets is
 
    procedure Listen_Socket
      (Socket : Socket_Type;
-      Length : Natural := 15)
+      Length : Natural := SOSC.BACKLOG_MAX)
    is
       Res : constant C.int := C_Listen (C.int (Socket), C.int (Length));
    begin
@@ -2595,7 +2625,11 @@ package body GNAT.Sockets is
       V4  : aliased C.int;
       U4  : aliased C.unsigned;
       V1  : aliased C.unsigned_char;
-      VT  : aliased Timeval;
+      VS  : aliased C.char_array
+              (1 .. (if Option.Name = Bind_To_Device
+                     then C.size_t (ASU.Length (Option.Device) + 1)
+                     else 0));
+      VT  : aliased System.C_Time.timeval;
       Len : C.int;
       Add : System.Address := Null_Address;
       Res : C.int;
@@ -2617,6 +2651,21 @@ package body GNAT.Sockets is
             | IPv6_Only
          =>
             V4  := C.int (Boolean'Pos (Option.Enabled));
+            Len := V4'Size / 8;
+            Add := V4'Address;
+
+         when Keep_Alive_Count =>
+            V4  := C.int (Option.Count);
+            Len := V4'Size / 8;
+            Add := V4'Address;
+
+         when Keep_Alive_Idle =>
+            V4  := C.int (Option.Idle_Seconds);
+            Len := V4'Size / 8;
+            Add := V4'Address;
+
+         when Keep_Alive_Interval =>
+            V4  := C.int (Option.Interval_Seconds);
             Len := V4'Size / 8;
             Add := V4'Address;
 
@@ -2694,7 +2743,7 @@ package body GNAT.Sockets is
                Len := U4'Size / 8;
                Add := U4'Address;
 
-               U4 := C.unsigned (Option.Timeout / 0.001);
+               U4 := C.unsigned (Option.Timeout * 1000);
 
                if Option.Timeout > 0.0 and then U4 = 0 then
                   --  Avoid round to zero. Zero timeout mean unlimited
@@ -2714,10 +2763,15 @@ package body GNAT.Sockets is
                end if;
 
             else
-               VT  := To_Timeval (Option.Timeout);
+               VT  := System.C_Time.To_Timeval (Option.Timeout);
                Len := VT'Size / 8;
                Add := VT'Address;
             end if;
+
+         when Bind_To_Device =>
+            VS := C.To_C (ASU.To_String (Option.Device));
+            Len := C.int (VS'Length);
+            Add := VS'Address;
       end case;
 
       if Option.Name in Specific_Option_Name then
@@ -2806,33 +2860,6 @@ package body GNAT.Sockets is
    begin
       return Integer (Socket);
    end To_C;
-
-   -----------------
-   -- To_Duration --
-   -----------------
-
-   function To_Duration (Val : Timeval) return Timeval_Duration is
-      Max_D : constant Long_Long_Integer := Long_Long_Integer (Forever - 0.5);
-      Tv_sec_64 : constant Boolean := SOSC.SIZEOF_tv_sec = 8;
-      --  Need to separate this condition into the constant declaration to
-      --  avoid GNAT warning about "always true" or "always false".
-   begin
-      if Tv_sec_64 then
-         --  Check for possible Duration overflow when Tv_Sec field is 64 bit
-         --  integer.
-
-         if Val.Tv_Sec > time_t (Max_D)
-             or else
-           (Val.Tv_Sec = time_t (Max_D)
-              and then
-            Val.Tv_Usec > suseconds_t ((Forever - Duration (Max_D)) * 1E6))
-         then
-            return Forever;
-         end if;
-      end if;
-
-      return Duration (Val.Tv_Sec) + Duration (Val.Tv_Usec) * 1.0E-6;
-   end To_Duration;
 
    -------------------
    -- To_Host_Entry --
@@ -2982,36 +3009,6 @@ package body GNAT.Sockets is
    begin
       return HN.Name (1 .. HN.Length);
    end To_String;
-
-   ----------------
-   -- To_Timeval --
-   ----------------
-
-   function To_Timeval (Val : Timeval_Duration) return Timeval is
-      S  : time_t;
-      uS : suseconds_t;
-
-   begin
-      --  If zero, set result as zero (otherwise it gets rounded down to -1)
-
-      if Val = 0.0 then
-         S  := 0;
-         uS := 0;
-
-      --  Normal case where we do round down
-
-      else
-         S  := time_t (Val - 0.5);
-         uS := suseconds_t (1_000_000 * (Val - Selector_Duration (S)) - 0.5);
-
-         if uS = -1 then
-            --  It happen on integer duration
-            uS := 0;
-         end if;
-      end if;
-
-      return (S, uS);
-   end To_Timeval;
 
    -----------
    -- Value --

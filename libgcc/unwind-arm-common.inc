@@ -1,5 +1,5 @@
 /* Common unwinding code for ARM EABI and C6X.
-   Copyright (C) 2004-2021 Free Software Foundation, Inc.
+   Copyright (C) 2004-2026 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
    This file is free software; you can redistribute it and/or modify it
@@ -50,14 +50,8 @@
 #define ARM_SIGCONTEXT_R0		0xc
 #endif
 
-/* We add a prototype for abort here to avoid creating a dependency on
-   target headers.  */
-extern void abort (void);
-
 /* Definitions for C++ runtime support routines.  We make these weak
    declarations to avoid pulling in libsupc++ unnecessarily.  */
-typedef unsigned char bool;
-
 typedef struct _ZSt9type_info type_info; /* This names C++ type_info type */
 enum __cxa_type_match_result
   {
@@ -252,7 +246,7 @@ __gnu_personality_sigframe_fdpic (_Unwind_State state,
 	  + ARM_SIGCONTEXT_R0;
     /* Restore regs saved on stack by the kernel.  */
     for (i = 0; i < 16; i++)
-	_Unwind_VRS_Set (context, _UVRSC_CORE, i, _UVRSD_UINT32, sp + 4 * i);
+	_Unwind_VRS_Set (context, _UVRSC_CORE, i, _UVRSD_UINT32, (void *)(sp + 4 * i));
 
     return _URC_CONTINUE_UNWIND;
 }

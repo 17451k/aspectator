@@ -1,7 +1,8 @@
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/fail20.d(16): Error: need member function opCmp() for struct FOO to compare
+fail_compilation/fail20.d(17): Error: no operator `<` for type `FOO`
+fail_compilation/fail20.d(11):        perhaps overload it with `int opCmp(FOO other) const {}`
 ---
 */
 
@@ -14,6 +15,6 @@ void main()
     FOO one;
     FOO two;
     if (one < two){} // This should tell me that there
-                     // is no opCmp() defined instead 
+                     // is no opCmp() defined instead
                      // of crashing.
 }

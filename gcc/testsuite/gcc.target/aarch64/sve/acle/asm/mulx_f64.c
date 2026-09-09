@@ -64,7 +64,7 @@ TEST_UNIFORM_Z (mulx_1_f64_m_tied1, svfloat64_t,
 		z0 = svmulx_m (p0, z0, 1))
 
 /*
-** mulx_1_f64_m_untied: { xfail *-*-* }
+** mulx_1_f64_m_untied:
 **	fmov	(z[0-9]+\.d), #1\.0(?:e\+0)?
 **	movprfx	z0, z1
 **	fmulx	z0\.d, p0/m, z0\.d, \1
@@ -85,7 +85,7 @@ TEST_UNIFORM_Z (mulx_0p5_f64_m_tied1, svfloat64_t,
 		z0 = svmulx_m (p0, z0, 0.5))
 
 /*
-** mulx_0p5_f64_m_untied: { xfail *-*-* }
+** mulx_0p5_f64_m_untied:
 **	fmov	(z[0-9]+\.d), #(?:0\.5|5\.0e-1)
 **	movprfx	z0, z1
 **	fmulx	z0\.d, p0/m, z0\.d, \1
@@ -106,7 +106,7 @@ TEST_UNIFORM_Z (mulx_2_f64_m_tied1, svfloat64_t,
 		z0 = svmulx_m (p0, z0, 2))
 
 /*
-** mulx_2_f64_m_untied: { xfail *-*-* }
+** mulx_2_f64_m_untied:
 **	fmov	(z[0-9]+\.d), #2\.0(?:e\+0)?
 **	movprfx	z0, z1
 **	fmulx	z0\.d, p0/m, z0\.d, \1
@@ -303,7 +303,7 @@ TEST_UNIFORM_ZD (mulx_d4_f64_x_tied1, svfloat64_t, double,
 		 z0 = svmulx_x (p0, z0, d4))
 
 /*
-** mulx_d4_f64_x_untied: { xfail *-*-* }
+** mulx_d4_f64_x_untied:
 **	mov	z0\.d, d4
 **	fmulx	z0\.d, p0/m, z0\.d, z1\.d
 **	ret

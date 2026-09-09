@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -36,7 +36,7 @@ with Ada.Iterator_Interfaces;
 with Ada.Containers.Helpers;
 private with Ada.Finalization;
 private with Ada.Streams;
-private with Ada.Strings.Text_Output;
+private with Ada.Strings.Text_Buffers;
 
 generic
    type Index_Type is range <>;
@@ -63,15 +63,15 @@ is
      Variable_Indexing => Reference,
      Default_Iterator  => Iterate,
      Iterator_Element  => Element_Type,
-     Aggregate         => (Empty          => Empty_Vector,
+     Aggregate         => (Empty          => Empty,
                            Add_Unnamed    => Append,
                            New_Indexed    => New_Vector,
-                           Assign_Indexed => Replace_Element);
+                           Assign_Indexed => Replace_Element),
+     Preelaborable_Initialization;
 
-   pragma Preelaborable_Initialization (Vector);
-
-   type Cursor is private;
-   pragma Preelaborable_Initialization (Cursor);
+   type Cursor is private
+   with
+     Preelaborable_Initialization;
 
    Empty_Vector : constant Vector;
 
@@ -120,11 +120,12 @@ is
    procedure Clear (Container : in out Vector);
 
    type Constant_Reference_Type
-      (Element : not null access constant Element_Type) is private
+     (Element : not null access constant Element_Type) is limited private
    with
       Implicit_Dereference => Element;
 
-   type Reference_Type (Element : not null access Element_Type) is private
+   type Reference_Type
+     (Element : not null access Element_Type) is limited private
    with
       Implicit_Dereference => Element;
 
@@ -428,7 +429,7 @@ private
    end record with Put_Image => Put_Image;
 
    procedure Put_Image
-     (S : in out Ada.Strings.Text_Output.Sink'Class; V : Vector);
+     (S : in out Ada.Strings.Text_Buffers.Root_Buffer_Type'Class; V : Vector);
 
    overriding procedure Adjust (Container : in out Vector);
    overriding procedure Finalize (Container : in out Vector);
@@ -512,10 +513,10 @@ private
 
    for Reference_Type'Read use Read;
 
-   --  Three operations are used to optimize in the expansion of "for ... of"
-   --  loops: the Next(Cursor) procedure in the visible part, and the following
-   --  Pseudo_Reference and Get_Element_Access functions. See Exp_Ch5 for
-   --  details.
+   --  See Ada.Containers.Vectors for documentation on the following
+
+   procedure _Next (Position : in out Cursor) renames Next;
+   procedure _Previous (Position : in out Cursor) renames Previous;
 
    function Pseudo_Reference
      (Container : aliased Vector'Class) return Reference_Control_Type;

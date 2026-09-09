@@ -1,5 +1,5 @@
 /* Loop versioning pass.
-   Copyright (C) 2018-2021 Free Software Foundation, Inc.
+   Copyright (C) 2018-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -30,19 +30,18 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa-loop.h"
 #include "ssa.h"
 #include "tree-scalar-evolution.h"
-#include "tree-chrec.h"
 #include "tree-ssa-loop-ivopts.h"
 #include "fold-const.h"
 #include "tree-ssa-propagate.h"
 #include "tree-inline.h"
 #include "domwalk.h"
-#include "alloc-pool.h"
-#include "vr-values.h"
-#include "gimple-ssa-evrp-analyze.h"
 #include "tree-vectorizer.h"
 #include "omp-general.h"
 #include "predict.h"
 #include "tree-into-ssa.h"
+#include "gimple-range.h"
+#include "tree-cfg.h"
+#include "hierarchical_discriminator.h"
 
 namespace {
 
@@ -260,15 +259,11 @@ private:
   public:
     lv_dom_walker (loop_versioning &);
 
-    edge before_dom_children (basic_block) FINAL OVERRIDE;
-    void after_dom_children (basic_block) FINAL OVERRIDE;
+    edge before_dom_children (basic_block) final override;
 
   private:
     /* The parent pass.  */
     loop_versioning &m_lv;
-
-    /* Used to build context-dependent range information.  */
-    evrp_range_analyzer m_range_analyzer;
   };
 
   /* Used to simplify statements based on conditions that are established
@@ -277,7 +272,7 @@ private:
   {
   public:
     name_prop (loop_info &li) : m_li (li) {}
-    tree value_of_expr (tree name, gimple *) FINAL OVERRIDE;
+    tree value_of_expr (tree name, gimple *) final override;
 
   private:
     /* Information about the versioning we've performed on the loop.  */
@@ -308,7 +303,7 @@ private:
   bool analyze_block (basic_block);
   bool analyze_blocks ();
 
-  void prune_loop_conditions (class loop *, vr_values *);
+  void prune_loop_conditions (class loop *);
   bool prune_conditions ();
 
   void merge_loop_info (class loop *, class loop *);
@@ -327,9 +322,6 @@ private:
 
   /* An obstack to use for general allocation.  */
   obstack m_obstack;
-
-  /* The number of loops in the function.  */
-  unsigned int m_nloops;
 
   /* The total number of loop version conditions we've found.  */
   unsigned int m_num_conditions;
@@ -500,7 +492,7 @@ loop_info::worth_versioning_p () const
 }
 
 loop_versioning::lv_dom_walker::lv_dom_walker (loop_versioning &lv)
-  : dom_walker (CDI_DOMINATORS), m_lv (lv), m_range_analyzer (false)
+  : dom_walker (CDI_DOMINATORS), m_lv (lv)
 {
 }
 
@@ -509,24 +501,10 @@ loop_versioning::lv_dom_walker::lv_dom_walker (loop_versioning &lv)
 edge
 loop_versioning::lv_dom_walker::before_dom_children (basic_block bb)
 {
-  m_range_analyzer.enter (bb);
-
   if (bb == bb->loop_father->header)
-    m_lv.prune_loop_conditions (bb->loop_father, &m_range_analyzer);
-
-  for (gimple_stmt_iterator si = gsi_start_bb (bb); !gsi_end_p (si);
-       gsi_next (&si))
-    m_range_analyzer.record_ranges_from_stmt (gsi_stmt (si), false);
+    m_lv.prune_loop_conditions (bb->loop_father);
 
   return NULL;
-}
-
-/* Process BB after processing the blocks it dominates.  */
-
-void
-loop_versioning::lv_dom_walker::after_dom_children (basic_block bb)
-{
-  m_range_analyzer.leave (bb);
 }
 
 /* Decide whether to replace VAL with a new value in a versioned loop.
@@ -545,10 +523,10 @@ loop_versioning::name_prop::value_of_expr (tree val, gimple *)
 
 loop_versioning::loop_versioning (function *fn)
   : m_fn (fn),
-    m_nloops (number_of_loops (fn)),
     m_num_conditions (0),
     m_address_table (31)
 {
+  unsigned m_nloops = number_of_loops (fn);
   bitmap_obstack_initialize (&m_bitmap_obstack);
   gcc_obstack_init (&m_obstack);
 
@@ -576,7 +554,7 @@ loop_versioning::loop_versioning (function *fn)
      handled efficiently by scalar code.  omp_max_vf calculates the
      maximum number of bytes in a vector, when such a value is relevant
      to loop optimization.  */
-  m_maximum_scale = estimated_poly_value (omp_max_vf ());
+  m_maximum_scale = estimated_poly_value (omp_max_vf (false));
   m_maximum_scale = MAX (m_maximum_scale, MAX_FIXED_MODE_SIZE);
 }
 
@@ -960,7 +938,7 @@ loop_versioning::analyze_term_using_scevs (address_info &address,
 	{
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_NOTE, address.stmt,
-			     "looking through %G", assign);
+			     "looking through %G", (gimple *) assign);
 	  stride = strip_casts (gimple_assign_rhs1 (assign));
 	}
 
@@ -1428,8 +1406,7 @@ loop_versioning::analyze_blocks ()
      versioning at that level could be useful in some cases.  */
   get_loop_info (get_loop (m_fn, 0)).rejected_p = true;
 
-  class loop *loop;
-  FOR_EACH_LOOP (loop, LI_FROM_INNERMOST)
+  for (auto loop : loops_list (cfun, LI_FROM_INNERMOST))
     {
       loop_info &linfo = get_loop_info (loop);
 
@@ -1458,7 +1435,7 @@ loop_versioning::analyze_blocks ()
 	      {
 		linfo.rejected_p = true;
 		break;
-	    }
+	      }
 
 	  if (!linfo.rejected_p)
 	    {
@@ -1483,18 +1460,21 @@ loop_versioning::analyze_blocks ()
    LOOP.  */
 
 void
-loop_versioning::prune_loop_conditions (class loop *loop, vr_values *vrs)
+loop_versioning::prune_loop_conditions (class loop *loop)
 {
   loop_info &li = get_loop_info (loop);
 
   int to_remove = -1;
   bitmap_iterator bi;
   unsigned int i;
+  int_range_max r;
   EXECUTE_IF_SET_IN_BITMAP (&li.unity_names, 0, i, bi)
     {
       tree name = ssa_name (i);
-      const value_range_equiv *vr = vrs->get_value_range (name);
-      if (vr && !vr->may_contain_p (build_one_cst (TREE_TYPE (name))))
+      gimple *stmt = first_stmt (loop->header);
+
+      if (get_range_query (cfun)->range_of_expr (r, name, stmt)
+	  && !r.contains_p (wi::one (TYPE_PRECISION (TREE_TYPE (name)))))
 	{
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_NOTE, find_loop_location (loop),
@@ -1650,8 +1630,7 @@ loop_versioning::make_versioning_decisions ()
   AUTO_DUMP_SCOPE ("make_versioning_decisions",
 		   dump_user_location_t::from_function_decl (m_fn->decl));
 
-  class loop *loop;
-  FOR_EACH_LOOP (loop, LI_FROM_INNERMOST)
+  for (auto loop : loops_list (cfun, LI_FROM_INNERMOST))
     {
       loop_info &linfo = get_loop_info (loop);
       if (decide_whether_loop_is_versionable (loop))
@@ -1700,7 +1679,8 @@ loop_versioning::version_loop (class loop *loop)
 
   /* Convert the condition into a suitable gcond.  */
   gimple_seq stmts = NULL;
-  cond = force_gimple_operand_1 (cond, &stmts, is_gimple_condexpr, NULL_TREE);
+  cond = force_gimple_operand_1 (cond, &stmts, is_gimple_condexpr_for_cond,
+				 NULL_TREE);
 
   /* Version the loop.  */
   initialize_original_copy_tables ();
@@ -1720,6 +1700,25 @@ loop_versioning::version_loop (class loop *loop)
       return false;
     }
 
+  /* Assign hierarchical discriminators to distinguish loop versions.
+     This allows AutoFDO to distinguish profile data from different
+     versions.  No multiplicity for non-vectorized loop versioning.  */
+  gimple *optimized_last = last_nondebug_stmt (li.optimized_loop->header);
+  location_t optimized_loc
+    = optimized_last ? gimple_location (optimized_last) : UNKNOWN_LOCATION;
+  if (optimized_loc != UNKNOWN_LOCATION)
+    {
+      unsigned int optimized_copyid = allocate_copyid_base (optimized_loc, 1);
+      assign_discriminators_to_loop (li.optimized_loop, 0, optimized_copyid);
+    }
+  gimple *loop_last = last_nondebug_stmt (loop->header);
+  location_t loop_loc
+    = loop_last ? gimple_location (loop_last) : UNKNOWN_LOCATION;
+  if (loop_loc != UNKNOWN_LOCATION)
+    {
+      unsigned int loop_copyid = allocate_copyid_base (loop_loc, 1);
+      assign_discriminators_to_loop (loop, 0, loop_copyid);
+    }
   if (dump_enabled_p ())
     dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, find_loop_location (loop),
 		     "versioned this loop for when certain strides are 1\n");
@@ -1800,8 +1799,11 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual bool gate (function *) { return flag_version_loops_for_strides; }
-  virtual unsigned int execute (function *);
+  bool gate (function *) final override
+  {
+    return flag_version_loops_for_strides;
+  }
+  unsigned int execute (function *) final override;
 };
 
 unsigned int
@@ -1810,7 +1812,10 @@ pass_loop_versioning::execute (function *fn)
   if (number_of_loops (fn) <= 1)
     return 0;
 
-  return loop_versioning (fn).run ();
+  enable_ranger (fn);
+  unsigned int ret = loop_versioning (fn).run ();
+  disable_ranger (fn);
+  return ret;
 }
 
 } // anon namespace

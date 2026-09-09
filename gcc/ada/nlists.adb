@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,10 +27,10 @@
 --  file must be properly reflected in the corresponding C header a-nlists.h
 
 with Alloc;
-with Atree;  use Atree;
-with Debug;  use Debug;
-with Output; use Output;
-with Sinfo;  use Sinfo;
+with Atree;       use Atree;
+with Debug;       use Debug;
+with Output;      use Output;
+with Sinfo.Nodes; use Sinfo.Nodes;
 with Table;
 
 package body Nlists is
@@ -38,9 +38,6 @@ package body Nlists is
    --  Compiling with assertions enabled, list contents modifications are
    --  permitted only when this switch is set to False; compiling without
    --  assertions this lock has no effect.
-
-   use Atree_Private_Part;
-   --  Get access to Nodes table
 
    ----------------------------------
    -- Implementation of Node Lists --
@@ -86,17 +83,16 @@ package body Nlists is
       Table_Component_Type => Node_Or_Entity_Id,
       Table_Index_Type     => Node_Or_Entity_Id'Base,
       Table_Low_Bound      => First_Node_Id,
-      Table_Initial        => Alloc.Nodes_Initial,
-      Table_Increment      => Alloc.Nodes_Increment,
-      Release_Threshold    => Alloc.Nodes_Release_Threshold,
+      Table_Initial        => Alloc.Node_Offsets_Initial,
+      Table_Increment      => Alloc.Node_Offsets_Increment,
       Table_Name           => "Next_Node");
 
    package Prev_Node is new Table.Table (
       Table_Component_Type => Node_Or_Entity_Id,
       Table_Index_Type     => Node_Or_Entity_Id'Base,
       Table_Low_Bound      => First_Node_Id,
-      Table_Initial        => Alloc.Nodes_Initial,
-      Table_Increment      => Alloc.Nodes_Increment,
+      Table_Initial        => Alloc.Node_Offsets_Initial,
+      Table_Increment      => Alloc.Node_Offsets_Increment,
       Table_Name           => "Prev_Node");
 
    -----------------------
@@ -128,19 +124,10 @@ package body Nlists is
    --------------------------
 
    procedure Allocate_List_Tables (N : Node_Or_Entity_Id) is
-      Old_Last : constant Node_Or_Entity_Id'Base := Next_Node.Last;
-
    begin
-      pragma Assert (N >= Old_Last);
+      pragma Assert (N >= Next_Node.Last);
       Next_Node.Set_Last (N);
       Prev_Node.Set_Last (N);
-
-      --  Make sure we have no uninitialized junk in any new entries added.
-
-      for J in Old_Last + 1 .. N loop
-         Next_Node.Table (J) := Empty;
-         Prev_Node.Table (J) := Empty;
-      end loop;
    end Allocate_List_Tables;
 
    ------------
@@ -188,7 +175,7 @@ package body Nlists is
 
       Set_Last (To, Node);
 
-      Nodes.Table (Node).In_List := True;
+      Set_In_List (Node, True);
 
       Set_Next      (Node, Empty);
       Set_Prev      (Node, L);
@@ -406,7 +393,7 @@ package body Nlists is
 
          Set_Next (After, Node);
 
-         Nodes.Table (Node).In_List := True;
+         Set_In_List (Node, True);
 
          Set_Prev      (Node, After);
          Set_Next      (Node, Before);
@@ -466,7 +453,7 @@ package body Nlists is
 
          Set_Prev (Before, Node);
 
-         Nodes.Table (Node).In_List := True;
+         Set_In_List (Node, True);
 
          Set_Prev      (Node, After);
          Set_Next      (Node, Before);
@@ -623,7 +610,7 @@ package body Nlists is
 
    function Is_List_Member (Node : Node_Or_Entity_Id) return Boolean is
    begin
-      return Nodes.Table (Node).In_List;
+      return In_List (Node);
    end Is_List_Member;
 
    -----------------------
@@ -675,7 +662,7 @@ package body Nlists is
    function List_Containing (Node : Node_Or_Entity_Id) return List_Id is
    begin
       pragma Assert (Is_List_Member (Node));
-      return List_Id (Nodes.Table (Node).Link);
+      return List_Id (Link (Node));
    end List_Containing;
 
    -----------------
@@ -866,7 +853,7 @@ package body Nlists is
             Set_First  (List, Node);
             Set_Last   (List, Node);
 
-            Nodes.Table (Node).In_List := True;
+            Set_In_List (Node, True);
             Set_List_Link (Node, List);
             Set_Prev (Node, Empty);
             Set_Next (Node, Empty);
@@ -1016,11 +1003,12 @@ package body Nlists is
    -- Parent --
    ------------
 
-   function Parent (List : List_Id) return Node_Or_Entity_Id is
+   function List_Parent (List : List_Id) return Node_Or_Entity_Id is
    begin
+      pragma Assert (Present (List));
       pragma Assert (List <= Lists.Last);
       return Lists.Table (List).Parent;
-   end Parent;
+   end List_Parent;
 
    ----------
    -- Pick --
@@ -1083,7 +1071,7 @@ package body Nlists is
 
       Set_First (To, Node);
 
-      Nodes.Table (Node).In_List := True;
+      Set_In_List (Node, True);
 
       Set_Next      (Node, F);
       Set_Prev      (Node, Empty);
@@ -1292,7 +1280,7 @@ package body Nlists is
          Set_Prev (Nxt, Prv);
       end if;
 
-      Nodes.Table (Node).In_List := False;
+      Set_In_List (Node, False);
       Set_Parent (Node, Empty);
    end Remove;
 
@@ -1341,7 +1329,7 @@ package body Nlists is
                Set_Prev (Nxt, Empty);
             end if;
 
-            Nodes.Table (Frst).In_List := False;
+            Set_In_List (Frst, False);
             Set_Parent (Frst, Empty);
             return Frst;
          end;
@@ -1392,7 +1380,7 @@ package body Nlists is
                Set_Prev (Nxt2, Node);
             end if;
 
-            Nodes.Table (Nxt).In_List := False;
+            Set_In_List (Nxt, False);
             Set_Parent (Nxt, Empty);
          end;
       end if;
@@ -1427,7 +1415,7 @@ package body Nlists is
    procedure Set_List_Link (Node : Node_Or_Entity_Id; To : List_Id) is
    begin
       pragma Assert (not Locked);
-      Nodes.Table (Node).Link := Union_Id (To);
+      Set_Link (Node, Union_Id (To));
    end Set_List_Link;
 
    --------------
@@ -1444,12 +1432,12 @@ package body Nlists is
    -- Set_Parent --
    ----------------
 
-   procedure Set_Parent (List : List_Id; Node : Node_Or_Entity_Id) is
+   procedure Set_List_Parent (List : List_Id; Node : Node_Or_Entity_Id) is
    begin
       pragma Assert (not Locked);
       pragma Assert (List <= Lists.Last);
       Lists.Table (List).Parent := Node;
-   end Set_Parent;
+   end Set_List_Parent;
 
    --------------
    -- Set_Prev --

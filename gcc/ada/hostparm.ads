@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -48,7 +48,7 @@ package Hostparm is
    --  have a valid Column_Number equal to Max_Line_Length to represent
    --  the location of a "line too long" error.
    --
-   --  200 is the minimum value required (RM 2.2(15)). The value set here
+   --  200 is the minimum value required (RM 2.2(14)). The value set here
    --  can be reduced by the explicit use of the -gnatyM style switch.
 
    Max_Name_Length : constant := 1024;
@@ -56,9 +56,10 @@ package Hostparm is
    --  of file names in the library, must be at least Max_Line_Length, but
    --  can be larger.
 
-   Tag_Errors : constant Boolean := False;
+   Tag_Errors : constant Boolean := True;
    --  If set to true, then brief form error messages will be prefaced by
-   --  the string "error:". Used as default for Opt.Unique_Error_Tag.
+   --  the string "error:". Used as default for Opt.Unique_Error_Tag. Disabled
+   --  by gnatd_U.
 
    Exclude_Missing_Objects : constant Boolean := True;
    --  If set to true, gnatbind will exclude from consideration all

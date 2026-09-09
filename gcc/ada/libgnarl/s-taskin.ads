@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -70,9 +70,9 @@ package System.Tasking is
    --         Unlock (Y);
 
    --  Locks with lower (smaller) level number cannot be locked
-   --  while holding a lock with a higher level number. (The level
+   --  while holding a lock with a higher level number.
 
-   --  1. System.Tasking.PO_Simple.Protection.L (any PO lock)
+   --  1. System.Tasking.Protected_Objects.Protection.L (any PO lock)
    --  2. System.Tasking.Initialization.Global_Task_Lock (in body)
    --  3. System.Task_Primitives.Operations.Single_RTS_Lock
    --  4. System.Tasking.Ada_Task_Control_Block.LL.L (any TCB lock)
@@ -205,8 +205,11 @@ package System.Tasking is
       Activating,
       --  Task has been created and is being made Runnable
 
-      Acceptor_Delay_Sleep
+      Acceptor_Delay_Sleep,
       --  Task is waiting on an selective wait statement
+
+      Suspension_Object_Sleep
+      --  Task is blocked in a call to Suspend_Until_True
      );
 
    type Call_Modes is
@@ -368,14 +371,6 @@ package System.Tasking is
    --  Used to represent protected procedures to be executed when task
    --  terminates.
 
-   type Initialization_Handler is access procedure;
-   pragma Favor_Top_Level (Initialization_Handler);
-   --  Use to represent procedures to be executed at task initialization.
-
-   Global_Initialization_Handler : Initialization_Handler := null;
-   pragma Atomic (Global_Initialization_Handler);
-   --  Global handler called when each task initializes.
-
    ------------------------------------
    -- Dispatching domain definitions --
    ------------------------------------
@@ -398,7 +393,7 @@ package System.Tasking is
    System_Domain : Dispatching_Domain_Access;
    --  All processors belong to default system dispatching domain at start up.
    --  We use a pointer which creates the actual variable for the reasons
-   --  explained bellow in Dispatching_Domain_Tasks.
+   --  explained below in Dispatching_Domain_Tasks.
 
    Dispatching_Domains_Frozen : Boolean := False;
    --  True when the main procedure has been called. Hence, no new dispatching
@@ -525,6 +520,17 @@ package System.Tasking is
       --  via dynamic priorities package.
       --
       --  Protection: Only written by Self, accessed by anyone
+
+      CPU_Is_Explicit : Boolean;
+      --  True if the task is either assigned to a CPU or explicitly not
+      --  assigned to a CPU through Not_A_Specific_CPU being used with the CPU
+      --  Aspect a subprogram in System.Multiprocessors.Dispatching_Domains.
+      --  False otherwise.
+      --  We keep track of this information to make it possible to accomodate
+      --  native affinity inheritance on some platforms when no RM D.16
+      --  features are used. An example of such a platform is Linux, where we
+      --  strive to make the taskset command line tool have the expected effect
+      --  when the program does not use RM D.16 features.
 
       Base_CPU : System.Multiprocessors.CPU_Range;
       --  Base CPU, only changed via dispatching domains package.
@@ -773,12 +779,18 @@ package System.Tasking is
    Environment_Task_Level : constant Master_Level := 1;
    Independent_Task_Level : constant Master_Level := 2;
    Library_Task_Level     : constant Master_Level := 3;
+   --  Note that the value of Library_Task_Level is also hard coded in the
+   --  compiler, see Rtsfind.Library_Task_Level. The two should be kept in
+   --  sync.
 
    -------------------
    -- Priority info --
    -------------------
 
-   Unspecified_Priority : constant Integer := System.Priority'First - 1;
+   Unspecified_Priority : constant Integer := -1;
+   --  Indicates that a task has an unspecified priority. This is hardcoded as
+   --  -1 rather than System.Priority'First - 1 as the value needs to be used
+   --  in init.c to specify that the main task has no specified priority.
 
    Priority_Not_Boosted : constant Integer := System.Priority'First - 1;
    --  Definition of Priority actually has to come from the RTS configuration
@@ -960,11 +972,10 @@ package System.Tasking is
    type Entry_Call_Array is array (ATC_Level_Index) of
      aliased Entry_Call_Record;
 
-   type Atomic_Address is mod Memory_Size;
-   pragma Atomic (Atomic_Address);
    type Attribute_Array is
-     array (1 .. Parameters.Max_Attribute_Count) of Atomic_Address;
-   --  Array of task attributes. The value (Atomic_Address) will either be
+     array (1 .. Parameters.Max_Attribute_Count) of System.Address;
+   pragma Atomic_Components (Attribute_Array);
+   --  Array of task attributes. The value (System.Address) will either be
    --  converted to a task attribute if it fits, or to a pointer to a record
    --  by Ada.Task_Attributes.
 
@@ -1159,7 +1170,7 @@ package System.Tasking is
       --  non-terminated task so that the associated storage is automatically
       --  reclaimed when the task terminates.
 
-      Attributes : Attribute_Array := (others => 0);
+      Attributes : Attribute_Array := [others => Null_Address];
       --  Task attributes
 
       --  IMPORTANT Note: the Entry_Queues field is last for efficiency of
@@ -1170,7 +1181,7 @@ package System.Tasking is
       --
       --  Protection: Self.L. Once a task has set Self.Stage to Completing, it
       --  has exclusive access to this field.
-   end record;
+   end record; -- Ada_Task_Control_Block
 
    --------------------
    -- Initialization --
@@ -1187,18 +1198,19 @@ package System.Tasking is
    --  System.Tasking.Initialization being present, as was done before.
 
    procedure Initialize_ATCB
-     (Self_ID              : Task_Id;
-      Task_Entry_Point     : Task_Procedure_Access;
-      Task_Arg             : System.Address;
-      Parent               : Task_Id;
-      Elaborated           : Access_Boolean;
-      Base_Priority        : System.Any_Priority;
-      Base_CPU             : System.Multiprocessors.CPU_Range;
-      Domain               : Dispatching_Domain_Access;
-      Task_Info            : System.Task_Info.Task_Info_Type;
-      Stack_Size           : System.Parameters.Size_Type;
-      T                    : Task_Id;
-      Success              : out Boolean);
+     (Self_ID          : Task_Id;
+      Task_Entry_Point : Task_Procedure_Access;
+      Task_Arg         : System.Address;
+      Parent           : Task_Id;
+      Elaborated       : Access_Boolean;
+      Base_Priority    : System.Any_Priority;
+      Base_CPU         : System.Multiprocessors.CPU_Range;
+      CPU_Is_Explicit  : Boolean;
+      Domain           : Dispatching_Domain_Access;
+      Task_Info        : System.Task_Info.Task_Info_Type;
+      Stack_Size       : System.Parameters.Size_Type;
+      T                : Task_Id;
+      Success          : out Boolean);
    --  Initialize fields of the TCB for task T, and link into global TCB
    --  structures. Call this only with abort deferred and holding RTS_Lock.
    --  Self_ID is the calling task (normally the activator of T). Success is

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2002-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2002-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,25 +31,13 @@
 
 --  This package contains functions for runtime operations on boolean vectors
 
-package System.Vectors.Boolean_Operations is
-   pragma Pure;
-
-   --  Although in general the boolean operations on arrays of booleans are
-   --  identical to operations on arrays of unsigned words of the same size,
-   --  for the "not" operator this is not the case as False is typically
-   --  represented by 0 and true by 1.
+package System.Vectors.Boolean_Operations
+  with Pure, SPARK_Mode
+is
+   --  Type Vectors.Vector represents an array of Boolean, each of which
+   --  takes 8 bits of the representation, with the 7 msb set to zero.
 
    function "not" (Item : Vectors.Vector) return Vectors.Vector;
-
-   --  The three boolean operations "nand", "nor" and "nxor" are needed
-   --  for cases where the compiler moves boolean array operations into
-   --  the body of the loop that iterates over the array elements.
-
-   --  Note the following equivalences:
-   --    (not X) or  (not Y)  =  not (X and Y)  =  Nand (X, Y)
-   --    (not X) and (not Y)  =  not (X or Y)   =  Nor  (X, Y)
-   --    (not X) xor (not Y)  =  X xor Y
-   --    X       xor (not Y)  =  not (X xor Y)  =  Nxor (X, Y)
 
    function Nand (Left, Right : Boolean) return Boolean;
    function Nor  (Left, Right : Boolean) return Boolean;
@@ -58,6 +46,15 @@ package System.Vectors.Boolean_Operations is
    function Nand (Left, Right : Vectors.Vector) return Vectors.Vector;
    function Nor (Left, Right : Vectors.Vector) return Vectors.Vector;
    function Nxor (Left, Right : Vectors.Vector) return Vectors.Vector;
+   --  The three boolean operations "nand", "nor" and "nxor" are needed
+   --  for cases where the compiler moves boolean array operations into
+   --  the body of the loop that iterates over the array elements.
+   --
+   --  Note the following equivalences:
+   --    (not X) or  (not Y)  =  not (X and Y)  =  Nand (X, Y)
+   --    (not X) and (not Y)  =  not (X or Y)   =  Nor  (X, Y)
+   --    (not X) xor (not Y)  =  X xor Y
+   --    X       xor (not Y)  =  not (X xor Y)  =  Nxor (X, Y)
 
    pragma Inline_Always ("not");
    pragma Inline_Always (Nand);

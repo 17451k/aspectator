@@ -8,6 +8,7 @@ struct Value {
 
 struct S {
   static constinit inline Value v{}; // { dg-error "variable .S::v. does not have a constant initializer|call to non-.constexpr. function" }
+  // { dg-error "result of 'operator new'" "" { target implicit_constexpr } .-1 }
 };
 
 int main() { return *S::v.v; }

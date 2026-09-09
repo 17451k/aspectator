@@ -1,5 +1,5 @@
 /* Implementation of the RANDOM intrinsics
-   Copyright (C) 2002-2021 Free Software Foundation, Inc.
+   Copyright (C) 2002-2026 Free Software Foundation, Inc.
    Contributed by Lars Segerlund <seger@linuxmail.org>,
    Steve Kargl and Janne Blomqvist.
 
@@ -76,6 +76,53 @@ iexport_proto(random_r16);
 
 extern void arandom_r16 (gfc_array_r16 *);
 export_proto(arandom_r16);
+
+#endif
+
+#ifdef HAVE_GFC_REAL_17
+
+extern void random_r17 (GFC_REAL_17 *);
+iexport_proto(random_r17);
+
+extern void arandom_r17 (gfc_array_r17 *);
+export_proto(arandom_r17);
+
+#endif
+
+extern void random_m1 (GFC_UINTEGER_1 *);
+export_proto (random_m1);
+
+extern void random_m2 (GFC_UINTEGER_2 *);
+export_proto (random_m2);
+
+extern void random_m4 (GFC_UINTEGER_4 *);
+export_proto (random_m4);
+
+extern void random_m8 (GFC_UINTEGER_8 *);
+export_proto (random_m8);
+
+#ifdef  HAVE_GFC_UINTEGER_16
+extern void random_m16 (GFC_UINTEGER_16 *);
+export_proto (random_m16);
+
+#endif
+
+extern void arandom_m1 (gfc_array_m1 *);
+export_proto (arandom_m1);
+
+extern void arandom_m2 (gfc_array_m2 *);
+export_proto (arandom_m2);
+
+extern void arandom_m4 (gfc_array_m4 *);
+export_proto (arandom_m4);
+
+extern void arandom_m8 (gfc_array_m8 *);
+export_proto (arandom_m8);
+
+#ifdef HAVE_GFC_UINTEGER_16
+
+extern void arandom_m16 (gfc_array_m16 *);
+export_proto (arandom_m16);
 
 #endif
 
@@ -158,6 +205,27 @@ rnumber_16 (GFC_REAL_16 *f, GFC_UINTEGER_8 v1, GFC_UINTEGER_8 v2)
   v2 = v2 & mask;
   *f = (GFC_REAL_16) v1 * GFC_REAL_16_LITERAL(0x1.p-64)
     + (GFC_REAL_16) v2 * GFC_REAL_16_LITERAL(0x1.p-128);
+}
+#endif
+
+#ifdef HAVE_GFC_REAL_17
+
+/* For REAL(KIND=16), we only need to mask off the lower bits.  */
+
+static void
+rnumber_17 (GFC_REAL_17 *f, GFC_UINTEGER_8 v1, GFC_UINTEGER_8 v2)
+{
+  GFC_UINTEGER_8 mask;
+#if GFC_REAL_17_RADIX == 2
+  mask = ~ (GFC_UINTEGER_8) 0u << (128 - GFC_REAL_17_DIGITS);
+#elif GFC_REAL_17_RADIX == 16
+  mask = ~ (GFC_UINTEGER_8) 0u << ((32 - GFC_REAL_17_DIGITS) * 4);
+#else
+#error "GFC_REAL_17_RADIX has unknown value"
+#endif
+  v2 = v2 & mask;
+  *f = (GFC_REAL_17) v1 * GFC_REAL_17_LITERAL(0x1.p-64)
+    + (GFC_REAL_17) v2 * GFC_REAL_17_LITERAL(0x1.p-128);
 }
 #endif
 
@@ -445,6 +513,103 @@ iexport(random_r16);
 
 #endif
 
+/*  This function produces a REAL(16) value from the uniform distribution
+    with range [0,1).  */
+
+#ifdef HAVE_GFC_REAL_17
+
+void
+random_r17 (GFC_REAL_17 *x)
+{
+  GFC_UINTEGER_8 r1, r2;
+  prng_state* rs = get_rand_state();
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+  r1 = prng_next (rs);
+  r2 = prng_next (rs);
+  rnumber_17 (x, r1, r2);
+}
+iexport(random_r17);
+
+
+#endif
+
+/* Versions for unsigned numbers.  */
+
+/* Returns a random byte.  */
+
+void
+random_m1 (GFC_UINTEGER_1 *x)
+{
+  prng_state* rs = get_rand_state();
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+  GFC_UINTEGER_8 r = prng_next (rs);
+
+  *x = r >> 56;
+}
+
+/* A random 16-bit number.  */
+
+void
+random_m2 (GFC_UINTEGER_2 *x)
+{
+  prng_state* rs = get_rand_state();
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+  GFC_UINTEGER_8 r = prng_next (rs);
+
+  *x = r >> 48;
+}
+
+/* A random 32-bit number.  */
+
+void
+random_m4 (GFC_UINTEGER_4 *x)
+{
+  prng_state* rs = get_rand_state();
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+  GFC_UINTEGER_8 r = prng_next (rs);
+
+  *x = r >> 32;
+}
+
+/* A random 64-bit number.  */
+
+void
+random_m8 (GFC_UINTEGER_8 *x)
+{
+  prng_state* rs = get_rand_state();
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+  GFC_UINTEGER_8 r = prng_next (rs);
+
+  *x = r;
+}
+
+/* ... and a random 128-bit number, if we have the type.  */
+
+#ifdef HAVE_GFC_UINTEGER_16
+void
+random_m16 (GFC_UINTEGER_16 *x)
+{
+  prng_state* rs = get_rand_state();
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+  GFC_UINTEGER_8 r1 = prng_next (rs);
+  GFC_UINTEGER_8 r2 = prng_next (rs);
+
+  *x = (((GFC_UINTEGER_16) r1) << 64) | (GFC_UINTEGER_16) r2;
+}
+#endif
+
 /*  This function fills a REAL(4) array with values from the uniform
     distribution with range [0,1).  */
 
@@ -719,6 +884,405 @@ arandom_r16 (gfc_array_r16 *x)
 
 #endif
 
+#ifdef HAVE_GFC_REAL_17
+
+/*  This function fills a REAL(16) array with values from the uniform
+    distribution with range [0,1).  */
+
+void
+arandom_r17 (gfc_array_r17 *x)
+{
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
+  index_type stride0;
+  index_type dim;
+  GFC_REAL_17 *dest;
+  prng_state* rs = get_rand_state();
+
+  dest = x->base_addr;
+
+  dim = GFC_DESCRIPTOR_RANK (x);
+
+  for (index_type n = 0; n < dim; n++)
+    {
+      count[n] = 0;
+      stride[n] = GFC_DESCRIPTOR_STRIDE(x,n);
+      extent[n] = GFC_DESCRIPTOR_EXTENT(x,n);
+      if (extent[n] <= 0)
+        return;
+    }
+
+  stride0 = stride[0];
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+
+  while (dest)
+    {
+      /* random_r17 (dest);  */
+      uint64_t r1 = prng_next (rs);
+      uint64_t r2 = prng_next (rs);
+      rnumber_17 (dest, r1, r2);
+
+      /* Advance to the next element.  */
+      dest += stride0;
+      count[0]++;
+      /* Advance to the next source element.  */
+      index_type n = 0;
+      while (count[n] == extent[n])
+        {
+          /* When we get to the end of a dimension, reset it and increment
+             the next dimension.  */
+          count[n] = 0;
+          /* We could precalculate these products, but this is a less
+             frequently used path so probably not worth it.  */
+          dest -= stride[n] * extent[n];
+          n++;
+          if (n == dim)
+            {
+              dest = NULL;
+              break;
+            }
+          else
+            {
+              count[n]++;
+              dest += stride[n];
+            }
+        }
+    }
+}
+
+#endif
+
+/* Fill an unsigned array with random bytes.  */
+
+void
+arandom_m1 (gfc_array_m1 *x)
+{
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
+  index_type stride0;
+  index_type dim;
+  GFC_UINTEGER_1 *dest;
+  prng_state* rs = get_rand_state();
+
+  dest = x->base_addr;
+
+  dim = GFC_DESCRIPTOR_RANK (x);
+
+  for (index_type n = 0; n < dim; n++)
+    {
+      count[n] = 0;
+      stride[n] = GFC_DESCRIPTOR_STRIDE(x,n);
+      extent[n] = GFC_DESCRIPTOR_EXTENT(x,n);
+      if (extent[n] <= 0)
+	return;
+    }
+
+  stride0 = stride[0];
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+
+  while (dest)
+    {
+      /* random_m1 (dest);  */
+      uint64_t r = prng_next (rs);
+      *dest = r >> 56;
+
+      /* Advance to the next element.  */
+      dest += stride0;
+      count[0]++;
+      /* Advance to the next source element.  */
+      index_type n = 0;
+      while (count[n] == extent[n])
+	{
+	  /* When we get to the end of a dimension, reset it and increment
+	     the next dimension.  */
+	  count[n] = 0;
+	  /* We could precalculate these products, but this is a less
+	     frequently used path so probably not worth it.  */
+	  dest -= stride[n] * extent[n];
+	  n++;
+	  if (n == dim)
+	    {
+	      dest = NULL;
+	      break;
+	    }
+	  else
+	    {
+	      count[n]++;
+	      dest += stride[n];
+	    }
+	}
+    }
+}
+
+/* Fill an unsigned array with random 16-bit unsigneds.  */
+
+void
+arandom_m2 (gfc_array_m2 *x)
+{
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
+  index_type stride0;
+  index_type dim;
+  GFC_UINTEGER_2 *dest;
+  prng_state* rs = get_rand_state();
+
+  dest = x->base_addr;
+
+  dim = GFC_DESCRIPTOR_RANK (x);
+
+  for (index_type n = 0; n < dim; n++)
+    {
+      count[n] = 0;
+      stride[n] = GFC_DESCRIPTOR_STRIDE(x,n);
+      extent[n] = GFC_DESCRIPTOR_EXTENT(x,n);
+      if (extent[n] <= 0)
+	return;
+    }
+
+  stride0 = stride[0];
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+
+  while (dest)
+    {
+      /* random_m1 (dest);  */
+      uint64_t r = prng_next (rs);
+      *dest = r >> 48;
+
+      /* Advance to the next element.  */
+      dest += stride0;
+      count[0]++;
+      /* Advance to the next source element.  */
+      index_type n = 0;
+      while (count[n] == extent[n])
+	{
+	  /* When we get to the end of a dimension, reset it and increment
+	     the next dimension.  */
+	  count[n] = 0;
+	  /* We could precalculate these products, but this is a less
+	     frequently used path so probably not worth it.  */
+	  dest -= stride[n] * extent[n];
+	  n++;
+	  if (n == dim)
+	    {
+	      dest = NULL;
+	      break;
+	    }
+	  else
+	    {
+	      count[n]++;
+	      dest += stride[n];
+	    }
+	}
+    }
+}
+
+/* Fill an array with random 32-bit unsigneds.  */
+
+void
+arandom_m4 (gfc_array_m4 *x)
+{
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
+  index_type stride0;
+  index_type dim;
+  GFC_UINTEGER_4 *dest;
+  prng_state* rs = get_rand_state();
+
+  dest = x->base_addr;
+
+  dim = GFC_DESCRIPTOR_RANK (x);
+
+  for (index_type n = 0; n < dim; n++)
+    {
+      count[n] = 0;
+      stride[n] = GFC_DESCRIPTOR_STRIDE(x,n);
+      extent[n] = GFC_DESCRIPTOR_EXTENT(x,n);
+      if (extent[n] <= 0)
+	return;
+    }
+
+  stride0 = stride[0];
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+
+  while (dest)
+    {
+      /* random_m4 (dest);  */
+      uint64_t r = prng_next (rs);
+      *dest = r >> 32;
+
+      /* Advance to the next element.  */
+      dest += stride0;
+      count[0]++;
+      /* Advance to the next source element.  */
+      index_type n = 0;
+      while (count[n] == extent[n])
+	{
+	  /* When we get to the end of a dimension, reset it and increment
+	     the next dimension.  */
+	  count[n] = 0;
+	  /* We could precalculate these products, but this is a less
+	     frequently used path so probably not worth it.  */
+	  dest -= stride[n] * extent[n];
+	  n++;
+	  if (n == dim)
+	    {
+	      dest = NULL;
+	      break;
+	    }
+	  else
+	    {
+	      count[n]++;
+	      dest += stride[n];
+	    }
+	}
+    }
+}
+
+/* Fill an array with random 64-bit unsigneds.  */
+
+void
+arandom_m8 (gfc_array_m8 *x)
+{
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
+  index_type stride0;
+  index_type dim;
+  GFC_UINTEGER_8 *dest;
+  prng_state* rs = get_rand_state();
+
+  dest = x->base_addr;
+
+  dim = GFC_DESCRIPTOR_RANK (x);
+
+  for (index_type n = 0; n < dim; n++)
+    {
+      count[n] = 0;
+      stride[n] = GFC_DESCRIPTOR_STRIDE(x,n);
+      extent[n] = GFC_DESCRIPTOR_EXTENT(x,n);
+      if (extent[n] <= 0)
+	return;
+    }
+
+  stride0 = stride[0];
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+
+  while (dest)
+    {
+      /* random_m8 (dest);  */
+      uint64_t r = prng_next (rs);
+      *dest = r;
+
+      /* Advance to the next element.  */
+      dest += stride0;
+      count[0]++;
+      /* Advance to the next source element.  */
+      index_type n = 0;
+      while (count[n] == extent[n])
+	{
+	  /* When we get to the end of a dimension, reset it and increment
+	     the next dimension.  */
+	  count[n] = 0;
+	  /* We could precalculate these products, but this is a less
+	     frequently used path so probably not worth it.  */
+	  dest -= stride[n] * extent[n];
+	  n++;
+	  if (n == dim)
+	    {
+	      dest = NULL;
+	      break;
+	    }
+	  else
+	    {
+	      count[n]++;
+	      dest += stride[n];
+	    }
+	}
+    }
+}
+
+#ifdef HAVE_GFC_UINTEGER_16
+
+/* Fill an unsigned array with random bytes.  */
+
+void
+arandom_m16 (gfc_array_m16 *x)
+{
+  index_type count[GFC_MAX_DIMENSIONS];
+  index_type extent[GFC_MAX_DIMENSIONS];
+  index_type stride[GFC_MAX_DIMENSIONS];
+  index_type stride0;
+  index_type dim;
+  GFC_UINTEGER_16 *dest;
+  prng_state* rs = get_rand_state();
+
+  dest = x->base_addr;
+
+  dim = GFC_DESCRIPTOR_RANK (x);
+
+  for (index_type n = 0; n < dim; n++)
+    {
+      count[n] = 0;
+      stride[n] = GFC_DESCRIPTOR_STRIDE(x,n);
+      extent[n] = GFC_DESCRIPTOR_EXTENT(x,n);
+      if (extent[n] <= 0)
+	return;
+    }
+
+  stride0 = stride[0];
+
+  if (unlikely (!rs->init))
+    init_rand_state (rs, false);
+
+  while (dest)
+    {
+      /* random_m16 (dest);  */
+      uint64_t r1 = prng_next (rs), r2 = prng_next (rs);
+      *dest = (((GFC_UINTEGER_16) r1) << 64) | (GFC_UINTEGER_16) r2;
+
+      /* Advance to the next element.  */
+      dest += stride0;
+      count[0]++;
+      /* Advance to the next source element.  */
+      index_type n = 0;
+      while (count[n] == extent[n])
+	{
+	  /* When we get to the end of a dimension, reset it and increment
+	     the next dimension.  */
+	  count[n] = 0;
+	  /* We could precalculate these products, but this is a less
+	     frequently used path so probably not worth it.  */
+	  dest -= stride[n] * extent[n];
+	  n++;
+	  if (n == dim)
+	    {
+	      dest = NULL;
+	      break;
+	    }
+	  else
+	    {
+	      count[n]++;
+	      dest += stride[n];
+	    }
+	}
+    }
+}
+
+#endif
 
 /* Number of elements in master_state array.  */
 #define SZU64 (sizeof (master_state.s) / sizeof (uint64_t))

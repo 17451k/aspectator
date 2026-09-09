@@ -1,4 +1,5 @@
 /* { dg-require-effective-target vect_int } */
+/* { dg-additional-options "-fno-tree-loop-distribute-patterns" } */
 
 #include <stdarg.h>
 #include "../../tree-vect.h"
@@ -30,6 +31,7 @@ int main1 ()
     }
 
   /* check results:  */
+#pragma GCC novector
   for (i = 0; i <N/2; i++)
     {
       if (tmp.b[i] != 5)
@@ -46,5 +48,5 @@ int main (void)
   return main1 ();
 } 
 
-/* { dg-final { scan-tree-dump-times "not vectorized: unsupported unaligned store" 1 "vect" { target { ! vect_hw_misalign } } } } */
+/* { dg-final { scan-tree-dump-times "unsupported unaligned access" 1 "vect" { target { ! vect_hw_misalign } } } } */
 /* { dg-final { scan-tree-dump-times "vectorized 1 loops" 0 "vect" { target { ! vect_hw_misalign } } } } */

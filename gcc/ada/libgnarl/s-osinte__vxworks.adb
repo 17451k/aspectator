@@ -6,7 +6,7 @@
 --                                                                          --
 --                                   B o d y                                --
 --                                                                          --
---         Copyright (C) 1997-2020, Free Software Foundation, Inc.          --
+--         Copyright (C) 1997-2026, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -41,38 +41,6 @@ package body System.OS_Interface is
    Low_Priority : constant := 255;
    --  VxWorks native (default) lowest scheduling priority
 
-   -----------------
-   -- To_Duration --
-   -----------------
-
-   function To_Duration (TS : timespec) return Duration is
-   begin
-      return Duration (TS.ts_sec) + Duration (TS.ts_nsec) / 10#1#E9;
-   end To_Duration;
-
-   -----------------
-   -- To_Timespec --
-   -----------------
-
-   function To_Timespec (D : Duration) return timespec is
-      S : time_t;
-      F : Duration;
-
-   begin
-      S := time_t (Long_Long_Integer (D));
-      F := D - Duration (S);
-
-      --  If F is negative due to a round-up, adjust for positive F value
-
-      if F < 0.0 then
-         S := S - 1;
-         F := F + 1.0;
-      end if;
-
-      return timespec'(ts_sec  => S,
-                       ts_nsec => long (Long_Long_Integer (F * 10#1#E9)));
-   end To_Timespec;
-
    -------------------------
    -- To_VxWorks_Priority --
    -------------------------
@@ -100,10 +68,11 @@ package body System.OS_Interface is
       Ticks          : Long_Long_Integer;
       Rate_Duration  : Duration;
       Ticks_Duration : Duration;
+      IERR           : constant int := -1;
 
    begin
       if D < 0.0 then
-         return ERROR;
+         return IERR;
       end if;
 
       --  Ensure that the duration can be converted to ticks
@@ -142,7 +111,8 @@ package body System.OS_Interface is
    -- Binary_Semaphore_Delete --
    -----------------------------
 
-   function Binary_Semaphore_Delete (ID : Binary_Semaphore_Id) return int is
+   function Binary_Semaphore_Delete (ID : Binary_Semaphore_Id)
+     return STATUS is
    begin
       return semDelete (SEM_ID (ID));
    end Binary_Semaphore_Delete;
@@ -151,7 +121,8 @@ package body System.OS_Interface is
    -- Binary_Semaphore_Obtain --
    -----------------------------
 
-   function Binary_Semaphore_Obtain (ID : Binary_Semaphore_Id) return int is
+   function Binary_Semaphore_Obtain (ID : Binary_Semaphore_Id)
+     return STATUS is
    begin
       return semTake (SEM_ID (ID), WAIT_FOREVER);
    end Binary_Semaphore_Obtain;
@@ -160,7 +131,8 @@ package body System.OS_Interface is
    -- Binary_Semaphore_Release --
    ------------------------------
 
-   function Binary_Semaphore_Release (ID : Binary_Semaphore_Id) return int is
+   function Binary_Semaphore_Release (ID : Binary_Semaphore_Id)
+     return STATUS is
    begin
       return semGive (SEM_ID (ID));
    end Binary_Semaphore_Release;
@@ -169,7 +141,7 @@ package body System.OS_Interface is
    -- Binary_Semaphore_Flush --
    ----------------------------
 
-   function Binary_Semaphore_Flush (ID : Binary_Semaphore_Id) return int is
+   function Binary_Semaphore_Flush (ID : Binary_Semaphore_Id) return STATUS is
    begin
       return semFlush (SEM_ID (ID));
    end Binary_Semaphore_Flush;
@@ -190,7 +162,7 @@ package body System.OS_Interface is
    function Interrupt_Connect
      (Vector    : Interrupt_Vector;
       Handler   : Interrupt_Handler;
-      Parameter : System.Address := System.Null_Address) return int is
+      Parameter : System.Address := System.Null_Address) return STATUS is
    begin
       return
         System.VxWorks.Ext.Interrupt_Connect
@@ -203,7 +175,7 @@ package body System.OS_Interface is
    -- Interrupt_Context --
    -----------------------
 
-   function Interrupt_Context return int is
+   function Interrupt_Context return BOOL is
    begin
       return System.VxWorks.Ext.Interrupt_Context;
    end Interrupt_Context;

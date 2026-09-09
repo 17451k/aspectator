@@ -4,11 +4,10 @@
  * Translated from Windows SDK Headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_winhttp.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_winhttp.d)
  */
 module core.sys.windows.winhttp;
 version (Windows):
-@system:
 pragma(lib, "winhttp");
 // FIXME: Grouping of constants. Windows SDK doesn't make this entirely clear
 // FIXME: Verify WINHTTP_STATUS_CALLBACK function declaration works correctly
@@ -374,7 +373,7 @@ enum : DWORD {
                                                  WINHTTP_FLAG_SECURE_PROTOCOL_TLS1)
 }
 
-alias extern(Windows) int fnWINHTTP_STATUS_CALLBACK(HINTERNET hInternet, DWORD_PTR dwContext,
+alias fnWINHTTP_STATUS_CALLBACK = extern(Windows) int(HINTERNET hInternet, DWORD_PTR dwContext,
                           DWORD dwInternetStatus, LPVOID lpvStatusInformation,DWORD dwStatusInformationLength);
 alias WINHTTP_STATUS_CALLBACK = fnWINHTTP_STATUS_CALLBACK*;
 alias LPWINHTTP_STATUS_CALLBACK = WINHTTP_STATUS_CALLBACK*;
@@ -772,7 +771,7 @@ static if (_WIN32_WINNT >= 0x602)
 }
 
 
-extern (Windows) {
+extern (Windows) nothrow @nogc {
     BOOL WinHttpAddRequestHeaders(HINTERNET hRequest, LPCWSTR pwszHeaders, DWORD dwHeadersLength, DWORD dwModifiers);
 
     BOOL WinHttpCheckPlatform();

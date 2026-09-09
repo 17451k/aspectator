@@ -1,6 +1,6 @@
 /* { dg-do compile { target { powerpc*-*-* } } } */
-/* { dg-require-effective-target powerpc_p9vector_ok } */
-/* { dg-options "-mdejagnu-cpu=power8" } */
+/* { dg-options "-mdejagnu-cpu=power8 -mvsx" } */
+/* { dg-require-effective-target powerpc_vsx } */
 
 #include <altivec.h>
 #include <stdbool.h>
@@ -10,5 +10,5 @@ test_neg (__ieee128 *p)
 {
   __ieee128 source = *p;
 
-  return __builtin_vec_scalar_test_neg_qp (source); /* { dg-error "'__builtin_vsx_scalar_test_neg_qp' requires" } */
+  return __builtin_vec_scalar_test_neg (source); /* { dg-error "'__builtin_vsx_scalar_test_neg_qp' requires" } */
 }

@@ -1,7 +1,7 @@
 # configure.host
 #
 # This shell script handles all host based configuration for libgfortran.
-# It sets various shell variables based on the the host triplet.
+# It sets various shell variables based on the host triplet.
 # You can modify this shell script without rerunning autoconf/aclocal/etc.
 # This file is "sourced", not executed.
 #
@@ -39,17 +39,38 @@ if test "x${have_feenableexcept}" = "xyes"; then
   ieee_support='yes'
 fi
 
-# x86 asm should be used instead of glibc, since glibc doesn't support
-# the x86 denormal exception.
 case "${host_cpu}" in
+
+  # x86 asm should be used instead of glibc, since glibc doesn't support
+  # the x86 denormal exception.
   i?86 | x86_64)
     if test "x${have_soft_float}" = "xyes"; then
       fpu_host='fpu-generic'
+      ieee_support='no'
     else
       fpu_host='fpu-387'
+      ieee_support='yes'
     fi
-    ieee_support='yes'
     ;;
+
+  # use asm on aarch64-darwin
+  aarch64)
+    case "${host_os}" in
+      darwin*)
+        fpu_host='fpu-aarch64'
+        ieee_support='yes'
+        ;;
+    esac
+    ;;
+
+  powerpc*)
+    case "${host_os}" in
+      darwin*)
+        fpu_host='fpu-macppc'
+        ieee_support='yes'
+        ;;
+    esac
+
 esac
 
 # Some targets require additional compiler options for NaN/Inf.
@@ -68,6 +89,10 @@ case "${target}" in
   *-*-aix*)
 	# Create AIX-style "FAT" libraries.
 	tmake_file="t-aix"
+	;;
+
+  nvptx-*-none)
+	tmake_file="$tmake_file t-nvptx"
 	;;
 
   *)

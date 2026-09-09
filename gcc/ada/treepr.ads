@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -26,7 +26,7 @@
 with Types; use Types;
 package Treepr is
 
---  This package provides printing routines for the abstract syntax tree
+--  This package provides printing routines for the abstract syntax tree.
 --  These routines are intended only for debugging use.
 
    procedure Tree_Dump;
@@ -42,11 +42,11 @@ package Treepr is
 
    procedure Print_Tree_List (L : List_Id);
    --  Prints a single node list, without printing the descendants of any
-   --  of the nodes in the list
+   --  of the nodes in the list.
 
    procedure Print_Tree_Elist (E : Elist_Id);
    --  Prints a single node list, without printing the descendants of any
-   --  of the nodes in the list
+   --  of the nodes in the list.
 
    procedure Print_Node_Subtree (N : Node_Id);
    --  Prints the subtree rooted at a specified tree node, including all
@@ -59,6 +59,12 @@ package Treepr is
    procedure Print_Elist_Subtree (E : Elist_Id);
    --  Prints the subtree consisting of the given element list and all its
    --  referenced descendants.
+
+   procedure Print_Entity_Chain (From : Entity_Id; Rev : Boolean := False);
+   --  Prints the entity chain From is on, starting from From. In other words,
+   --  prints From and then recursively follow the Next_Entity field. If Rev is
+   --  True, prints the chain backwards, i.e. follow the Last_Entity field
+   --  instead of Next_Entity.
 
    --  The following debugging procedures are intended to be called from gdb.
    --  Note that in several cases there are synonyms which represent historical
@@ -80,7 +86,8 @@ package Treepr is
    pragma Export (Ada, pe);
    --  Print a node, node list, uint, or anything else that falls under
    --  the definition of Union_Id. Historically this was only for printing
-   --  nodes, hence the name.
+   --  nodes, hence the name pn. These are all the same, but the renamings
+   --  need to be in the body, or else the debugger can't find them.
 
    procedure ppar (N : Union_Id);
    pragma Export (Ada, ppar);
@@ -102,4 +109,12 @@ package Treepr is
    --  on the left and add a minus sign. This just saves some typing in the
    --  debugger.
 
+   procedure pec (From : Entity_Id);
+   pragma Export (Ada, pec);
+   --  Print From and the entities that follow it on its entity chain
+
+   procedure rpec (From : Entity_Id);
+   pragma Export (Ada, rpec);
+   --  Like pec, but walk the entity chain backwards. The 'r' stands for
+   --  "reverse".
 end Treepr;

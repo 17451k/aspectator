@@ -1,6 +1,7 @@
 // { dg-do compile { target c++11 } }
+// { dg-require-effective-target hosted }
 
-// Copyright (C) 2012-2021 Free Software Foundation, Inc.
+// Copyright (C) 2012-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -53,5 +54,35 @@ static_assert( is_same<allocator<int>::propagate_on_container_move_assignment,
                        std::true_type>::value,
                "propagate_on_container_move_assignment" );
 
-static_assert( is_same<allocator<int>::is_always_equal, std::true_type>::value,
-               "is_always_equal" );
+#if __cplusplus <= 202302L
+using IAE = allocator<int>::is_always_equal; // { dg-warning "deprecated" "" { target { c++20_only || c++23_only } } }
+static_assert( is_same<IAE, std::true_type>::value, "is_always_equal" );
+#else
+struct B { using is_always_equal = int; };
+struct tester : B, std::allocator<int> { is_always_equal unambig; };
+#endif
+
+// Test required typedefs for allocator<void> specialization.
+static_assert( is_same<allocator<void>::value_type, void>::value,
+	       "void value_type" );
+#if __cplusplus <= 201703L
+static_assert( is_same<allocator<void>::pointer, void*>::value,
+	       "void pointer" );
+static_assert( is_same<allocator<void>::const_pointer, const void*>::value,
+	       "void const_pointer" );
+static_assert( is_same<allocator<void>::rebind<char>::other,
+                       allocator<char>>::value,
+               "void rebind::other" );
+#else
+// Since C++20 allocator<void> uses the primary template, so has the same types.
+static_assert( is_same<allocator<void>::propagate_on_container_move_assignment,
+                       std::true_type>::value,
+               "propagate_on_container_move_assignment" );
+
+#if __cplusplus <= 202302L
+using VIAE = allocator<void>::is_always_equal; // { dg-warning "deprecated" "" { target { c++20_only || c++23_only } } }
+static_assert( is_same<VIAE, std::true_type>::value, "is_always_equal" );
+#else
+struct tester2 : B, std::allocator<void> { is_always_equal unambig; };
+#endif
+#endif

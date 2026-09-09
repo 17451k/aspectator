@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -62,28 +62,24 @@ package body Ch2 is
 
    --  Error recovery: can raise Error_Resync (cannot return Error)
 
-   function P_Identifier (C : Id_Check := None) return Node_Id is
+   function P_Identifier
+     (C         : Id_Check := None;
+      Force_Msg : Boolean  := False)
+     return Node_Id
+   is
       Ident_Node : Node_Id;
 
    begin
       --  All set if we do indeed have an identifier
 
-      --  Code duplication, see Par_Ch3.P_Defining_Identifier???
-
       if Token = Tok_Identifier then
          Check_Future_Keyword;
-         Ident_Node := Token_Node;
-         Scan; -- past Identifier
-         return Ident_Node;
 
       --  If we have a reserved identifier, manufacture an identifier with
       --  a corresponding name after posting an appropriate error message
 
       elsif Is_Reserved_Identifier (C) then
-         Scan_Reserved_Identifier (Force_Msg => False);
-         Ident_Node := Token_Node;
-         Scan; -- past the node
-         return Ident_Node;
+         Scan_Reserved_Identifier (Force_Msg => Force_Msg);
 
       --  Otherwise we have junk that cannot be interpreted as an identifier
 
@@ -91,6 +87,15 @@ package body Ch2 is
          T_Identifier; -- to give message
          raise Error_Resync;
       end if;
+
+      if Style_Check then
+         Style.Check_Defining_Identifier_Casing;
+      end if;
+
+      Ident_Node := Token_Node;
+      Scan; -- past the identifier
+
+      return Ident_Node;
    end P_Identifier;
 
    --------------------------
@@ -194,6 +199,82 @@ package body Ch2 is
 
    --  Handled by scanner as part of string literal handling (see 2.4)
 
+   ---------------------------------------
+   --  2.6  Interpolated String Literal --
+   ---------------------------------------
+
+   --  INTERPOLATED_STRING_LITERAL ::=
+   --    'f' "{INTERPOLATED_STRING_ELEMENT}" {
+   --        "{INTERPOLATED_STRING_ELEMENT}" }
+
+   --  INTERPOLATED_STRING_ELEMENT ::=
+   --     ESCAPED_CHARACTER | INTERPOLATED_EXPRESSION
+   --   | non_quotation_mark_non_left_brace_GRAPHIC_CHARACTER
+
+   --  ESCAPED_CHARACTER ::= '\GRAPHIC_CHARACTER'
+
+   --  INTERPOLATED_EXPRESSION ::= '{' EXPRESSION '}'
+
+   --  Interpolated string element and escaped character rules are handled by
+   --  scanner as part of string literal handling.
+
+   -----------------------------------
+   -- P_Interpolated_String_Literal --
+   -----------------------------------
+
+   function P_Interpolated_String_Literal return Node_Id is
+      Elements_List : constant List_Id := New_List;
+      Saved_State   : constant Boolean := Inside_Interpolated_String_Literal;
+      String_Node   : Node_Id;
+
+   begin
+      String_Node := New_Node (N_Interpolated_String_Literal, Token_Ptr);
+      Inside_Interpolated_String_Literal := True;
+
+      Scan;   --  past 'f'
+
+      if Token /= Tok_String_Literal then
+         Error_Msg_SC ("string literal expected");
+
+      else
+         Set_Is_Interpolated_String_Literal (Token_Node);
+         Append_To (Elements_List, Token_Node);
+         Scan;  --  past string_literal
+
+         while Token in Tok_Left_Curly_Bracket | Tok_String_Literal loop
+
+            --  Interpolated expression
+
+            if Token = Tok_Left_Curly_Bracket then
+               declare
+                  Saved_In_Expr : constant Boolean :=
+                    Inside_Interpolated_String_Expression;
+
+               begin
+                  Scan; --  past '{'
+                  Inside_Interpolated_String_Expression := True;
+                  Append_To (Elements_List, P_Expression);
+                  Inside_Interpolated_String_Expression := Saved_In_Expr;
+                  T_Right_Curly_Bracket;
+               end;
+            else
+               if Prev_Token /= Tok_Right_Curly_Bracket then
+                  Error_Msg_SC ("unexpected string literal");
+               end if;
+
+               Set_Is_Interpolated_String_Literal (Token_Node);
+               Append_To (Elements_List, Token_Node);
+               Scan; --  past string_literal
+            end if;
+         end loop;
+      end if;
+
+      Inside_Interpolated_String_Literal := Saved_State;
+      Set_Expressions (String_Node, Elements_List);
+
+      return String_Node;
+   end P_Interpolated_String_Literal;
+
    ------------------
    -- 2.7  Comment --
    ------------------
@@ -293,7 +374,7 @@ package body Ch2 is
 
       if SIS_Entry_Active then
          Import_Check_Required :=
-           (Prag_Name = Name_Import) or else (Prag_Name = Name_Interface);
+           Prag_Name = Name_Import or else Prag_Name = Name_Interface;
       else
          Import_Check_Required := False;
       end if;
@@ -304,6 +385,8 @@ package body Ch2 is
         or else Chars (Ident_Node) = Name_Refined_Depends
       then
          Inside_Depends := True;
+      elsif Chars (Ident_Node) = Name_Abstract_State then
+         Inside_Abstract_State := True;
       end if;
 
       --  Scan arguments. We assume that arguments are present if there is
@@ -360,11 +443,11 @@ package body Ch2 is
 
       Semicolon_Loc := Token_Ptr;
 
-      --  Cancel indication of being within a pragma or in particular a Depends
-      --  pragma.
+      --  Cancel indication of being within a pragma
 
-      Inside_Depends := False;
-      Inside_Pragma  := False;
+      Inside_Depends        := False;
+      Inside_Abstract_State := False;
+      Inside_Pragma         := False;
 
       --  Now we have two tasks left, we need to scan out the semicolon
       --  following the pragma, and we have to call Par.Prag to process
@@ -391,8 +474,9 @@ package body Ch2 is
    exception
       when Error_Resync =>
          Resync_Past_Semicolon;
-         Inside_Depends := False;
-         Inside_Pragma  := False;
+         Inside_Depends        := False;
+         Inside_Abstract_State := False;
+         Inside_Pragma         := False;
          return Error;
    end P_Pragma;
 

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,9 +33,9 @@
 
 with System.Width_I;
 
-package System.Wid_Int is
-
+package System.Wid_Int
+  with SPARK_Mode
+is
    function Width_Integer is new Width_I (Integer);
    pragma Pure_Function (Width_Integer);
-
 end System.Wid_Int;

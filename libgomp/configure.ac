@@ -121,15 +121,17 @@ AC_SUBST(CFLAGS)
 # in both places for now and restore CFLAGS at the end of config.
 save_CFLAGS="$CFLAGS"
 
+AC_ARG_ENABLE([werror],
+  [AS_HELP_STRING([--disable-werror], [disable building with -Werror])])
 # Add -Wall -Werror if we are using GCC.
-if test "x$GCC" = "xyes"; then
-  XCFLAGS="$XCFLAGS -Wall -Werror"
-fi
+AS_IF([test "x$GCC" = "xyes"],
+  [XCFLAGS="$XCFLAGS -Wall"])
+AS_IF([test "x$enable_werror" != "xno" && test "x$GCC" = "xyes"],
+  [XCFLAGS="$XCFLAGS -Werror"])
 
 # Find other programs we need.
 AC_CHECK_TOOL(AR, ar)
 AC_CHECK_TOOL(RANLIB, ranlib, ranlib-not-found-in-path-error)
-AC_PATH_PROG(PERL, perl, perl-not-found-in-path-error)
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
 
@@ -146,6 +148,7 @@ AM_PROG_LIBTOOL
 ACX_LT_HOST_FLAGS
 AC_SUBST(enable_shared)
 AC_SUBST(enable_static)
+AM_CONDITIONAL([ENABLE_DARWIN_AT_RPATH], [test x$enable_darwin_at_rpath = xyes])
 
 AM_MAINTAINER_MODE
 
@@ -219,6 +222,11 @@ fi
 if test x$libgomp_offloaded_only = xyes; then
   AC_DEFINE(LIBGOMP_OFFLOADED_ONLY, 1,
             [Define to 1 if building libgomp for an accelerator-only target.])
+fi
+
+if test "x$enable_offload_defaulted" = xyes; then
+  AC_DEFINE(OFFLOAD_DEFAULTED, 1,
+    [Define to 1 to if -foffload is defaulted])
 fi
 
 AC_CHECK_SIZEOF([void *])
@@ -331,6 +339,24 @@ fi
 AX_COUNT_CPUS
 AC_SUBST(CPU_COUNT)
 
+AC_MSG_NOTICE([checking for flock implementation])
+AC_CHECK_PROGS(FLOCK, flock)
+# Fallback if 'perl' is available.
+if test -z "$FLOCK"; then
+  # These need to be absolute paths, yet at the same time need to
+  # canonicalize only relative paths, because then amd will not unmount
+  # drives. Thus the use of PWDCMD: set it to 'pawd' or 'amq -w' if using amd.
+  case $srcdir in
+changequote(,)dnl
+    [\\/$]* | ?:[\\/]*) libgomp_abs_srcdir=${srcdir} ;;
+changequote([,])dnl
+    *) libgomp_abs_srcdir=`cd "$srcdir" && ${PWDCMD-pwd} || echo "$srcdir"` ;;
+  esac
+  AC_CHECK_PROG(FLOCK, perl, $libgomp_abs_srcdir/testsuite/flock)
+fi
+
+AC_SUBST(SYSROOT_CFLAGS_FOR_TARGET)
+
 # Get target configury.
 . ${srcdir}/configure.tgt
 CFLAGS="$save_CFLAGS $XCFLAGS"
@@ -377,9 +403,9 @@ fi
 # which will force linkage against -lpthread (or equivalent for the system).
 # That's not 100% ideal, but about the best we can do easily.
 if test $enable_shared = yes; then
-  link_gomp="-lgomp %{static: $LIBS}"
+  link_gomp="-lgomp %{static: $LIBS${DL_LIBS:+ $DL_LIBS}}"
 else
-  link_gomp="-lgomp $LIBS"
+  link_gomp="-lgomp $LIBS${DL_LIBS:+ $DL_LIBS}"
 fi
 AC_SUBST(link_gomp)
 
@@ -433,13 +459,15 @@ fi
 if test $OMP_NEST_LOCK_25_SIZE -gt 8 || test $OMP_NEST_LOCK_25_ALIGN -gt $OMP_NEST_LOCK_25_SIZE; then
   OMP_NEST_LOCK_25_KIND=8
 fi
-if test $OMP_DEPEND_KIND -eq 16; then
-  if test $OMP_INT128_SIZE -ne 16; then
-    AC_MSG_ERROR([unsupported system, cannot find Fortran int kind=16, needed for omp_depend_kind])
-  fi
-else
-  if test $OMP_DEPEND_KIND -ne 8; then
-    AC_MSG_ERROR([unsupported system, cannot find Fortran integer kind for omp_depend_kind])
+if test "$ac_cv_fc_compiler_gnu" = yes; then
+  if test $OMP_DEPEND_KIND -eq 16; then
+    if test $OMP_INT128_SIZE -ne 16; then
+      AC_MSG_ERROR([unsupported system, cannot find Fortran int kind=16, needed for omp_depend_kind])
+    fi
+  else
+    if test $OMP_DEPEND_KIND -ne 8; then
+      AC_MSG_ERROR([unsupported system, cannot find Fortran integer kind for omp_depend_kind])
+    fi
   fi
 fi
 

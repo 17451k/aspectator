@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+# Copyright (C) 2016-2026 Free Software Foundation, Inc.
 #
 # Script to analyze results of our branch prediction heuristics
 #
@@ -16,7 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GCC; see the file COPYING3.  If not see
-# <http://www.gnu.org/licenses/>.  */
+# <http://www.gnu.org/licenses/>.
 #
 #
 #
@@ -101,8 +103,11 @@ class PredictDefFile:
 
         p = None
         modified_lines = []
-        for l in lines:
+        for i, l in enumerate(lines):
             if l.startswith('DEF_PREDICTOR'):
+                next_line = lines[i + 1]
+                if l.endswith(','):
+                    l += next_line
                 m = re.match('.*"(.*)".*', l)
                 p = m.group(1)
             elif l == '':

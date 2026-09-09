@@ -101,13 +101,16 @@ target_triplet = @target@
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/../config/acx.m4 \
+	$(top_srcdir)/../config/clang-plugin.m4 \
 	$(top_srcdir)/../config/depstand.m4 \
+	$(top_srcdir)/../config/gcc-plugin.m4 \
 	$(top_srcdir)/../config/lead-dot.m4 \
 	$(top_srcdir)/../config/libstdc++-raw-cxx.m4 \
 	$(top_srcdir)/../config/multi.m4 \
 	$(top_srcdir)/../config/override.m4 \
 	$(top_srcdir)/../config/stdint.m4 \
 	$(top_srcdir)/../config/toolexeclibdir.m4 \
+	$(top_srcdir)/../config/warnings.m4 \
 	$(top_srcdir)/../ltoptions.m4 $(top_srcdir)/../ltsugar.m4 \
 	$(top_srcdir)/../ltversion.m4 $(top_srcdir)/../lt~obsolete.m4 \
 	$(top_srcdir)/acinclude.m4 $(top_srcdir)/../libtool.m4 \
@@ -208,13 +211,12 @@ am__define_uniq_tagged_files = \
 ETAGS = etags
 CTAGS = ctags
 CSCOPE = cscope
-DIST_SUBDIRS = sanitizer_common interception libbacktrace lsan asan \
-	ubsan tsan hwasan
 ACLOCAL = @ACLOCAL@
 ALLOC_FILE = @ALLOC_FILE@
 AMTAR = @AMTAR@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
+AS_SYM_ASSIGN_DEFS = @AS_SYM_ASSIGN_DEFS@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
@@ -263,6 +265,7 @@ LIBSTDCXX_RAW_CXX_CXXFLAGS = @LIBSTDCXX_RAW_CXX_CXXFLAGS@
 LIBSTDCXX_RAW_CXX_LDFLAGS = @LIBSTDCXX_RAW_CXX_LDFLAGS@
 LIBTOOL = @LIBTOOL@
 LIPO = @LIPO@
+LLVM_CONFIG = @LLVM_CONFIG@
 LN_S = @LN_S@
 LTLIBOBJS = @LTLIBOBJS@
 MAINT = @MAINT@
@@ -292,6 +295,7 @@ STRIP = @STRIP@
 TSAN_TARGET_DEPENDENT_OBJECTS = @TSAN_TARGET_DEPENDENT_OBJECTS@
 VERSION = @VERSION@
 VIEW_FILE = @VIEW_FILE@
+WARN_FLAGS = @WARN_FLAGS@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -366,6 +370,7 @@ nodist_saninclude_HEADERS = $(am__append_1)
 @SANITIZER_SUPPORTED_TRUE@SUBDIRS = sanitizer_common $(am__append_2) \
 @SANITIZER_SUPPORTED_TRUE@	$(am__append_3) lsan asan ubsan \
 @SANITIZER_SUPPORTED_TRUE@	$(am__append_4) $(am__append_5)
+DIST_SUBDIRS = $(SUBDIRS)
 gcc_version := $(shell @get_gcc_base_ver@ $(top_srcdir)/../gcc/BASE-VER)
 
 # Work around what appears to be a GNU make bug handling MAKEFLAGS

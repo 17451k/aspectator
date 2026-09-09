@@ -1,7 +1,7 @@
 /**
- * This module describes the _digest APIs used in Phobos. All digests follow
+ * This module describes the digest APIs used in Phobos. All digests follow
  * these APIs. Additionally, this module contains useful helper methods which
- * can be used with every _digest type.
+ * can be used with every digest type.
  *
 $(SCRIPT inhibitQuickIndex = 1;)
 
@@ -11,13 +11,13 @@ $(TR $(TH Category) $(TH Functions)
 )
 $(TR $(TDNW Template API) $(TD $(MYREF isDigest) $(MYREF DigestType) $(MYREF hasPeek)
   $(MYREF hasBlockSize)
-  $(MYREF ExampleDigest) $(MYREF _digest) $(MYREF hexDigest) $(MYREF makeDigest)
+  $(MYREF ExampleDigest) $(MYREF digest) $(MYREF hexDigest) $(MYREF makeDigest)
 )
 )
 $(TR $(TDNW OOP API) $(TD $(MYREF Digest)
 )
 )
-$(TR $(TDNW Helper functions) $(TD $(MYREF toHexString))
+$(TR $(TDNW Helper functions) $(TD $(MYREF toHexString) $(MYREF secureEqual))
 )
 $(TR $(TDNW Implementation helpers) $(TD $(MYREF digestLength) $(MYREF WrapperDigest))
 )
@@ -28,18 +28,18 @@ $(TR $(TDNW Implementation helpers) $(TD $(MYREF digestLength) $(MYREF WrapperDi
  * There are two APIs for digests: The template API and the OOP API. The template API uses structs
  * and template helpers like $(LREF isDigest). The OOP API implements digests as classes inheriting
  * the $(LREF Digest) interface. All digests are named so that the template API struct is called "$(B x)"
- * and the OOP API class is called "$(B x)Digest". For example we have $(D MD5) <--> $(D MD5Digest),
- * $(D CRC32) <--> $(D CRC32Digest), etc.
+ * and the OOP API class is called "$(B x)Digest". For example we have `MD5` <--> `MD5Digest`,
+ * `CRC32` <--> `CRC32Digest`, etc.
  *
  * The template API is slightly more efficient. It does not have to allocate memory dynamically,
  * all memory is allocated on the stack. The OOP API has to allocate in the finish method if no
  * buffer was provided. If you provide a buffer to the OOP APIs finish function, it doesn't allocate,
- * but the $(LREF Digest) classes still have to be created using $(D new) which allocates them using the GC.
+ * but the $(LREF Digest) classes still have to be created using `new` which allocates them using the GC.
  *
- * The OOP API is useful to change the _digest function and/or _digest backend at 'runtime'. The benefit here
+ * The OOP API is useful to change the digest function and/or digest backend at 'runtime'. The benefit here
  * is that switching e.g. Phobos MD5Digest and an OpenSSLMD5Digest implementation is ABI compatible.
  *
- * If just one specific _digest type and backend is needed, the template API is usually a good fit.
+ * If just one specific digest type and backend is needed, the template API is usually a good fit.
  * In this simplest case, the template API can even be used without templates: Just use the "$(B x)" structs
  * directly.
  *
@@ -47,7 +47,7 @@ $(TR $(TDNW Implementation helpers) $(TD $(MYREF digestLength) $(MYREF WrapperDi
  * Authors:
  * Johannes Pfau
  *
- * Source:    $(PHOBOSSRC std/_digest/_package.d)
+ * Source:    $(PHOBOSSRC std/digest/package.d)
  *
  * CTFE:
  * Digests do not work in CTFE
@@ -199,7 +199,7 @@ version (ExampleDigest)
      * Note:
      * $(UL
      * $(LI A digest must be a struct (value type) to pass the $(LREF isDigest) test.)
-     * $(LI A digest passing the $(LREF isDigest) test is always an $(D OutputRange))
+     * $(LI A digest passing the $(LREF isDigest) test is always an `OutputRange`)
      * )
      */
     struct ExampleDigest
@@ -208,8 +208,8 @@ version (ExampleDigest)
             /**
              * Use this to feed the digest with data.
              * Also implements the $(REF isOutputRange, std,range,primitives)
-             * interface for $(D ubyte) and $(D const(ubyte)[]).
-             * The following usages of $(D put) must work for any type which
+             * interface for `ubyte` and `const(ubyte)[]`.
+             * The following usages of `put` must work for any type which
              * passes $(LREF isDigest):
              * Example:
              * ----
@@ -240,7 +240,7 @@ version (ExampleDigest)
              *
              * Note:
              * The actual type returned by finish depends on the digest implementation.
-             * $(D ubyte[16]) is just used as an example. It is guaranteed that the type is a
+             * `ubyte[16]` is just used as an example. It is guaranteed that the type is a
              * static array of ubytes.
              *
              * $(UL
@@ -350,7 +350,7 @@ template DigestType(T)
 }
 
 /**
- * Used to check if a digest supports the $(D peek) method.
+ * Used to check if a digest supports the `peek` method.
  * Peek has exactly the same function signatures as finish, but it doesn't reset
  * the digest's internal state.
  *
@@ -392,7 +392,7 @@ template hasPeek(T)
 }
 
 /**
- * Checks whether the digest has a $(D blockSize) member, which contains the
+ * Checks whether the digest has a `blockSize` member, which contains the
  * digest's internal block size in bits. It is primarily used by $(REF HMAC, std,digest,hmac).
  */
 
@@ -427,17 +427,68 @@ package template isDigestibleRange(Range)
  * Every digest passing the $(LREF isDigest) test can be used with this function.
  *
  * Params:
- *  range= an $(D InputRange) with $(D ElementType) $(D ubyte), $(D ubyte[]) or $(D ubyte[num])
+ *  range= an `InputRange` with `ElementType` `ubyte`, `ubyte[]` or `ubyte[num]`
  */
 DigestType!Hash digest(Hash, Range)(auto ref Range range)
 if (!isArray!Range
     && isDigestibleRange!Range)
 {
-    import std.algorithm.mutation : copy;
     Hash hash;
     hash.start();
-    copy(range, &hash);
-    return hash.finish();
+    alias E = ElementType!Range; // Not necessarily ubyte. Could be ubyte[N] or ubyte[] or something w/alias this.
+    static if (!(__traits(isScalar, E) && E.sizeof == 1))
+    {
+        foreach (e; range)
+            hash.put(e);
+        return hash.finish();
+    }
+    else
+    {
+        static if (hasBlockSize!Hash)
+            enum bufferBytes = Hash.blockSize >= (8192 * 8) ? 8192 : Hash.blockSize <= 64 ? 8 : (Hash.blockSize / 8);
+        else
+            enum bufferBytes = 8;
+        ubyte[bufferBytes] buffer = void;
+        static if (isRandomAccessRange!Range && hasLength!Range)
+        {
+            const end = range.length;
+            size_t i = 0;
+            while (end - i >= buffer.length)
+            {
+                foreach (ref e; buffer)
+                    e = range[i++];
+                hash.put(buffer);
+            }
+            if (const remaining = end - i)
+            {
+                foreach (ref e; buffer[0 .. remaining])
+                    e = range[i++];
+                hash.put(buffer[0 .. remaining]);
+            }
+            return hash.finish();
+        }
+        else
+        {
+            for (;;)
+            {
+                size_t n = buffer.length;
+                foreach (i, ref e; buffer)
+                {
+                    if (range.empty)
+                    {
+                        n = i;
+                        break;
+                    }
+                    e = range.front;
+                    range.popFront();
+                }
+                if (n)
+                    hash.put(buffer[0 .. n]);
+                if (n != buffer.length)
+                    return hash.finish();
+            }
+        }
+    }
 }
 
 ///
@@ -490,7 +541,7 @@ if (allSatisfy!(isArray, typeof(data)))
  *
  * Params:
  *  order= the order in which the bytes are processed (see $(LREF toHexString))
- *  range= an $(D InputRange) with $(D ElementType) $(D ubyte), $(D ubyte[]) or $(D ubyte[num])
+ *  range= an `InputRange` with `ElementType` `ubyte`, `ubyte[]` or `ubyte[num]`
  */
 char[digestLength!(Hash)*2] hexDigest(Hash, Order order = Order.increasing, Range)(ref Range range)
 if (!isArray!Range && isDigestibleRange!Range)
@@ -562,7 +613,7 @@ Hash makeDigest(Hash)()
  * The Digest interface is the base interface which is implemented by all digests.
  *
  * Note:
- * A Digest implementation is always an $(D OutputRange)
+ * A Digest implementation is always an `OutputRange`
  */
 interface Digest
 {
@@ -570,7 +621,7 @@ interface Digest
         /**
          * Use this to feed the digest with data.
          * Also implements the $(REF isOutputRange, std,range,primitives)
-         * interface for $(D ubyte) and $(D const(ubyte)[]).
+         * interface for `ubyte` and `const(ubyte)[]`.
          *
          * Example:
          * ----
@@ -589,7 +640,7 @@ interface Digest
          * Resets the internal state of the digest.
          * Note:
          * $(LREF finish) calls this internally, so it's not necessary to call
-         * $(D reset) manually after a call to $(LREF finish).
+         * `reset` manually after a call to $(LREF finish).
          */
         @trusted nothrow void reset();
 
@@ -606,7 +657,7 @@ interface Digest
         @trusted nothrow ubyte[] finish();
         ///ditto
         nothrow ubyte[] finish(ubyte[] buf);
-        //@@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=6549
+        // https://issues.dlang.org/show_bug.cgi?id=6549
         /*in
         {
             assert(buf.length >= this.length);
@@ -686,6 +737,16 @@ enum Order : bool
     decreasing ///
 }
 
+///
+@safe unittest
+{
+    import std.digest.crc : CRC32;
+
+    auto crc32 = digest!CRC32("The quick ", "brown ", "fox jumps over the lazy dog");
+    assert(crc32.toHexString!(Order.decreasing) == "414FA339");
+    assert(crc32.toHexString!(LetterCase.lower, Order.decreasing) == "414fa339");
+}
+
 
 /**
  * Used to convert a hash value (a static or dynamic array of ubytes) to a string.
@@ -705,39 +766,12 @@ enum Order : bool
  * the return value, effectively avoiding dynamic allocation.
  */
 char[num*2] toHexString(Order order = Order.increasing, size_t num, LetterCase letterCase = LetterCase.upper)
-(in ubyte[num] digest)
+(const ubyte[num] digest)
 {
-    static if (letterCase == LetterCase.upper)
-    {
-        import std.ascii : hexDigits = hexDigits;
-    }
-    else
-    {
-        import std.ascii : hexDigits = lowerHexDigits;
-    }
-
 
     char[num*2] result;
     size_t i;
-
-    static if (order == Order.increasing)
-    {
-        foreach (u; digest)
-        {
-            result[i++] = hexDigits[u >> 4];
-            result[i++] = hexDigits[u & 15];
-        }
-    }
-    else
-    {
-        size_t j = num - 1;
-        while (i < num*2)
-        {
-            result[i++] = hexDigits[digest[j] >> 4];
-            result[i++] = hexDigits[digest[j] & 15];
-            j--;
-        }
-    }
+    toHexStringImpl!(order, letterCase)(digest, result);
     return result;
 }
 
@@ -751,35 +785,8 @@ char[num*2] toHexString(LetterCase letterCase, Order order = Order.increasing, s
 string toHexString(Order order = Order.increasing, LetterCase letterCase = LetterCase.upper)
 (in ubyte[] digest)
 {
-    static if (letterCase == LetterCase.upper)
-    {
-        import std.ascii : hexDigits = hexDigits;
-    }
-    else
-    {
-        import std.ascii : hexDigits = lowerHexDigits;
-    }
-
     auto result = new char[digest.length*2];
-    size_t i;
-
-    static if (order == Order.increasing)
-    {
-        foreach (u; digest)
-        {
-            result[i++] = hexDigits[u >> 4];
-            result[i++] = hexDigits[u & 15];
-        }
-    }
-    else
-    {
-        import std.range : retro;
-        foreach (u; retro(digest))
-        {
-            result[i++] = hexDigits[u >> 4];
-            result[i++] = hexDigits[u & 15];
-        }
-    }
+    toHexStringImpl!(order, letterCase)(digest, result);
     import std.exception : assumeUnique;
     // memory was just created, so casting to immutable is safe
     return () @trusted { return assumeUnique(result); }();
@@ -842,6 +849,42 @@ ref T[N] asArray(size_t N, T)(ref T[] source, string errorMsg = "")
 }
 
 /*
+ * Fill in a preallocated buffer with the ASCII hex representation from a byte buffer
+ */
+private void toHexStringImpl(Order order, LetterCase letterCase, BB, HB)
+(scope const ref BB byteBuffer, ref HB hexBuffer){
+    static if (letterCase == LetterCase.upper)
+    {
+        import std.ascii : hexDigits = hexDigits;
+    }
+    else
+    {
+        import std.ascii : hexDigits = lowerHexDigits;
+    }
+
+    size_t i;
+    static if (order == Order.increasing)
+    {
+        foreach (u; byteBuffer)
+        {
+            hexBuffer[i++] = hexDigits[u >> 4];
+            hexBuffer[i++] = hexDigits[u & 15];
+        }
+    }
+    else
+    {
+        size_t j = byteBuffer.length -1;
+        while (i < byteBuffer.length*2)
+        {
+            hexBuffer[i++] = hexDigits[byteBuffer[j] >> 4];
+            hexBuffer[i++] = hexDigits[byteBuffer[j] & 15];
+            j--;
+        }
+    }
+}
+
+
+/*
  * Returns the length (in bytes) of the hash value produced by T.
  */
 template digestLength(T)
@@ -884,7 +927,7 @@ if (isDigest!T) : Digest
         /**
          * Use this to feed the digest with data.
          * Also implements the $(REF isOutputRange, std,range,primitives)
-         * interface for $(D ubyte) and $(D const(ubyte)[]).
+         * interface for `ubyte` and `const(ubyte)[]`.
          */
         @trusted nothrow void put(scope const(ubyte)[] data...)
         {
@@ -895,7 +938,7 @@ if (isDigest!T) : Digest
          * Resets the internal state of the digest.
          * Note:
          * $(LREF finish) calls this internally, so it's not necessary to call
-         * $(D reset) manually after a call to $(LREF finish).
+         * `reset` manually after a call to $(LREF finish).
          */
         @trusted nothrow void reset()
         {
@@ -931,9 +974,9 @@ if (isDigest!T) : Digest
         nothrow ubyte[] finish(ubyte[] buf)
         in
         {
-            assert(buf.length >= this.length);
+            assert(buf.length >= this.length, "Given buffer is smaller than the local buffer.");
         }
-        body
+        do
         {
             enum string msg = "Buffer needs to be at least " ~ digestLength!(T).stringof ~ " bytes " ~
                 "big, check " ~ typeof(this).stringof ~ ".length!";
@@ -953,10 +996,10 @@ if (isDigest!T) : Digest
         version (StdDdoc)
         {
             /**
-             * Works like $(D finish) but does not reset the internal state, so it's possible
+             * Works like `finish` but does not reset the internal state, so it's possible
              * to continue putting data into this WrapperDigest after a call to peek.
              *
-             * These functions are only available if $(D hasPeek!T) is true.
+             * These functions are only available if `hasPeek!T` is true.
              */
             @trusted ubyte[] peek(ubyte[] buf) const;
             ///ditto
@@ -967,9 +1010,9 @@ if (isDigest!T) : Digest
             @trusted ubyte[] peek(ubyte[] buf) const
             in
             {
-                assert(buf.length >= this.length);
+                assert(buf.length >= this.length, "Given buffer is smaller than the local buffer.");
             }
-            body
+            do
             {
                 enum string msg = "Buffer needs to be at least " ~ digestLength!(T).stringof ~ " bytes " ~
                     "big, check " ~ typeof(this).stringof ~ ".length!";
@@ -1123,12 +1166,12 @@ if (isInputRange!R1 && isInputRange!R2 && !isInfinite!R1 && !isInfinite!R2 &&
     auto secret = "A7GZIP6TAQA6OHM7KZ42KB9303CEY0MOV5DD6NTV".representation;
     auto data = "data".representation;
 
-    string hex1 = data.hmac!SHA1(secret).toHexString;
-    string hex2 = data.hmac!SHA1(secret).toHexString;
-    string hex3 = "data1".representation.hmac!SHA1(secret).toHexString;
+    auto hex1 = data.hmac!SHA1(secret).toHexString;
+    auto hex2 = data.hmac!SHA1(secret).toHexString;
+    auto hex3 = "data1".representation.hmac!SHA1(secret).toHexString;
 
-    assert( secureEqual(hex1, hex2));
-    assert(!secureEqual(hex1, hex3));
+    assert( secureEqual(hex1[], hex2[]));
+    assert(!secureEqual(hex1[], hex3[]));
 }
 
 @system pure unittest
@@ -1168,4 +1211,346 @@ if (isInputRange!R1 && isInputRange!R2 && !isInfinite!R1 && !isInfinite!R2 &&
         auto hex2 = new ReferenceInputRange!int([0, 1, 2, 3, 4, 5, 6, 7, 9]).takeExactly(9);
         assert(!secureEqual(hex1, hex2));
     }
+}
+
+/**
+ * Validates a hex string.
+ *
+ * Checks whether all characters following an optional "0x" suffix
+ * are valid hexadecimal digits.
+ *
+ * Params:
+ *     hex = hexdecimal encoded byte array
+ * Returns:
+ *     true = if valid
+ */
+bool isHexString(String)(String hex) @safe pure nothrow @nogc
+if (isSomeString!String)
+{
+    import std.ascii : isHexDigit;
+
+    if ((hex.length >= 2) && (hex[0 .. 2] == "0x"))
+    {
+        hex = hex[2 .. $];
+    }
+
+    foreach (digit; hex)
+    {
+        if (!digit.isHexDigit)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+///
+@safe unittest
+{
+    assert(isHexString("0x0123456789ABCDEFabcdef"));
+    assert(isHexString("0123456789ABCDEFabcdef"));
+    assert(!isHexString("g"));
+    assert(!isHexString("#"));
+}
+
+/**
+ * Converts a hex text string to a range of bytes.
+ *
+ * The input to this function MUST be valid.
+ * $(REF isHexString, std, digest) can be used to check for this if needed.
+ *
+ * Params:
+ *     hex = String representation of a hexdecimal-encoded byte array.
+ * Returns:
+ *     A forward range of bytes.
+ */
+auto fromHexStringAsRange(String)(String hex) @safe pure nothrow @nogc
+if (isSomeString!String)
+{
+    return HexStringDecoder!String(hex);
+}
+
+///
+@safe unittest
+{
+    import std.range.primitives : ElementType, isForwardRange;
+    import std.traits : ReturnType;
+
+    // The decoder implements a forward range.
+    static assert(isForwardRange!(ReturnType!(fromHexStringAsRange!string)));
+    static assert(isForwardRange!(ReturnType!(fromHexStringAsRange!wstring)));
+    static assert(isForwardRange!(ReturnType!(fromHexStringAsRange!dstring)));
+
+    // The element type of the range is always `ubyte`.
+    static assert(
+        is(ElementType!(ReturnType!(fromHexStringAsRange!string)) == ubyte)
+    );
+    static assert(
+        is(ElementType!(ReturnType!(fromHexStringAsRange!wstring)) == ubyte)
+    );
+    static assert(
+        is(ElementType!(ReturnType!(fromHexStringAsRange!dstring)) == ubyte)
+    );
+}
+
+@safe unittest
+{
+    import std.array : staticArray;
+
+    // `staticArray` consumes the range returned by `fromHexStringAsRange`.
+    assert("0x0000ff".fromHexStringAsRange.staticArray!3  == [0, 0, 0xFF]);
+    assert("0x0000ff"w.fromHexStringAsRange.staticArray!3 == [0, 0, 0xFF]);
+    assert("0x0000ff"d.fromHexStringAsRange.staticArray!3 == [0, 0, 0xFF]);
+    assert("0xff12ff".fromHexStringAsRange.staticArray!1  == [0xFF]);
+    assert("0x12ff".fromHexStringAsRange.staticArray!2    == [0x12, 255]);
+    assert(
+        "0x3AaAA".fromHexStringAsRange.staticArray!4 == [0x3, 0xAA, 0xAA, 0x00]
+    );
+}
+
+/**
+ * Converts a hex text string to a range of bytes.
+ *
+ * Params:
+ *     hex = String representation of a hexdecimal-encoded byte array.
+ * Returns:
+ *     An newly allocated array of bytes.
+ * Throws:
+ *     Exception on invalid input.
+ * Example:
+ * ---
+ * ubyte[] dby  = "0xBA".fromHexString;
+ * ---
+ * See_Also:
+ *     $(REF fromHexString, std, digest) for a range version of the function.
+ */
+ubyte[] fromHexString(String)(String hex) @safe pure
+if (isSomeString!String)
+{
+    // This function is trivial, yet necessary for consistency.
+    // It provides a similar API to its `toHexString` counterpart.
+
+    if (!hex.isHexString)
+    {
+        import std.conv : text;
+
+        throw new Exception(
+            "The provided character sequence `"
+                ~ hex.text
+                ~ "` is not a valid hex string."
+        );
+    }
+
+    if ((hex.length >= 2) && (hex[0 .. 2] == "0x"))
+    {
+        hex = hex[2 .. $];
+    }
+
+    auto decoder = HexStringDecoder!String(hex);
+    auto result = new ubyte[](decoder.length);
+
+    size_t idx = 0;
+    foreach (b; decoder)
+    {
+        result[idx++] = b;
+    }
+    return result;
+}
+
+///
+@safe unittest
+{
+    // Single byte
+    assert("0xff".fromHexString  == [255]);
+    assert("0xff"w.fromHexString == [255]);
+    assert("0xff"d.fromHexString == [255]);
+    assert("0xC0".fromHexString  == [192]);
+    assert("0x00".fromHexString  == [0]);
+
+    // Nothing
+    assert("".fromHexString  == []);
+    assert(""w.fromHexString == []);
+    assert(""d.fromHexString == []);
+
+    // Nothing but a prefix
+    assert("0x".fromHexString  == []);
+    assert("0x"w.fromHexString == []);
+    assert("0x"d.fromHexString == []);
+
+    // Half a byte
+    assert("0x1".fromHexString  == [0x01]);
+    assert("0x1"w.fromHexString == [0x01]);
+    assert("0x1"d.fromHexString == [0x01]);
+
+    // Mixed case is fine.
+    assert("0xAf".fromHexString == [0xAF]);
+    assert("0xaF".fromHexString == [0xAF]);
+
+    // Multiple bytes
+    assert("0xfff".fromHexString     == [0x0F, 0xFF]);
+    assert("0x123AaAa".fromHexString == [0x01, 0x23, 0xAA, 0xAA]);
+    assert("EBBBBF".fromHexString    == [0xEB, 0xBB, 0xBF]);
+
+    // md5 sum
+    assert("d41d8cd98f00b204e9800998ecf8427e".fromHexString == [
+        0xD4, 0x1D, 0x8C, 0xD9, 0x8F, 0x00, 0xB2, 0x04,
+        0xE9, 0x80, 0x09, 0x98, 0xEC, 0xF8, 0x42, 0x7E,
+    ]);
+}
+
+///
+@safe unittest
+{
+    // Cycle self-test
+    const ubyte[] initial = [0x00, 0x12, 0x34, 0xEB];
+    assert(initial == initial.toHexString().fromHexString());
+}
+
+private ubyte hexDigitToByte(dchar hexDigit) @safe pure nothrow @nogc
+{
+    static int hexDigitToByteImpl(dchar hexDigit)
+    {
+        if (hexDigit >= '0' && hexDigit <= '9')
+        {
+            return hexDigit - '0';
+        }
+        else if (hexDigit >= 'A' && hexDigit <= 'F')
+        {
+            return hexDigit - 'A' + 10;
+        }
+        else if (hexDigit >= 'a' && hexDigit <= 'f')
+        {
+            return hexDigit - 'a' + 10;
+        }
+
+        assert(false, "Cannot convert invalid hex digit.");
+    }
+
+    return hexDigitToByteImpl(hexDigit) & 0xFF;
+}
+
+@safe unittest
+{
+    assert(hexDigitToByte('0') == 0x0);
+    assert(hexDigitToByte('9') == 0x9);
+    assert(hexDigitToByte('a') == 0xA);
+    assert(hexDigitToByte('b') == 0xB);
+    assert(hexDigitToByte('A') == 0xA);
+    assert(hexDigitToByte('C') == 0xC);
+}
+
+private struct HexStringDecoder(String)
+if (isSomeString!String)
+{
+    String hex;
+    ubyte front;
+    bool empty;
+
+    this(String hex)
+    {
+        if ((hex.length >= 2) && (hex[0 .. 2] == "0x"))
+        {
+            hex = hex[2 .. $];
+        }
+
+        if (hex.length == 0)
+        {
+            empty = true;
+            return;
+        }
+
+        const oddInputLength = (hex.length % 2 == 1);
+
+        if (oddInputLength)
+        {
+            front = hexDigitToByte(hex[0]);
+            hex = hex[1 .. $];
+        }
+        else
+        {
+            front = cast(ubyte)(hexDigitToByte(hex[0]) << 4 | hexDigitToByte(hex[1]));
+            hex = hex[2 .. $];
+        }
+
+        this.hex = hex;
+    }
+
+    void popFront()
+    {
+        if (hex.length == 0)
+        {
+            empty = true;
+            return;
+        }
+
+        front = cast(ubyte)(hexDigitToByte(hex[0]) << 4 | hexDigitToByte(hex[1]));
+        hex = hex[2 .. $];
+    }
+
+    typeof(this) save()
+    {
+        return this;
+    }
+
+    size_t length() const
+    {
+        if (this.empty)
+        {
+            return 0;
+        }
+
+        // current front + remainder
+        return 1 + (hex.length >> 1);
+    }
+}
+
+@safe unittest
+{
+    auto decoder = HexStringDecoder!string("");
+    assert(decoder.empty);
+    assert(decoder.length == 0);
+
+    decoder = HexStringDecoder!string("0x");
+    assert(decoder.empty);
+    assert(decoder.length == 0);
+}
+
+@safe unittest
+{
+    auto decoder = HexStringDecoder!string("0x0077FF");
+    assert(!decoder.empty);
+    assert(decoder.length == 3);
+    assert(decoder.front == 0x00);
+
+    decoder.popFront();
+    assert(!decoder.empty);
+    assert(decoder.length == 2);
+    assert(decoder.front == 0x77);
+
+    decoder.popFront();
+    assert(!decoder.empty);
+    assert(decoder.length == 1);
+    assert(decoder.front == 0xFF);
+
+    decoder.popFront();
+    assert(decoder.length == 0);
+    assert(decoder.empty);
+}
+
+@safe unittest
+{
+    auto decoder = HexStringDecoder!string("0x7FF");
+    assert(!decoder.empty);
+    assert(decoder.length == 2);
+    assert(decoder.front == 0x07);
+
+    decoder.popFront();
+    assert(!decoder.empty);
+    assert(decoder.length == 1);
+    assert(decoder.front == 0xFF);
+
+    decoder.popFront();
+    assert(decoder.length == 0);
+    assert(decoder.empty);
 }

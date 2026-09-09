@@ -1,6 +1,6 @@
 // Locale support -*- C++ -*-
 
-// Copyright (C) 1997-2021 Free Software Foundation, Inc.
+// Copyright (C) 1997-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -34,7 +34,9 @@
 #ifndef _LOCALE_FACETS_H
 #define _LOCALE_FACETS_H 1
 
+#ifdef _GLIBCXX_SYSHDR
 #pragma GCC system_header
+#endif
 
 #include <cwctype>	// For wctype_t
 #include <cctype>
@@ -670,6 +672,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   template<typename _CharT>
     locale::id ctype<_CharT>::id;
+
+  // Incomplete to provide a compile time diagnostics for common misuse
+  // of [locale.convenience] functions with basic_string as a character type.
+  template<typename _CharT, typename _Traits, typename _Alloc>
+    class ctype<basic_string<_CharT, _Traits, _Alloc> >;
 
   /**
    *  @brief  The ctype<char> specialization.
@@ -2056,6 +2063,8 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       { return this->do_get(__in, __end, __io, __err, __v); }
 
 #ifdef _GLIBCXX_USE_LONG_LONG
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlong-long"
       iter_type
       get(iter_type __in, iter_type __end, ios_base& __io,
 	  ios_base::iostate& __err, long long& __v) const
@@ -2065,6 +2074,7 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       get(iter_type __in, iter_type __end, ios_base& __io,
 	  ios_base::iostate& __err, unsigned long long& __v)  const
       { return this->do_get(__in, __end, __io, __err, __v); }
+#pragma GCC diagnostic pop
 #endif
       ///@}
 
@@ -2235,6 +2245,8 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       { return _M_extract_int(__beg, __end, __io, __err, __v); }
 
 #ifdef _GLIBCXX_USE_LONG_LONG
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlong-long"
       virtual iter_type
       do_get(iter_type __beg, iter_type __end, ios_base& __io,
 	     ios_base::iostate& __err, long long& __v) const
@@ -2244,6 +2256,7 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       do_get(iter_type __beg, iter_type __end, ios_base& __io,
 	     ios_base::iostate& __err, unsigned long long& __v) const
       { return _M_extract_int(__beg, __end, __io, __err, __v); }
+#pragma GCC diagnostic pop
 #endif
 
       virtual iter_type
@@ -2400,6 +2413,8 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       { return this->do_put(__s, __io, __fill, __v); }
 
 #ifdef _GLIBCXX_USE_LONG_LONG
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlong-long"
       iter_type
       put(iter_type __s, ios_base& __io, char_type __fill, long long __v) const
       { return this->do_put(__s, __io, __fill, __v); }
@@ -2408,6 +2423,7 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       put(iter_type __s, ios_base& __io, char_type __fill,
 	  unsigned long long __v) const
       { return this->do_put(__s, __io, __fill, __v); }
+#pragma GCC diagnostic pop
 #endif
       ///@}
 
@@ -2539,6 +2555,8 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       { return _M_insert_int(__s, __io, __fill, __v); }
 
 #ifdef _GLIBCXX_USE_LONG_LONG
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlong-long"
       virtual iter_type
       do_put(iter_type __s, ios_base& __io, char_type __fill,
 	     long long __v) const
@@ -2548,6 +2566,7 @@ _GLIBCXX_BEGIN_NAMESPACE_LDBL
       do_put(iter_type __s, ios_base& __io, char_type __fill,
 	     unsigned long long __v) const
       { return _M_insert_int(__s, __io, __fill, __v); }
+#pragma GCC diagnostic pop
 #endif
 
       virtual iter_type

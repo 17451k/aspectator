@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2020, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2026, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -54,27 +54,22 @@
 
 with Ada.Exceptions;
 with Ada.Task_Identification;
+with Ada.Unchecked_Conversion;
 
-with System.Task_Primitives;
 with System.Interrupt_Management;
-
 with System.Interrupt_Management.Operations;
-pragma Elaborate_All (System.Interrupt_Management.Operations);
-
 with System.IO;
-
+with System.Parameters;
+with System.Task_Primitives;
 with System.Task_Primitives.Operations;
 with System.Task_Primitives.Interrupt_Operations;
 with System.Storage_Elements;
-with System.Tasking.Utilities;
-
-with System.Tasking.Rendezvous;
-pragma Elaborate_All (System.Tasking.Rendezvous);
-
 with System.Tasking.Initialization;
-with System.Parameters;
+with System.Tasking.Utilities;
+with System.Tasking.Rendezvous;
 
-with Ada.Unchecked_Conversion;
+pragma Elaborate_All (System.Interrupt_Management.Operations);
+pragma Elaborate_All (System.Tasking.Rendezvous);
 
 package body System.Interrupts is
 
@@ -114,8 +109,8 @@ package body System.Interrupts is
          Static      : Boolean);
 
       entry Detach_Handler
-        (Interrupt   : Interrupt_ID;
-         Static      : Boolean);
+        (Interrupt : Interrupt_ID;
+         Static    : Boolean);
 
       entry Bind_Interrupt_To_Entry
         (T         : Task_Id;
@@ -159,54 +154,56 @@ package body System.Interrupts is
    end record;
 
    User_Handler : array (Interrupt_ID'Range) of Handler_Assoc :=
-                    (others => (null, Static => False));
+                    [others => (null, Static => False)];
    pragma Volatile_Components (User_Handler);
-   --  Holds the protected procedure handler (if any) and its Static
-   --  information for each interrupt. A handler is a Static one if it is
-   --  specified through the pragma Attach_Handler. Attach_Handler. Otherwise,
-   --  not static)
+   --  Holds the protected procedure handler (if any) and whether it is Static
+   --  for each interrupt. A handler is a Static one if and only if it is
+   --  specified through the Attach_Handler aspect (or the obsolescent
+   --  Attach_Handler pragma).
 
    User_Entry : array (Interrupt_ID'Range) of Entry_Assoc :=
-                  (others => (T => Null_Task, E => Null_Task_Entry));
+                  [others => (T => Null_Task, E => Null_Task_Entry)];
    pragma Volatile_Components (User_Entry);
    --  Holds the task and entry index (if any) for each interrupt
 
-   Blocked : array (Interrupt_ID'Range) of Boolean := (others => False);
+   Blocked : array (Interrupt_ID'Range) of Boolean := [others => False];
    pragma Atomic_Components (Blocked);
    --  True iff the corresponding interrupt is blocked in the process level
 
-   Ignored : array (Interrupt_ID'Range) of Boolean := (others => False);
+   Ignored : array (Interrupt_ID'Range) of Boolean := [others => False];
    pragma Atomic_Components (Ignored);
    --  True iff the corresponding interrupt is blocked in the process level
 
-   Last_Unblocker :
-     array (Interrupt_ID'Range) of Task_Id := (others => Null_Task);
+   Last_Unblocker : array (Interrupt_ID'Range) of Task_Id :=
+                      [others => Null_Task];
    pragma Atomic_Components (Last_Unblocker);
    --  Holds the ID of the last Task which Unblocked this Interrupt. It
    --  contains Null_Task if no tasks have ever requested the Unblocking
    --  operation or the Interrupt is currently Blocked.
 
-   Server_ID : array (Interrupt_ID'Range) of Task_Id :=
-                 (others => Null_Task);
+   Server_ID : array (Interrupt_ID'Range) of Task_Id := [others => Null_Task];
    pragma Atomic_Components (Server_ID);
    --  Holds the Task_Id of the Server_Task for each interrupt. Task_Id is
    --  needed to accomplish locking per Interrupt base. Also is needed to
    --  decide whether to create a new Server_Task.
 
-   --  Type and Head, Tail of the list containing Registered Interrupt
-   --  Handlers. These definitions are used to register the handlers
-   --  specified by the pragma Interrupt_Handler.
+   --  Type and the list containing Registered Interrupt Handlers. These
+   --  definitions are used to register the handlers specified by the pragma
+   --  Interrupt_Handler.
+
+   --------------------------
+   -- Handler Registration --
+   --------------------------
 
    type Registered_Handler;
    type R_Link is access all Registered_Handler;
 
    type Registered_Handler is record
-      H    : System.Address := System.Null_Address;
-      Next : R_Link := null;
+      H    : System.Address;
+      Next : R_Link;
    end record;
 
-   Registered_Handler_Head : R_Link := null;
-   Registered_Handler_Tail : R_Link := null;
+   Registered_Handlers : R_Link := null;
 
    Access_Hold : Server_Task_Access;
    --  Variable used to allocate Server_Task using "new"
@@ -260,7 +257,6 @@ package body System.Interrupts is
    is
       Interrupt : constant Interrupt_ID :=
                     Interrupt_ID (Storage_Elements.To_Integer (Int_Ref));
-
    begin
       if Is_Reserved (Interrupt) then
          raise Program_Error with
@@ -473,7 +469,7 @@ package body System.Interrupts is
    ---------------------------------
 
    procedure Install_Restricted_Handlers
-     (Prio     : Any_Priority;
+     (Prio     : Interrupt_Priority;
       Handlers : New_Handler_Array)
    is
       pragma Unreferenced (Prio);
@@ -544,6 +540,7 @@ package body System.Interrupts is
    -------------------
 
    function Is_Registered (Handler : Parameterless_Handler) return Boolean is
+      Ptr : R_Link := Registered_Handlers;
 
       type Acc_Proc is access procedure;
 
@@ -555,7 +552,6 @@ package body System.Interrupts is
       function To_Fat_Ptr is new Ada.Unchecked_Conversion
         (Parameterless_Handler, Fat_Ptr);
 
-      Ptr : R_Link;
       Fat : Fat_Ptr;
 
    begin
@@ -565,7 +561,6 @@ package body System.Interrupts is
 
       Fat := To_Fat_Ptr (Handler);
 
-      Ptr := Registered_Handler_Head;
       while Ptr /= null loop
          if Ptr.H = Fat.Handler_Addr.all'Address then
             return True;
@@ -606,8 +601,6 @@ package body System.Interrupts is
    ---------------------------------
 
    procedure Register_Interrupt_Handler (Handler_Addr : System.Address) is
-      New_Node_Ptr : R_Link;
-
    begin
       --  This routine registers the Handler as usable for Dynamic Interrupt
       --  Handler. Routines attaching and detaching Handler dynamically should
@@ -621,17 +614,8 @@ package body System.Interrupts is
 
       pragma Assert (Handler_Addr /= System.Null_Address);
 
-      New_Node_Ptr := new Registered_Handler;
-      New_Node_Ptr.H := Handler_Addr;
-
-      if Registered_Handler_Head = null then
-         Registered_Handler_Head := New_Node_Ptr;
-         Registered_Handler_Tail := New_Node_Ptr;
-
-      else
-         Registered_Handler_Tail.Next := New_Node_Ptr;
-         Registered_Handler_Tail := New_Node_Ptr;
-      end if;
+      Registered_Handlers :=
+       new Registered_Handler'(H => Handler_Addr, Next => Registered_Handlers);
    end Register_Interrupt_Handler;
 
    -----------------------
@@ -783,7 +767,7 @@ package body System.Interrupts is
                   null;
 
                when others =>
-                  pragma Assert (False);
+                  pragma Assert (Standard.False);
                   null;
             end case;
 
@@ -877,21 +861,22 @@ package body System.Interrupts is
          --  We don't check anything if Restoration is True, since we may be
          --  detaching a static handler to restore a dynamic one.
 
-         if not Restoration and then not Static
-
+         if not Restoration and then not Static then
             --  Tries to overwrite a static Interrupt Handler with a dynamic
             --  Handler
+            if User_Handler (Interrupt).Static then
+               raise Program_Error
+                 with
+                   "trying to overwrite a static Interrupt Handler with a "
+                   & "dynamic handler";
+            end if;
 
-           and then (User_Handler (Interrupt).Static
-
-                       --  The new handler is not specified as an
-                       --  Interrupt Handler by a pragma.
-
-                       or else not Is_Registered (New_Handler))
-         then
-            raise Program_Error with
-              "trying to overwrite a static Interrupt Handler with a " &
-              "dynamic handler";
+            --  The new handler is not specified as an interrupt handler by an
+            --  aspect (see the second sentence of RM C.3.2 (17/3)).
+            if not Is_Registered (New_Handler) then
+               raise Program_Error
+                 with "trying to attach procedure without Interrupt_Handler";
+            end if;
          end if;
 
          --  The interrupt should no longer be ignored if
@@ -968,9 +953,8 @@ package body System.Interrupts is
          end;
       end Initialize;
 
-      --  Note: All tasks in RTS will have all the Reserve Interrupts being
-      --  masked (except the Interrupt_Manager) and Keep_Unmasked unmasked
-      --  when created.
+      --  Note: All tasks in RTS will have all the Keep_Unmasked interrupts
+      --  unmasked when created.
 
       --  Abort_Task_Interrupt is one of the Interrupt unmasked in all tasks.
       --  We mask the Interrupt in this particular task so that "sigwait" is
@@ -1228,7 +1212,7 @@ package body System.Interrupts is
             when X : others =>
                System.IO.Put_Line ("Exception in Interrupt_Manager");
                System.IO.Put_Line (Ada.Exceptions.Exception_Information (X));
-               pragma Assert (False);
+               pragma Assert (Standard.False);
          end;
       end loop;
    end Interrupt_Manager;
@@ -1255,9 +1239,8 @@ package body System.Interrupts is
 
       IMOP.Install_Default_Action (IMNG.Interrupt_ID (Interrupt));
 
-      --  Note: All tasks in RTS will have all the Reserve Interrupts being
-      --  masked (except the Interrupt_Manager) and Keep_Unmasked unmasked when
-      --  created.
+      --  Note: All tasks in RTS will have all the Keep_Unmasked interrupts
+      --  unmasked when created.
 
       --  Abort_Task_Interrupt is one of the Interrupt unmasked in all tasks.
       --  We mask the Interrupt in this particular task so that "sigwait" is

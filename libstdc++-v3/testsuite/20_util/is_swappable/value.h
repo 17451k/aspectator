@@ -1,4 +1,4 @@
-// Copyright (C) 2015-2021 Free Software Foundation, Inc.
+// Copyright (C) 2015-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,12 +16,6 @@
 // <http://www.gnu.org/licenses/>.
 
 #include <type_traits>
-#include <testsuite_tr1.h>
-#include <utility>
-#include <array>
-#include <tuple>
-#include <queue>
-#include <stack>
 
 #if defined(test_std_is_swappable)
 #  ifndef __cpp_lib_is_swappable
@@ -41,6 +35,13 @@ using is_swappable = std::__is_swappable<T>;
         "need to be defined"
 #endif
 
+#include <utility>
+#include <array>
+#include <tuple>
+#include <queue>
+#include <stack>
+#include <testsuite_tr1.h>
+
 namespace funny {
   struct F {};
   void swap(F&, F&) = delete;
@@ -54,6 +55,13 @@ namespace funny {
   struct F3
   {
     friend void swap(F3&, F3) {}
+  };
+
+  struct DummyCmp
+  {
+    template<class T>
+      bool operator()(const T&, const T&) const
+      { return false; }
   };
 }
 void test01()
@@ -152,7 +160,9 @@ void test01()
   static_assert(test_property<is_swappable,
 		std::priority_queue<int>[1][2][3]>(true), "");
   static_assert(test_property<is_swappable,
-		std::priority_queue<construct::Nontrivial>>(true), "");
+		std::priority_queue<construct::Nontrivial,
+				    std::vector<construct::Nontrivial>,
+				    funny::DummyCmp>>(true), "");
   static_assert(test_property<is_swappable,
 		std::stack<int>>(true), "");
   static_assert(test_property<is_swappable,

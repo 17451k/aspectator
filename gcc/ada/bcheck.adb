@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,12 +29,14 @@ with Binderr;  use Binderr;
 with Butil;    use Butil;
 with Casing;   use Casing;
 with Fname;    use Fname;
+with Gnatvsn;
 with Namet;    use Namet;
 with Opt;      use Opt;
 with Osint;
 with Output;   use Output;
 with Rident;   use Rident;
 with Types;    use Types;
+with Uname;
 
 package body Bcheck is
 
@@ -67,6 +69,12 @@ package body Bcheck is
    --  Used to compare two unit names for No_Dependence checks. U1 is in
    --  standard unit name format, and U2 is in literal form with periods.
 
+   procedure Check_Consistency_Of_Sdep
+     (A : ALIs_Record; D : Sdep_Record; Src : Source_Record);
+   --  Called by Check_Consistency to check the consistency of one Sdep record,
+   --  where A is the ALI, and D represents the unit it depends on, and Src is
+   --  the source file corresponding to D.
+
    -------------------------------------
    -- Check_Configuration_Consistency --
    -------------------------------------
@@ -93,9 +101,7 @@ package body Bcheck is
          Check_Consistent_SSO_Default;
       end if;
 
-      if Zero_Cost_Exceptions_Specified
-        or else Frontend_Exceptions_Specified
-      then
+      if Zero_Cost_Exceptions_Specified then
          Check_Consistent_Exception_Handling;
       end if;
 
@@ -108,15 +114,133 @@ package body Bcheck is
       Check_Consistent_Dispatching_Policy;
    end Check_Configuration_Consistency;
 
+   -------------------------------
+   -- Check_Consistency_Of_Sdep --
+   -------------------------------
+
+   procedure Check_Consistency_Of_Sdep
+     (A : ALIs_Record; D : Sdep_Record; Src : Source_Record)
+   is
+      use Uname;
+      ALI_Path_Id : File_Name_Type;
+   begin
+      --  Check for special case of withing a unit that does not exist any
+      --  more. If the unit was completely missing we would already have
+      --  detected this, but a nasty case arises when we have a subprogram body
+      --  with no spec, and some obsolete unit with's a previous (now
+      --  disappeared) spec. We detect this nasty case by noticing we're
+      --  depending on a spec that has no corresponding unit table entry,
+      --  but the body does.
+
+      if Present (D.Unit_Name)
+        and then Is_Spec_Name (D.Unit_Name)
+        and then Get_Name_Table_Int (D.Unit_Name) = 0 -- no unit table entry?
+        and then Get_Name_Table_Int (Get_Body_Name (D.Unit_Name)) /= 0
+      then
+         Error_Msg_File_1 := A.Sfile;
+         Error_Msg_Unit_1 := D.Unit_Name;
+         Error_Msg ("{ depends on $ which no longer exists");
+      end if;
+
+      --  Now if the time stamps match, or all checksums match, then we are OK;
+      --  otherwise we have an error.
+
+      if D.Stamp /= Src.Stamp and then not Src.All_Checksums_Match then
+         Error_Msg_File_1 := A.Sfile;
+         Error_Msg_File_2 := D.Sfile;
+
+         --  Two styles of message, depending on whether or not
+         --  the updated file is the one that must be recompiled
+
+         if Error_Msg_File_1 = Error_Msg_File_2 then
+            if Tolerate_Consistency_Errors then
+               Error_Msg
+                  ("?{ has been modified and should be recompiled");
+            else
+               Error_Msg
+                 ("{ has been modified and must be recompiled");
+            end if;
+
+         else
+            ALI_Path_Id := Osint.Full_Lib_File_Name (A.Afile);
+
+            --  Guard against Find_File not finding (again) the file because
+            --  Primary_Directory has been clobbered in between.
+
+            if Present (ALI_Path_Id)
+              and then Osint.Is_Readonly_Library (ALI_Path_Id)
+            then
+               if Tolerate_Consistency_Errors then
+                  Error_Msg ("?{ should be recompiled");
+                  Error_Msg_File_1 := ALI_Path_Id;
+                  Error_Msg ("?({ is obsolete and read-only)");
+               else
+                  Error_Msg ("{ must be compiled");
+                  Error_Msg_File_1 := ALI_Path_Id;
+                  Error_Msg ("({ is obsolete and read-only)");
+               end if;
+
+            elsif Tolerate_Consistency_Errors then
+               Error_Msg
+                 ("?{ should be recompiled ({ has been modified)");
+
+            else
+               Error_Msg ("{ must be recompiled ({ has been modified)");
+            end if;
+         end if;
+
+         if not Tolerate_Consistency_Errors and Verbose_Mode then
+            Error_Msg_File_1 := Src.Stamp_File;
+
+            if Src.Source_Found then
+               Error_Msg_File_1 :=
+                 Osint.Full_Source_Name (Error_Msg_File_1);
+            else
+               Error_Msg_File_1 :=
+                 Osint.Full_Lib_File_Name (Error_Msg_File_1);
+            end if;
+
+            Error_Msg
+              ("time stamp from { " & String (Src.Stamp));
+
+            Error_Msg_File_1 := D.Sfile;
+            Error_Msg
+              (" conflicts with { timestamp " &
+               String (D.Stamp));
+
+            Error_Msg_File_1 :=
+              Osint.Full_Lib_File_Name (A.Afile);
+            Error_Msg (" from {");
+         end if;
+      end if;
+   end Check_Consistency_Of_Sdep;
+
    -----------------------
    -- Check_Consistency --
    -----------------------
 
    procedure Check_Consistency is
-      Src : Source_Id;
-      --  Source file Id for this Sdep entry
+      function Reified_Child_Spec (A : ALI_Id; D : Sdep_Id) return Boolean;
+      --  When we have a child subprogram body with no spec, the missing spec
+      --  is reified in the ALI file. This returns True if D is a dependency on
+      --  such a reified spec. The body always immediately follows the spec
+      --  and there is no no unit table entry for the spec in this case.
+      --  We do not want to call Check_Consistency_Of_Sdep for these specs,
+      --  because it confuses the detection of (truly) missing specs.
 
-      ALI_Path_Id : File_Name_Type;
+      function Reified_Child_Spec (A : ALI_Id; D : Sdep_Id) return Boolean is
+         use Uname;
+      begin
+         return Present (Sdep.Table (D).Unit_Name)
+           and then Get_Name_Table_Int (Sdep.Table (D).Unit_Name) = 0
+           and then D /= ALIs.Table (A).Last_Sdep
+           and then Sdep.Table (D).Sfile = Sdep.Table (D + 1).Sfile
+           and then Is_Spec_Name (Sdep.Table (D).Unit_Name)
+           and then Get_Body_Name (Sdep.Table (D).Unit_Name) =
+                    Sdep.Table (D + 1).Unit_Name;
+      end Reified_Child_Spec;
+
+   --  Start of processing for Check_Consistency
 
    begin
       --  First, we go through the source table to see if there are any cases
@@ -173,89 +297,14 @@ package body Bcheck is
          Sdep_Loop : for D in
            ALIs.Table (A).First_Sdep .. ALIs.Table (A).Last_Sdep
          loop
-            if Sdep.Table (D).Dummy_Entry then
-               goto Continue;
-            end if;
-
-            Src := Source_Id (Get_Name_Table_Int (Sdep.Table (D).Sfile));
-
-            --  If the time stamps match, or all checksums match, then we
-            --  are OK, otherwise we have a definite error.
-
-            if Sdep.Table (D).Stamp /= Source.Table (Src).Stamp
-              and then not Source.Table (Src).All_Checksums_Match
+            if not Sdep.Table (D).Dummy_Entry
+              and then not Reified_Child_Spec (A, D)
             then
-               Error_Msg_File_1 := ALIs.Table (A).Sfile;
-               Error_Msg_File_2 := Sdep.Table (D).Sfile;
-
-               --  Two styles of message, depending on whether or not
-               --  the updated file is the one that must be recompiled
-
-               if Error_Msg_File_1 = Error_Msg_File_2 then
-                  if Tolerate_Consistency_Errors then
-                     Error_Msg
-                        ("?{ has been modified and should be recompiled");
-                  else
-                     Error_Msg
-                       ("{ has been modified and must be recompiled");
-                  end if;
-
-               else
-                  ALI_Path_Id :=
-                    Osint.Full_Lib_File_Name (ALIs.Table (A).Afile);
-
-                  if Osint.Is_Readonly_Library (ALI_Path_Id) then
-                     if Tolerate_Consistency_Errors then
-                        Error_Msg ("?{ should be recompiled");
-                        Error_Msg_File_1 := ALI_Path_Id;
-                        Error_Msg ("?({ is obsolete and read-only)");
-                     else
-                        Error_Msg ("{ must be compiled");
-                        Error_Msg_File_1 := ALI_Path_Id;
-                        Error_Msg ("({ is obsolete and read-only)");
-                     end if;
-
-                  elsif Tolerate_Consistency_Errors then
-                     Error_Msg
-                       ("?{ should be recompiled ({ has been modified)");
-
-                  else
-                     Error_Msg ("{ must be recompiled ({ has been modified)");
-                  end if;
-               end if;
-
-               if (not Tolerate_Consistency_Errors) and Verbose_Mode then
-                  Error_Msg_File_1 := Source.Table (Src).Stamp_File;
-
-                  if Source.Table (Src).Source_Found then
-                     Error_Msg_File_1 :=
-                       Osint.Full_Source_Name (Error_Msg_File_1);
-                  else
-                     Error_Msg_File_1 :=
-                       Osint.Full_Lib_File_Name (Error_Msg_File_1);
-                  end if;
-
-                  Error_Msg
-                    ("time stamp from { " & String (Source.Table (Src).Stamp));
-
-                  Error_Msg_File_1 := Sdep.Table (D).Sfile;
-                  Error_Msg
-                    (" conflicts with { timestamp " &
-                     String (Sdep.Table (D).Stamp));
-
-                  Error_Msg_File_1 :=
-                    Osint.Full_Lib_File_Name (ALIs.Table (A).Afile);
-                  Error_Msg (" from {");
-               end if;
-
-               --  Exit from the loop through Sdep entries once we find one
-               --  that does not match.
-
-               exit Sdep_Loop;
+               Check_Consistency_Of_Sdep
+                 (ALIs.Table (A), Sdep.Table (D),
+                  Source.Table
+                    (Source_Id (Get_Name_Table_Int (Sdep.Table (D).Sfile))));
             end if;
-
-         <<Continue>>
-            null;
          end loop Sdep_Loop;
       end loop ALIs_Loop;
    end Check_Consistency;
@@ -1244,11 +1293,8 @@ package body Bcheck is
    procedure Check_Consistent_Exception_Handling is
    begin
       Check_Mechanism : for A1 in ALIs.First + 1 .. ALIs.Last loop
-         if (ALIs.Table (A1).Zero_Cost_Exceptions /=
-              ALIs.Table (ALIs.First).Zero_Cost_Exceptions)
-           or else
-            (ALIs.Table (A1).Frontend_Exceptions /=
-              ALIs.Table (ALIs.First).Frontend_Exceptions)
+         if ALIs.Table (A1).Zero_Cost_Exceptions /=
+             ALIs.Table (ALIs.First).Zero_Cost_Exceptions
          then
             Error_Msg_File_1 := ALIs.Table (A1).Sfile;
             Error_Msg_File_2 := ALIs.Table (ALIs.First).Sfile;
@@ -1267,7 +1313,7 @@ package body Bcheck is
    procedure Check_Duplicated_Subunits is
    begin
       for J in Sdep.First .. Sdep.Last loop
-         if Sdep.Table (J).Subunit_Name /= No_Name then
+         if Sdep.Table (J).Subunit_Name /= No_Unit_Name then
             Get_Decoded_Name_String (Sdep.Table (J).Subunit_Name);
             Name_Len := Name_Len + 2;
             Name_Buffer (Name_Len - 1) := '%';
@@ -1324,11 +1370,136 @@ package body Bcheck is
            or else ALIs.Table (A).Ver          (1 .. VL) /=
                    ALIs.Table (ALIs.First).Ver (1 .. VL)
          then
-            Error_Msg_File_1 := ALIs.Table (A).Sfile;
-            Error_Msg_File_2 := ALIs.Table (ALIs.First).Sfile;
+            --  Version mismatch found; generate error message.
 
-            Consistency_Error_Msg
-               ("{ and { compiled with different GNAT versions");
+            declare
+               use Gnatvsn;
+
+               Prefix : constant String :=
+                 Verbose_Library_Version
+                   (1 .. Verbose_Library_Version'Length
+                           - Library_Version'Length);
+
+               type ALI_Version is record
+                  Primary, Secondary : Int range -1 .. Int'Last;
+               end record;
+
+               No_Version : constant ALI_Version := (-1, -1);
+
+               function Remove_Prefix (S : String) return String is
+                 (S (S'First + Prefix'Length .. S'Last));
+
+               function Extract_Version (S : String) return ALI_Version;
+               --  Attempts to extract and return a pair of nonnegative library
+               --  version numbers from the given string; if unsuccessful,
+               --  then returns No_Version.
+
+               ---------------------
+               -- Extract_Version --
+               ---------------------
+
+               function Extract_Version (S : String) return ALI_Version is
+                  pragma Assert (S'First = 1);
+
+                  function Int_Value (Img : String) return Int;
+                  --  Using Int'Value leads to complications in
+                  --  building the binder, so DIY.
+
+                  ---------------
+                  -- Int_Value --
+                  ---------------
+
+                  function Int_Value (Img : String) return Int is
+                     Result : Nat := 0;
+                  begin
+                     if Img'Length in 1 .. 9
+                       and then (for all C of Img => C in '0' .. '9')
+                     then
+                        for C of Img loop
+                           Result := (10 * Result) +
+                             (Character'Pos (C) - Character'Pos ('0'));
+                        end loop;
+                        return Result;
+                     else
+                        return -1;
+                     end if;
+                  end Int_Value;
+
+               begin
+                  if S'Length > Prefix'Length
+                    and then S (1 .. Prefix'Length) = Prefix
+                  then
+                     declare
+                        Suffix    : constant String := Remove_Prefix (S);
+                        Dot_Found : Boolean := False;
+                        Primary, Secondary : Int;
+                     begin
+                        for Dot_Index in Suffix'Range loop
+                           if Suffix (Dot_Index) = '.' then
+                              Dot_Found := True;
+                              Primary :=
+                                Int_Value (Suffix (Suffix'First
+                                                   .. Dot_Index - 1));
+                              Secondary :=
+                                Int_Value (Suffix (Dot_Index + 1
+                                                   .. Suffix'Last));
+                              exit;
+                           end if;
+                        end loop;
+
+                        if not Dot_Found then
+                           Primary   := Int_Value (Suffix);
+                           Secondary := 0;
+                        end if;
+
+                        if Primary /= -1 and Secondary /= -1 then
+                           return (Primary   => Primary,
+                                   Secondary => Secondary);
+                        end if;
+                     end;
+                  end if;
+                  return No_Version;
+               end Extract_Version;
+
+               --  Local constants
+
+               V1_Text : constant String :=
+                 ALIs.Table (A).Ver (1 .. ALIs.Table (A).Ver_Len);
+               V2_Text : constant String :=
+                 ALIs.Table (ALIs.First).Ver (1 .. VL);
+               V1      : constant ALI_Version := Extract_Version (V1_Text);
+               V2      : constant ALI_Version := Extract_Version (V2_Text);
+
+               Include_Version_Numbers_In_Message : constant Boolean :=
+                 V1 /= V2 and V1 /= No_Version and V2 /= No_Version;
+            begin
+               Error_Msg_File_1 := ALIs.Table (A).Sfile;
+               Error_Msg_File_2 := ALIs.Table (ALIs.First).Sfile;
+
+               if Include_Version_Numbers_In_Message then
+                  if V1.Secondary = V2.Secondary then
+                     --  Excluding equal secondary values from error
+                     --  message text matters for generating reproducible
+                     --  regression test outputs.
+
+                     Error_Msg_Nat_1 := V1.Primary;
+                     Error_Msg_Nat_2 := V2.Primary;
+                     Consistency_Error_Msg
+                       ("{ and { compiled with different GNAT versions"
+                        & ", v# and v#");
+                  else
+                     Consistency_Error_Msg
+                       ("{ and { compiled with different GNAT versions"
+                        & ", v"
+                        & Remove_Prefix (V1_Text)
+                        & " and v"
+                        & Remove_Prefix (V2_Text));
+                  end if;
+               else
+                  Consistency_Error_Msg
+                    ("{ and { compiled with different GNAT versions");
+               end if;
+            end;
          end if;
       end loop;
    end Check_Versions;

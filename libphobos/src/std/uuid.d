@@ -23,6 +23,7 @@ $(TR $(TDNW Generating UUIDs)
      $(TD $(MYREF sha1UUID)
           $(MYREF randomUUID)
           $(MYREF md5UUID)
+          $(MYREF timestampRandomUUID)
           )
      )
 $(TR $(TDNW Using UUIDs)
@@ -68,11 +69,11 @@ $(TR $(TDNW UUID namespaces)
  *
  * For efficiency, UUID is implemented as a struct. UUIDs are therefore empty if not explicitly
  * initialized. An UUID is empty if $(MYREF3 UUID.empty, empty) is true. Empty UUIDs are equal to
- * $(D UUID.init), which is a UUID with all 16 bytes set to 0.
+ * `UUID.init`, which is a UUID with all 16 bytes set to 0.
  * Use UUID's constructors or the UUID generator functions to get an initialized UUID.
  *
  * This is a port of $(LINK2 http://www.boost.org/doc/libs/1_42_0/libs/uuid/uuid.html,
- * boost._uuid) from the Boost project with some minor additions and API
+ * boost.uuid) from the Boost project with some minor additions and API
  * changes for a more D-like API.
  *
  * Standards:
@@ -84,11 +85,11 @@ $(TR $(TDNW UUID namespaces)
  * Copyright: Copyright Johannes Pfau 2011 - .
  * License:   $(HTTP www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
  * Authors:   Johannes Pfau
- * Source:    $(PHOBOSSRC std/_uuid.d)
+ * Source:    $(PHOBOSSRC std/uuid.d)
  *
  * Macros:
  * MYREF2 = <a href="#$2">$(TT $1)</a>&nbsp;
- * MYREF3 = <a href="#$2">$(D $1)</a>
+ * MYREF3 = <a href="#$2">`$1`</a>
  */
 /*          Copyright Johannes Pfau 2011 - 2012.
  * Distributed under the Boost Software License, Version 1.0.
@@ -119,6 +120,10 @@ module std.uuid;
     assert(id.empty);
 }
 
+import core.time : dur;
+import std.bitmanip : bigEndianToNative, nativeToBigEndian;
+import std.datetime.systime : SysTime;
+import std.datetime : Clock, DateTime, UTC;
 import std.range.primitives;
 import std.traits;
 
@@ -178,7 +183,7 @@ public struct UUID
          *
          * Note:
          * All of these UUID versions can be read and processed by
-         * $(D std.uuid), but only version 3, 4 and 5 UUIDs can be generated.
+         * `std.uuid`, but only version 3, 4 and 5 UUIDs can be generated.
          */
         enum Version
         {
@@ -193,7 +198,9 @@ public struct UUID
             ///Version 4 (Random)
             randomNumberBased = 4,
             ///Version 5 (Name based + SHA-1)
-            nameBasedSHA1 = 5
+            nameBasedSHA1 = 5,
+            ///Version 7 (milliseconds since unix epoch + random)
+            timestampRandom = 7
         }
 
         union
@@ -249,12 +256,12 @@ public struct UUID
          * Construct a UUID struct from the 16 byte representation
          * of a UUID.
          */
-        @safe pure nothrow @nogc this(ref in ubyte[16] uuidData)
+        @safe pure nothrow @nogc this(ref const scope ubyte[16] uuidData)
         {
             data = uuidData;
         }
         /// ditto
-        @safe pure nothrow @nogc this(in ubyte[16] uuidData)
+        @safe pure nothrow @nogc this(const ubyte[16] uuidData)
         {
             data = uuidData;
         }
@@ -275,7 +282,7 @@ public struct UUID
          * You need to pass exactly 16 ubytes.
          */
         @safe pure this(T...)(T uuidData)
-            if (uuidData.length == 16 && allSatisfy!(isIntegral, T))
+        if (uuidData.length == 16 && allSatisfy!(isIntegral, T))
         {
             import std.conv : to;
 
@@ -310,6 +317,46 @@ public struct UUID
         }
 
         /**
+         * UUID V7 constructor
+         *
+         * This implementation is not guaranteed to use a cryptographically secure PRNG.
+         * For more information please see: std.random.unpredictableSeed
+         *
+         * Params:
+         *   timestamp = the timestamp part of the UUID V7
+         *   random = UUID V7 has 74 bits of random data, which rounds to 10 ubyte's.
+         *    If no random data is given, random data is generated.
+         */
+        @safe pure this(SysTime timestamp, ubyte[10] random = generateRandomData!10)
+        {
+            ulong epoch = (timestamp - SysTime.fromUnixTime(0)).total!"msecs";
+            this(epoch, random);
+        }
+
+        /// ditto
+        @safe pure this(ulong epoch_msecs, ubyte[10] random = generateRandomData!10)
+        {
+            ubyte[8] epoch = epoch_msecs.nativeToBigEndian;
+
+            this.data[0 .. 6] = epoch[2 .. 8];
+            this.data[6 .. $] = random;
+
+            // version and variant
+            this.data[6] = (this.data[6] & 0x0F) | 0x70;
+            this.data[8] = (this.data[8] & 0x3F) | 0x80;
+        }
+
+        ///
+        @system unittest
+        {
+            import std.datetime : DateTime, SysTime;
+            SysTime st = DateTime(2025, 8, 19, 10, 38, 45);
+            UUID u = UUID(st);
+            SysTime o = u.v7Timestamp();
+            assert(o == st, st.toString() ~ " | " ~ o.toString());
+        }
+
+        /**
          * <a name="UUID(string)"></a>
          * Parse a UUID from its canonical string form. An UUID in its
          * canonical form looks like this: 8ab3060e-2cba-4f23-b74c-b52db3bdfb46
@@ -331,7 +378,8 @@ public struct UUID
          *
          * For a less strict parser, see $(LREF parseUUID)
          */
-        this(T)(in T[] uuid) if (isSomeChar!(Unqual!T))
+        this(T)(in T[] uuid)
+        if (isSomeChar!T)
         {
             import std.conv : to, parse;
             if (uuid.length < 36)
@@ -404,13 +452,13 @@ public struct UUID
         {
             import std.conv : to;
             import std.exception;
-            import std.meta;
+            import std.meta : AliasSeq;
 
-            foreach (S; AliasSeq!(char[], const(char)[], immutable(char)[],
+            static foreach (S; AliasSeq!(char[], const(char)[], immutable(char)[],
                                   wchar[], const(wchar)[], immutable(wchar)[],
                                   dchar[], const(dchar)[], immutable(dchar)[],
                                   immutable(char[]), immutable(wchar[]), immutable(dchar[])))
-            {
+            {{
                 //Test valid, working cases
                 assert(UUID(to!S("00000000-0000-0000-0000-000000000000")).empty);
 
@@ -456,7 +504,7 @@ public struct UUID
                     == UUID(cast(ubyte[16])[0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,0x01,
                     0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]));
             }
-        }
+        }}
 
         /**
          * Returns true if and only if the UUID is equal
@@ -512,6 +560,47 @@ public struct UUID
                 return true;
             }
             enum res = ctfeTest();
+        }
+
+        /**
+         * If the UUID is of version 7 it has a timestamp that this function
+         * returns, otherwise an UUIDParsingException is thrown.
+         */
+        SysTime v7Timestamp() const {
+            if (this.uuidVersion != Version.timestampRandom)
+            {
+                throw new UUIDParsingException("The UUID is not of version" ~
+                    " v7 therefore no timestamp exist", 0);
+            }
+
+            import std.bitmanip : bigEndianToNative;
+
+            ubyte[8] tmp = void;
+            tmp[0 .. 2] = 0;
+            tmp[2 .. 8] = data[0 .. 6];
+
+            ulong milli = tmp.bigEndianToNative!ulong;
+
+            return SysTime(DateTime(1970, 1, 1), UTC()) + dur!"msecs"(milli);
+        }
+
+        /**
+         * If the UUID is of version 7 it has a timestamp that this function
+         * returns as described in RFC 9562 (Method 3), otherwise an
+         * UUIDParsingException is thrown.
+         */
+        SysTime v7Timestamp_method3() const {
+            auto ret = v7Timestamp();
+
+            const ubyte[2] rand_a = [
+                data[6] & 0x0f, // masks version bits
+                data[7]
+            ];
+
+            const float hnsecs = rand_a.bigEndianToNative!ushort / MonotonicUUIDsFactory.subMsecsPart;
+            ret += dur!"hnsecs"(cast(ulong) hnsecs);
+
+            return ret;
         }
 
         /**
@@ -600,6 +689,8 @@ public struct UUID
                 return Version.randomNumberBased;
             else if ((octet9 & 0xF0) == 0x50)
                 return Version.nameBasedSHA1;
+            else if ((octet9 & 0xF0) == 0x70)
+                return Version.timestampRandom;
             else
                 return Version.unknown;
         }
@@ -621,7 +712,7 @@ public struct UUID
                 0x40 : UUID.Version.randomNumberBased,
                 0x50 : UUID.Version.nameBasedSHA1,
                 0x60 : UUID.Version.unknown,
-                0x70 : UUID.Version.unknown,
+                0x70 : UUID.Version.timestampRandom,
                 0x80 : UUID.Version.unknown,
                 0x90 : UUID.Version.unknown,
                 0xa0 : UUID.Version.unknown,
@@ -664,7 +755,7 @@ public struct UUID
          * All of the standard numeric operators are defined for
          * the UUID struct.
          */
-        @safe pure nothrow @nogc bool opEquals(in UUID s) const
+        @safe pure nothrow @nogc bool opEquals(const UUID s) const
         {
             return ulongs[0] == s.ulongs[0] && ulongs[1] == s.ulongs[1];
         }
@@ -693,7 +784,7 @@ public struct UUID
         /**
          * ditto
          */
-        @safe pure nothrow @nogc bool opEquals(ref in UUID s) const
+        @safe pure nothrow @nogc bool opEquals(ref const scope UUID s) const
         {
             return ulongs[0] == s.ulongs[0] && ulongs[1] == s.ulongs[1];
         }
@@ -701,7 +792,7 @@ public struct UUID
         /**
          * ditto
          */
-        @safe pure nothrow @nogc int opCmp(in UUID s) const
+        @safe pure nothrow @nogc int opCmp(const UUID s) const
         {
             import std.algorithm.comparison : cmp;
             return cmp(this.data[], s.data[]);
@@ -710,7 +801,7 @@ public struct UUID
         /**
          * ditto
          */
-        @safe pure nothrow @nogc int opCmp(ref in UUID s) const
+        @safe pure nothrow @nogc int opCmp(ref const scope UUID s) const
         {
             import std.algorithm.comparison : cmp;
             return cmp(this.data[], s.data[]);
@@ -719,7 +810,7 @@ public struct UUID
         /**
          * ditto
          */
-       @safe pure nothrow @nogc UUID opAssign(in UUID s)
+       @safe pure nothrow @nogc UUID opAssign(const UUID s)
         {
             ulongs[0] = s.ulongs[0];
             ulongs[1] = s.ulongs[1];
@@ -729,7 +820,7 @@ public struct UUID
         /**
          * ditto
          */
-        @safe pure nothrow @nogc UUID opAssign(ref in UUID s)
+        @safe pure nothrow @nogc UUID opAssign(ref const scope UUID s)
         {
             ulongs[0] = s.ulongs[0];
             ulongs[1] = s.ulongs[1];
@@ -880,12 +971,14 @@ public struct UUID
                 const uint lo = (entry) & 0x0F;
                 result[pos+1] = toChar!char(lo);
             }
-            foreach (i, c; result)
+            static if (!__traits(compiles, put(sink, result[])) || isSomeString!Writer)
             {
-                static if (__traits(compiles, put(sink, c)))
-                    put(sink, c);
-                else
+                foreach (i, c; result)
                     sink[i] = cast(typeof(sink[i]))c;
+            }
+            else
+            {
+                put(sink, result[]);
             }
         }
 
@@ -911,8 +1004,8 @@ public struct UUID
         @safe pure nothrow @nogc unittest
         {
             import std.meta : AliasSeq;
-            foreach (Char; AliasSeq!(char, wchar, dchar))
-            {
+            static foreach (Char; AliasSeq!(char, wchar, dchar))
+            {{
                 alias String = immutable(Char)[];
                 //CTFE
                 enum String s = "8ab3060e-2cba-4f23-b74c-b52db3bdfb46";
@@ -926,7 +1019,7 @@ public struct UUID
                 Char[36] str;
                 id.toString(str[]);
                 assert(str == s);
-            }
+            }}
         }
 
         @system pure nothrow @nogc unittest
@@ -952,7 +1045,7 @@ public struct UUID
             assert(u1.toString() == "8ab3060e-2cba-4f23-b74c-b52db3bdfb46");
 
             char[] buf;
-            void sink(const(char)[] data)
+            void sink(scope const(char)[] data)
             {
                 buf ~= data;
             }
@@ -961,10 +1054,23 @@ public struct UUID
         }
 }
 
+///
+@safe unittest
+{
+    UUID id;
+    assert(id.empty);
+
+    id = randomUUID;
+    assert(!id.empty);
+
+    id = UUID(cast(ubyte[16]) [138, 179, 6, 14, 44, 186, 79,
+        35, 183, 76, 181, 45, 179, 189, 251, 70]);
+    assert(id.toString() == "8ab3060e-2cba-4f23-b74c-b52db3bdfb46");
+}
 
 /**
  * This function generates a name based (Version 3) UUID from a namespace UUID and a name.
- * If no namespace UUID was passed, the empty UUID $(D UUID.init) is used.
+ * If no namespace UUID was passed, the empty UUID `UUID.init` is used.
  *
  * Note:
  * The default namespaces ($(LREF dnsNamespace), ...) defined by
@@ -980,8 +1086,8 @@ public struct UUID
  * RFC 4122 isn't very clear on how UUIDs should be generated from names.
  * It is possible that different implementations return different UUIDs
  * for the same input, so be warned. The implementation for UTF-8 strings
- * and byte arrays used by $(D std.uuid) is compatible with Boost's implementation.
- * $(D std.uuid) guarantees that the same input to this function will generate
+ * and byte arrays used by `std.uuid` is compatible with Boost's implementation.
+ * `std.uuid` guarantees that the same input to this function will generate
  * the same output at any time, on any system (this especially means endianness
  * doesn't matter).
  *
@@ -1078,7 +1184,7 @@ public struct UUID
  /**
  * This function generates a name based (Version 5) UUID from a namespace
  * UUID and a name.
- * If no namespace UUID was passed, the empty UUID $(D UUID.init) is used.
+ * If no namespace UUID was passed, the empty UUID `UUID.init` is used.
  *
  * Note:
  * The default namespaces ($(LREF dnsNamespace), ...) defined by
@@ -1091,8 +1197,8 @@ public struct UUID
  * RFC 4122 isn't very clear on how UUIDs should be generated from names.
  * It is possible that different implementations return different UUIDs
  * for the same input, so be warned. The implementation for UTF-8 strings
- * and byte arrays used by $(D std.uuid) is compatible with Boost's implementation.
- * $(D std.uuid) guarantees that the same input to this function will generate
+ * and byte arrays used by `std.uuid` is compatible with Boost's implementation.
+ * `std.uuid` guarantees that the same input to this function will generate
  * the same output at any time, on any system (this especially means endianness
  * doesn't matter).
  *
@@ -1104,13 +1210,13 @@ public struct UUID
  * for strings and wstrings. It's always possible to pass wstrings and dstrings
  * by using the ubyte[] function overload (but be aware of endianness issues!).
  */
-@safe pure nothrow @nogc UUID sha1UUID(in char[] name, const UUID namespace = UUID.init)
+@safe pure nothrow @nogc UUID sha1UUID(scope const(char)[] name, scope const UUID namespace = UUID.init)
 {
     return sha1UUID(cast(const(ubyte[]))name, namespace);
 }
 
 /// ditto
-@safe pure nothrow @nogc UUID sha1UUID(in ubyte[] data, const UUID namespace = UUID.init)
+@safe pure nothrow @nogc UUID sha1UUID(scope const(ubyte)[] data, scope const UUID namespace = UUID.init)
 {
     import std.digest.sha : SHA1;
 
@@ -1188,14 +1294,52 @@ public struct UUID
  *
  * This function is not supported at compile time.
  *
+ * Bugs:
+ * $(LINK2 https://github.com/dlang/phobos/issues/9881, Issue #9881 - Randomness in UUID generation is insufficient)
+ *
+ * Warning:
+ * $(B This function must not be used for cryptographic purposes.)
+ * UUIDs generated by this function do not have sufficient randomness
+ * for all use cases.
+ * This especially applies to the overload that accepts a caller-provided RNG.
+ * At the moment, Phobos does not provide a $(I cryptographically-secure
+ * pseudo-random number generator (CSPRNG)) that could be supplied to this
+ * function.
+ *
+ * While the function overload with no parameters will attempt to use the
+ * system CSPRNG where available and implemented, there are no guarantees.
+ * See $(REF unpredictableSeed, std, random) for details.
+ *
  * Params:
  *      randomGen = uniform RNG
  * See_Also: $(REF isUniformRNG, std,random)
  */
-@safe UUID randomUUID()
+@nogc nothrow @safe UUID randomUUID()
 {
-    import std.random : rndGen;
-    return randomUUID(rndGen);
+    import std.conv : bitCast;
+    import std.random : unpredictableSeed;
+
+    enum bufferSize = UUID.data.sizeof;
+    ubyte[bufferSize] data;
+
+    static assert(ulong.sizeof * 2 == bufferSize);
+    const half1 = unpredictableSeed!ulong();
+    const half2 = unpredictableSeed!ulong();
+
+    data[0 .. ulong.sizeof] = (() @trusted => half1.bitCast!(ubyte[ulong.sizeof]))();
+    data[ulong.sizeof .. $] = (() @trusted => half2.bitCast!(ubyte[ulong.sizeof]))();
+
+    // set variant
+    // must be 0b_10xxxxxx
+    data[8] &= 0b_10_111111;
+    data[8] |= 0b_10_000000;
+
+    // set version
+    // must be 0b_0100xxxx
+    data[6] &= 0b_0100_1111;
+    data[6] |= 0b_0100_0000;
+
+    return UUID(data);
 }
 
 /// ditto
@@ -1245,18 +1389,6 @@ if (isInputRange!RNG && isIntegral!(ElementType!RNG))
     auto uuid3 = randomUUID(gen);
 }
 
-/*
- * Original boost.uuid used Mt19937, we don't want
- * to use anything worse than that. If Random is changed
- * to something else, this assert and the randomUUID function
- * have to be updated.
- */
-@safe unittest
-{
-    import std.random : rndGen, Mt19937;
-    static assert(is(typeof(rndGen) == Mt19937));
-}
-
 @safe unittest
 {
     import std.random : Xorshift192, unpredictableSeed;
@@ -1273,6 +1405,164 @@ if (isInputRange!RNG && isIntegral!(ElementType!RNG))
     assert(u1 != u2);
     assert(u1.variant == UUID.Variant.rfc4122);
     assert(u1.uuidVersion == UUID.Version.randomNumberBased);
+}
+
+///
+class MonotonicUUIDsFactory
+{
+    import core.sync.mutex : Mutex;
+    import core.time : Duration;
+    import std.datetime.stopwatch : StopWatch;
+
+    private shared Mutex mtx;
+    private StopWatch startTimePoint;
+
+    ///
+    this(in SysTime startTime = SysTime.fromUnixTime(0)) shared
+    {
+        this(Clock.currTime(UTC()) - startTime);
+    }
+
+    ///
+    this(in Duration timeElapsed, bool autostartDisabledForTesting = false) shared
+    {
+        mtx = new shared Mutex();
+
+        (cast() startTimePoint).setTimeElapsed = timeElapsed;
+
+        if (!autostartDisabledForTesting)
+            (cast() startTimePoint).start();
+    }
+
+    private auto peek() shared
+    {
+        mtx.lock();
+        scope(exit) mtx.unlock();
+
+        return (cast() startTimePoint).peek;
+    }
+
+    // hnsecs is 1/10_000 of millisecond
+    // rand_a size is 12 bits (4096 values)
+    private enum float subMsecsPart = 1.0f / 10_000 * 4096;
+
+    /**
+     * Returns a monotonic timestamp + random based UUIDv7
+     * as described in RFC 9562 (Method 3).
+     */
+    UUID createUUIDv7_method3(ubyte[8] externalRandom = generateRandomData!8) shared
+    {
+        const curr = peek.split!("msecs", "hnsecs");
+        const qhnsecs = cast(ushort) (curr.hnsecs * subMsecsPart);
+
+        ubyte[10] rand;
+
+        // Whole rand_a is 16 bit, but usable only 12 MSB.
+        // additional 4 less significant bits consumed
+        // by a version value
+        rand[0 .. 2] = qhnsecs.nativeToBigEndian;
+        rand[2 .. $] = externalRandom;
+
+        return UUID(curr.msecs, rand);
+    }
+}
+
+/// Generate monotone UUIDs
+@system unittest
+{
+    auto f = new shared MonotonicUUIDsFactory;
+
+    UUID[10] monotonic;
+
+    foreach (ref u; monotonic)
+        u = f.createUUIDv7_method3;
+}
+
+@system unittest
+{
+    import std.conv : to;
+    import std.datetime;
+
+    const currTime = SysTime(DateTime(2025, 9, 12, 21, 38, 45), UTC());
+    Duration d = currTime - SysTime.fromUnixTime(0) + dur!"msecs"(123);
+
+    auto f = new shared MonotonicUUIDsFactory(d, true);
+
+    const u1 = f.createUUIDv7_method3();
+    assert(u1.uuidVersion == UUID.Version.timestampRandom);
+
+    // sub-millisecond part zeroed
+    assert((u1.data[6] & 0b0000_1111) == 0);
+    assert(u1.data[7] == 0);
+
+    const uuidv7_milli_1 = u1.v7Timestamp;
+
+    {
+        const st = u1.v7Timestamp_method3;
+        assert(cast(DateTime) st == cast(DateTime) currTime, st.to!string);
+
+        const sp = st.fracSecs.split!("msecs", "usecs", "hnsecs");
+        assert(sp.msecs == 123, sp.to!string);
+        assert(sp.usecs == 0, sp.to!string);
+    }
+
+    // 0.3 usecs, but Method 3 precision is only 0.25 of usec,
+    // thus, expected value is 2
+    d += dur!"hnsecs"(3);
+    f = new shared MonotonicUUIDsFactory(d, true);
+
+    const u2 = f.createUUIDv7_method3();
+    const uuidv7_milli_2 = u2.v7Timestamp;
+    assert(uuidv7_milli_1 == uuidv7_milli_2);
+
+    {
+        const st = u2.v7Timestamp_method3;
+        assert(cast(DateTime) st == cast(DateTime) currTime, st.to!string);
+
+        const sp = st.fracSecs.split!("msecs", "usecs", "hnsecs");
+        assert(sp.msecs == 123, sp.to!string);
+        assert(sp.usecs == 0, sp.to!string);
+        assert(sp.hnsecs == 2, sp.to!string);
+    }
+}
+
+@system unittest
+{
+    import core.thread.osthread : Thread;
+    import std.datetime;
+
+    scope f = new shared MonotonicUUIDsFactory;
+
+    UUID[1000] uuids;
+
+    foreach (ref u; uuids)
+    {
+        // UUIDv7 Method 3 monotonicity is only guaranteed if UUIDs are
+        // generated slower than 2.5 microseconds
+        Thread.sleep(dur!("hnsecs")(25));
+        u = f.createUUIDv7_method3;
+    }
+
+    foreach (i; 1 .. uuids.length)
+    {
+        assert(uuids[i-1].v7Timestamp_method3 < uuids[i].v7Timestamp_method3);
+        assert(uuids[i-1].data[8 .. $] != uuids[i].data[8 .. $], "random parts are equal");
+    }
+}
+
+/**
+ * This function returns a timestamp + random based UUID aka. uuid v7.
+ */
+UUID timestampRandomUUID()
+{
+    return UUID(Clock.currTime(UTC()));
+}
+
+///
+@system unittest
+{
+    UUID u = timestampRandomUUID();
+    assert(u.uuidVersion == UUID.Version.timestampRandom);
 }
 
 /**
@@ -1311,8 +1601,7 @@ if (isSomeString!T)
 
 ///ditto
 UUID parseUUID(Range)(ref Range uuidRange)
-if (isInputRange!Range
-    && is(Unqual!(ElementType!Range) == dchar))
+if (isInputRange!Range && isSomeChar!(ElementType!Range))
 {
     import std.ascii : isHexDigit;
     import std.conv : ConvException, parse;
@@ -1527,12 +1816,12 @@ if (isInputRange!Range
             return parseUUID(to!T(input));
     }
 
-    foreach (S; AliasSeq!(char[], const(char)[], immutable(char)[],
+    static foreach (S; AliasSeq!(char[], const(char)[], immutable(char)[],
                           wchar[], const(wchar)[], immutable(wchar)[],
                           dchar[], const(dchar)[], immutable(dchar)[],
                           immutable(char[]), immutable(wchar[]), immutable(dchar[]),
                           TestForwardRange, TestInputRange))
-    {
+    {{
         //Verify examples.
         auto id = parseHelper!S("8AB3060E-2CBA-4F23-b74c-B52Db3BDFB46");
         //no dashes
@@ -1608,6 +1897,13 @@ if (isInputRange!Range
         //multiple trailing/leading characters
         assert(parseHelper!S("///8ab3060e2cba4f23b74cb52db3bdfb46||")
             == parseUUID("8ab3060e-2cba-4f23-b74c-b52db3bdfb46"));
+    }}
+
+    // Test input range with non-dchar element type.
+    {
+        import std.utf : byCodeUnit;
+        auto range = "8AB3060E-2CBA-4F23-b74c-B52Db3BDFB46".byCodeUnit;
+        assert(parseUUID(range).data == [138, 179, 6, 14, 44, 186, 79, 35, 183, 76, 181, 45, 179, 189, 251, 70]);
     }
 }
 
@@ -1670,6 +1966,20 @@ enum uuidRegex = "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}"~
     ]);
 }
 
+private ubyte[Size] generateRandomData(ubyte Size)() {
+    import std.random : Random, uniform, unpredictableSeed;
+
+    auto rnd = Random(unpredictableSeed);
+
+    ubyte[Size] bytes;
+    foreach (idx; 0 .. bytes.length)
+    {
+        bytes[idx] = uniform!(ubyte)(rnd);
+        rnd.popFront();
+    }
+    return bytes;
+}
+
 /**
  * This exception is thrown if an error occurs when parsing a UUID
  * from a string.
@@ -1728,4 +2038,41 @@ public class UUIDParsingException : Exception
     assert(ex.input == "foo");
     assert(ex.position == 10);
     assert(ex.reason == UUIDParsingException.Reason.tooMuch);
+}
+
+/// uuidv7
+@system unittest
+{
+    import std.datetime : DateTime, SysTime;
+
+    SysTime st = DateTime(2025, 8, 19, 10, 38, 45);
+    UUID u = UUID(st);
+    assert(u.uuidVersion == UUID.Version.timestampRandom);
+    SysTime o = u.v7Timestamp();
+    assert(o == st, st.toString() ~ " | " ~ o.toString());
+    string s = u.toString();
+    UUID u2 = UUID(s);
+    SysTime o2 = u2.v7Timestamp();
+    assert(o2 == st, st.toString() ~ " | " ~ o2.toString());
+}
+
+@system unittest
+{
+    import std.datetime : SysTime;
+
+    UUID u = timestampRandomUUID();
+    assert(u.uuidVersion == UUID.Version.timestampRandom);
+
+    SysTime o = u.v7Timestamp();
+    assert(o.year > 2024);
+    assert(o.year < 3024);
+}
+
+/// uuid v7 generated by external tool
+@system unittest
+{
+    import std.datetime : DateTime, SysTime;
+    UUID u = UUID("0198c2b2-c5a8-7a0f-a1db-86aac7906c7b");
+    auto d = DateTime(2025,8,19);
+    assert((cast(DateTime) u.v7Timestamp()).year == d.year);
 }

@@ -1,8 +1,8 @@
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/fail13498.d(11): Error: cannot implicitly convert expression `"foo"` of type `string` to `int`
-fail_compilation/fail13498.d(16): Error: template instance fail13498.foo!() error instantiating
+fail_compilation/fail13498.d(11): Error: return value `"foo"` of type `string` does not match return type `int`, and cannot be implicitly converted
+fail_compilation/fail13498.d(16): Error: template instance `fail13498.foo!()` error instantiating
 ---
 */
 

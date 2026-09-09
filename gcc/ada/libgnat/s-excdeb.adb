@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---         Copyright (C) 2006-2020, Free Software Foundation, Inc.          --
+--         Copyright (C) 2006-2026, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -28,8 +28,6 @@
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
-
-pragma Compiler_Unit_Warning;
 
 package body System.Exceptions_Debug is
 
@@ -71,7 +69,7 @@ package body System.Exceptions_Debug is
    procedure Local_Raise (Excep : System.Address) is
       pragma Warnings (Off, Excep);
    begin
-      return;
+      null;
    end Local_Raise;
 
 end System.Exceptions_Debug;

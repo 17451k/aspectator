@@ -4,11 +4,10 @@
  * Translated from MinGW Windows headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_rpcdce2.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_rpcdce2.d)
  */
 module core.sys.windows.rpcdce2;
 version (Windows):
-@system:
 
 version (ANSI) {} else version = Unicode;
 
@@ -70,11 +69,11 @@ extern (Windows) {
 }
 
 version (Unicode) {
-    alias RpcMgmtEpEltInqNextW RpcMgmtEpEltInqNext;
-    alias DceErrorInqTextW DceErrorInqText;
+    alias RpcMgmtEpEltInqNext = RpcMgmtEpEltInqNextW;
+    alias DceErrorInqText = DceErrorInqTextW;
 } else {
-    alias RpcMgmtEpEltInqNextA RpcMgmtEpEltInqNext;
-    alias DceErrorInqTextA DceErrorInqText;
+    alias RpcMgmtEpEltInqNext = RpcMgmtEpEltInqNextA;
+    alias DceErrorInqText = DceErrorInqTextA;
 }
 /+
 #else /* RPC_UNICODE_SUPPORTED */

@@ -5,11 +5,10 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_mgmtapi.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_mgmtapi.d)
  */
 module core.sys.windows.mgmtapi;
 version (Windows):
-@system:
 
 import core.sys.windows.snmp;
 import core.sys.windows.windef;
@@ -28,9 +27,9 @@ enum {
 
 enum MGMCTL_SETAGENTPORT = 1;
 
-alias PVOID LPSNMP_MGR_SESSION;
+alias LPSNMP_MGR_SESSION = PVOID;
 
-extern (Windows) {
+extern (Windows) nothrow @nogc {
     BOOL SnmpMgrClose(LPSNMP_MGR_SESSION);
     BOOL SnmpMgrCtl(LPSNMP_MGR_SESSION, DWORD, LPVOID, DWORD, LPVOID, DWORD,
       LPDWORD);

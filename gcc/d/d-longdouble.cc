@@ -1,5 +1,5 @@
 /* d-longdouble.cc -- Software floating-point emulation for the frontend.
-   Copyright (C) 2006-2021 Free Software Foundation, Inc.
+   Copyright (C) 2006-2026 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -29,12 +29,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "d-tree.h"
 #include "longdouble.h"
 
-
-/* Constant real values 0, 1, -1 and 0.5.  */
-real_t CTFloat::zero;
-real_t CTFloat::one;
-real_t CTFloat::minusone;
-real_t CTFloat::half;
 
 /* Truncate longdouble to the highest precision supported by target.  */
 
@@ -119,7 +113,7 @@ longdouble::to_bool (void) const
 longdouble
 longdouble::add (const longdouble &r) const
 {
-  longdouble x;
+  longdouble x = {};
   real_arithmetic (&x.rv (), PLUS_EXPR, &this->rv (), &r.rv ());
   return x.normalize ();
 }
@@ -127,7 +121,7 @@ longdouble::add (const longdouble &r) const
 longdouble
 longdouble::sub (const longdouble &r) const
 {
-  longdouble x;
+  longdouble x = {};
   real_arithmetic (&x.rv (), MINUS_EXPR, &this->rv (), &r.rv ());
   return x.normalize ();
 }
@@ -135,7 +129,7 @@ longdouble::sub (const longdouble &r) const
 longdouble
 longdouble::mul (const longdouble &r) const
 {
-  longdouble x;
+  longdouble x = {};
   real_arithmetic (&x.rv (), MULT_EXPR, &this->rv (), &r.rv ());
   return x.normalize ();
 }
@@ -143,7 +137,7 @@ longdouble::mul (const longdouble &r) const
 longdouble
 longdouble::div (const longdouble &r) const
 {
-  longdouble x;
+  longdouble x = {};
   real_arithmetic (&x.rv (), RDIV_EXPR, &this->rv (), &r.rv ());
   return x.normalize ();
 }
@@ -151,7 +145,7 @@ longdouble::div (const longdouble &r) const
 longdouble
 longdouble::mod (const longdouble &r) const
 {
-  longdouble x;
+  longdouble x = {};
   real_value q;
 
   if (r.rv ().cl == rvc_zero || REAL_VALUE_ISINF (this->rv ()))
@@ -178,7 +172,7 @@ longdouble::mod (const longdouble &r) const
 longdouble
 longdouble::neg (void) const
 {
-  longdouble x;
+  longdouble x = {};
   real_arithmetic (&x.rv (), NEGATE_EXPR, &this->rv (), NULL);
   return x.normalize ();
 }

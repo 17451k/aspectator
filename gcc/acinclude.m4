@@ -1,4 +1,4 @@
-dnl Copyright (C) 2005-2021 Free Software Foundation, Inc.
+dnl Copyright (C) 2005-2026 Free Software Foundation, Inc.
 dnl
 dnl This file is part of GCC.
 dnl
@@ -307,7 +307,7 @@ int (*fp) (void) __attribute__ ((section (".init_array"))) = foo;
 	     && test $in_tree_ld_is_elf = yes; then
 	    gcc_cv_initfini_array=yes
 	  fi
-	elif test x$gcc_cv_as != x -a x$gcc_cv_ld != x -a x$gcc_cv_objdump != x ; then
+	elif test x"$gcc_cv_as" != x -a x"$gcc_cv_ld" != x -a x"$gcc_cv_objdump" != x ; then
 	  case $target:$gas in
 	    *:yes)
 	      sh_flags='"a"'
@@ -422,8 +422,18 @@ changequote([,])dnl
 ])],, [gcc_cv_initfini_array=no]);;
     esac
   else
-    AC_MSG_CHECKING(cross compile... guessing)
-    gcc_cv_initfini_array=no
+    case "${target}" in
+      aarch64*-linux-gnu*)
+	# AArch64 postdates glibc support for .init_array/.fini_array,
+	# so we don't need the preprocessor test above.
+	gcc_cv_initfini_array=yes
+	;;
+
+      *)
+	AC_MSG_CHECKING(cross compile... guessing)
+	gcc_cv_initfini_array=no
+	;;
+    esac
   fi])
   enable_initfini_array=$gcc_cv_initfini_array
 ])
@@ -432,98 +442,104 @@ AC_DEFINE_UNQUOTED(HAVE_INITFINI_ARRAY_SUPPORT,
   [Define 0/1 if .init_array/.fini_array sections are available and working.])
 ])
 
-dnl # _gcc_COMPUTE_GAS_VERSION
-dnl # Used by gcc_GAS_VERSION_GTE_IFELSE
-dnl #
-dnl # WARNING:
-dnl # gcc_cv_as_gas_srcdir must be defined before this.
-dnl # This gross requirement will go away eventually.
-AC_DEFUN([_gcc_COMPUTE_GAS_VERSION],
-[gcc_cv_as_bfd_srcdir=`echo $srcdir | sed -e 's,/gcc$,,'`/bfd
-for f in $gcc_cv_as_bfd_srcdir/configure \
-         $gcc_cv_as_gas_srcdir/configure \
-         $gcc_cv_as_gas_srcdir/configure.ac \
-         $gcc_cv_as_gas_srcdir/Makefile.in ; do
-  gcc_cv_gas_version=`sed -n -e 's/^[[ 	]]*VERSION=[[^0-9A-Za-z_]]*\([[0-9]]*\.[[0-9]]*.*\)/VERSION=\1/p' < $f`
-  if test x$gcc_cv_gas_version != x; then
-    break
-  fi
-done
-case $gcc_cv_gas_version in
-  VERSION=[[0-9]]*) ;;
-  *) AC_MSG_ERROR([[cannot find version of in-tree assembler]]);;
-esac
-gcc_cv_gas_major_version=`expr "$gcc_cv_gas_version" : "VERSION=\([[0-9]]*\)"`
-gcc_cv_gas_minor_version=`expr "$gcc_cv_gas_version" : "VERSION=[[0-9]]*\.\([[0-9]]*\)"`
-gcc_cv_gas_patch_version=`expr "$gcc_cv_gas_version" : "VERSION=[[0-9]]*\.[[0-9]]*\.\([[0-9]]*\)"`
-case $gcc_cv_gas_patch_version in
-  "") gcc_cv_gas_patch_version="0" ;;
-esac
-gcc_cv_gas_vers=`expr \( \( $gcc_cv_gas_major_version \* 1000 \) \
-			    + $gcc_cv_gas_minor_version \) \* 1000 \
-			    + $gcc_cv_gas_patch_version`
-]) []dnl # _gcc_COMPUTE_GAS_VERSION
-
-dnl # gcc_GAS_VERSION_GTE_IFELSE([elf,] major, minor, patchlevel,
-dnl #                     [command_if_true = :], [command_if_false = :])
-dnl # Check to see if the version of GAS is greater than or
-dnl # equal to the specified version.
-dnl #
-dnl # The first ifelse() shortens the shell code if the patchlevel
-dnl # is unimportant (the usual case).  The others handle missing
-dnl # commands.  Note that the tests are structured so that the most
-dnl # common version number cases are tested first.
-AC_DEFUN([_gcc_GAS_VERSION_GTE_IFELSE],
-[ifelse([$1], elf,
- [if test $in_tree_gas_is_elf = yes \
-  &&],
- [if]) test $gcc_cv_gas_vers -ge `expr \( \( $2 \* 1000 \) + $3 \) \* 1000 + $4`
-  then dnl
-ifelse([$5],,:,[$5])[]dnl
-ifelse([$6],,,[
-  else $6])
-fi])
-
-AC_DEFUN([gcc_GAS_VERSION_GTE_IFELSE],
-[AC_REQUIRE([_gcc_COMPUTE_GAS_VERSION])dnl
-ifelse([$1], elf, [_gcc_GAS_VERSION_GTE_IFELSE($@)],
-                  [_gcc_GAS_VERSION_GTE_IFELSE(,$@)])])
+dnl Check whether the host supports symbol aliases.
+AC_DEFUN([gcc_CHECK_ATTRIBUTE_ALIAS], [
+  AC_CACHE_CHECK([whether the host/build supports symbol aliases],
+                 gcc_cv_have_attribute_alias, [
+  if test "x${build}" = "x${host}"; then
+    AC_TRY_LINK([
+extern "C" void foo(void) { }
+extern void bar(void) __attribute__((alias("foo")));],
+    [bar();], gcc_cv_have_attribute_alias=yes, gcc_cv_have_attribute_alias=no)
+  else
+    gcc_cv_have_attribute_alias=no
+  fi])
+  if test $gcc_cv_have_attribute_alias = yes; then
+    AC_DEFINE(HAVE_ATTRIBUTE_ALIAS, 1,
+      [Define to 1 if the host/build supports __attribute__((alias(...))).])
+  fi])
 
 dnl # gcc_GAS_FLAGS
 dnl # Used by gcc_GAS_CHECK_FEATURE 
 dnl #
 AC_DEFUN([gcc_GAS_FLAGS],
 [AC_CACHE_CHECK([assembler flags], gcc_cv_as_flags,
-[ case "$target" in
-  i[[34567]]86-*-linux*)
-    dnl Override the default, which may be incompatible.
-    gcc_cv_as_flags=--32
+[ case "$target:$gas" in
+  *-*-darwin*:*)
+    dnl Darwin with the native assembler uses -arch i386/x86_64/ppc/ppc64.
+    dnl
+    dnl Old cctools versions of the Darwin assembler identify as "GNU
+    dnl assembler version 1.38", but still accept the same options as later
+    dnl clang-based ones, so treat them all the same regardless.
+    case "$target" in
+      i?86-*-*)
+	gcc_cv_as_flags="-arch i386"
+	;;
+      powerpc64*-*-*)
+	gcc_cv_as_flags="-arch ppc64"
+	;;
+      powerpc*-*-*)
+	gcc_cv_as_flags="-arch ppc"
+	;;
+      x86_64-*-*)
+	gcc_cv_as_flags="-arch x86_64"
+	;;
+    esac
+    case "$target" in
+      i?86-*-* | x86_64-*-*)
+	as_32_opt="-arch i386"
+	as_64_opt="-arch x86_64"
+	;;
+    esac
     ;;
-  x86_64-*-linux-gnux32)
-    dnl Override the default, which may be incompatible.
-    gcc_cv_as_flags=--x32
+  *-*-solaris2*:no)
+    dnl Solaris with the native assembler uses -m32/-m64 consistently.
+    case "$target" in
+      i?86-*-* | sparc-*-*)
+	gcc_cv_as_flags=-m32
+	;;
+      x86_64-*-* | sparcv9-*-* | sparc64-*-*)
+	gcc_cv_as_flags=-m64
+	;;
+    esac
+    as_32_opt=-m32
+    as_64_opt=-m64
     ;;
-  x86_64-*-linux*)
-    dnl Override the default, which may be incompatible.
-    gcc_cv_as_flags=--64
+  i?86-*-*:* | x86_64-*-*:* | sparc*-*-*:*)
+    dnl Otherwise x86 and SPARC use GNU assembler options --32/--64/--x32.
+    case "$target" in
+      i?86-*-* | sparc-*-*)
+	gcc_cv_as_flags=--32
+	;;
+      x86_64-*-linux-gnux32*)
+	gcc_cv_as_flags=--x32
+	;;
+      x86_64-*-linux-gnuabi32 | x86_64-*-mingw32abi32)
+	gcc_cv_as_flags=--32
+	;;
+      x86_64-*-* | sparcv9-*-* | sparc64-*-*)
+	gcc_cv_as_flags=--64
+	;;
+    esac
+    as_32_opt=--32
+    as_64_opt=--64
     ;;
-  powerpc*-*-darwin*)
-    dnl Always pass -arch ppc to assembler.
-    gcc_cv_as_flags="-arch ppc"
+  amdgcn*:*)
+    dnl Currently, only the llvm-mc assembler is supported.
+    dnl Add flags to ensure an amdgcn ELF file is written.
+    gcc_cv_as_flags="--filetype=obj -triple=amdgcn--amdhsa"
     ;;
-  *)
+  *:*)
     gcc_cv_as_flags=" "
     ;;
   esac])
 ])
 
-dnl gcc_GAS_CHECK_FEATURE(description, cv, [[elf,]major,minor,patchlevel],
+dnl gcc_GAS_CHECK_FEATURE(description, cv,
 dnl [extra switches to as], [assembler input],
 dnl [extra testing logic], [command if feature available])
 dnl
-dnl Checks for an assembler feature.  If we are building an in-tree
-dnl gas, the feature is available if the associated assembler version
-dnl is greater than or equal to major.minor.patchlevel.  If not, then
+dnl Checks for an assembler feature.
 dnl ASSEMBLER INPUT is fed to the assembler and the feature is available
 dnl if assembly succeeds.  If EXTRA TESTING LOGIC is not the empty string,
 dnl then it is run instead of simply setting CV to "yes" - it is responsible
@@ -532,27 +548,24 @@ AC_DEFUN([gcc_GAS_CHECK_FEATURE],
 [AC_REQUIRE([gcc_GAS_FLAGS])dnl
 AC_CACHE_CHECK([assembler for $1], [$2],
  [[$2]=no
-  ifelse([$3],,,[dnl
-  if test $in_tree_gas = yes; then
-    gcc_GAS_VERSION_GTE_IFELSE($3, [[$2]=yes])
-  el])if test x$gcc_cv_as != x; then
-    AS_ECHO([ifelse(m4_substr([$5],0,1),[$], "[$5]", '[$5]')]) > conftest.s
-    if AC_TRY_COMMAND([$gcc_cv_as $gcc_cv_as_flags $4 -o conftest.o conftest.s >&AS_MESSAGE_LOG_FD])
+  if test x"$gcc_cv_as" != x; then
+    AS_ECHO([ifelse(m4_substr([$4],0,1),[$], "[$4]", '[$4]')]) > conftest.s
+    if AC_TRY_COMMAND([$gcc_cv_as $gcc_cv_as_flags $3 -o conftest.o conftest.s >&AS_MESSAGE_LOG_FD])
     then
-	ifelse([$6],, [$2]=yes, [$6])
+	ifelse([$5],, [$2]=yes, [$5])
     else
       echo "configure: failed program was" >&AS_MESSAGE_LOG_FD
       cat conftest.s >&AS_MESSAGE_LOG_FD
     fi
     rm -f conftest.o conftest.s
   fi])
-ifelse([$7],,,[dnl
+ifelse([$6],,,[dnl
 if test $[$2] = yes; then
-  $7
+  $6
 fi])
-ifelse([$8],,,[dnl
+ifelse([$7],,,[dnl
 if test $[$2] != yes; then
-  $8
+  $7
 fi])])
 
 dnl GCC_TARGET_TEMPLATE(KEY)

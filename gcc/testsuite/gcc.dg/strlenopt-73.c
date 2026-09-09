@@ -26,7 +26,7 @@
 /* Macros to emit a call to function named
      call_failed_to_be_eliminated_on_line_NNN()
    for each call that's expected to be eliminated.  The dg-final
-   scan-tree-dump-time directive at the bottom of the test verifies
+   scan-tree-dump-times directive at the bottom of the test verifies
    that no such call appears in output.  */
 #define ELIM(expr)				\
   if ((expr)) FAIL (not_eliminated); else (void)0
@@ -69,7 +69,7 @@ void test_copy_cond_equal_length (void)
   T ( 0 ==, 33,  1, (i0 ? a32 : b32) + 32);
 }
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__) \
+#if (defined(__i386__) && defined(__SSE__)) || defined(__x86_64__) || defined(__aarch64__) \
     || defined(__s390__) || defined(__powerpc64__)
 
 /* The following tests assume GCC transforms the memcpy calls into

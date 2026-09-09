@@ -1,6 +1,6 @@
 // 2002-04-13  Paolo Carlini  <pcarlini@unitus.it>
 
-// Copyright (C) 2002-2021 Free Software Foundation, Inc.
+// Copyright (C) 2002-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -17,12 +17,14 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
+// { dg-options "-Wno-unused-result" }
+
 // 20.2.1 Operators
 
 #include <utility>
 #include <vector>
 
-using namespace std::rel_ops;
+using namespace std::rel_ops; // { dg-warning "deprecated" "" { target c++20 } }
 
 // libstdc++/3628
 void test01()

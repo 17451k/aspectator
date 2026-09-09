@@ -1,8 +1,7 @@
 /* PR middle-end/94195 - missing warning reading a smaller object via
    an lvalue of a larger type
    { dg-do compile }
-   { dg-options "-O2 -Wall" }
-   { dg-require-effective-target alloca } */
+   { dg-options "-O2 -Wall" } */
 
 typedef __INT16_TYPE__ int16_t;
 typedef __SIZE_TYPE__  size_t;
@@ -14,7 +13,7 @@ void sink (void*);
 
 void byte_store_to_decl (void)
 {
-  struct S6 { char a[6]; } s;   // { dg-message "referencing 's'" }
+  struct S6 { char a[6]; } s;   // { dg-message "at offset 6 into object 's' of size 6" "note" }
 
   char *p = (char*)&s;
 
@@ -27,7 +26,7 @@ void byte_store_to_decl (void)
 
 void word_store_to_decl (void)
 {
-  struct S6 { char a[6]; } s;   // { dg-message "referencing 's'" }
+  struct S6 { char a[6]; } s;   // { dg-message "at offset 5 into object 's' of size 6" "note" }
 
   char *p = (char*)&s;
 
@@ -43,7 +42,7 @@ void word_store_to_decl (void)
 void word_store_to_alloc (void)
 {
   struct S6 { char a[6]; } *p;
-  p = alloca (sizeof *p);       // { dg-message "referencing an object of size 6 allocated by 'alloca'" }
+  p = alloca (sizeof *p);       // { dg-message "at offset 5 into object of size 6 allocated by 'alloca'" "note" }
 
   int16_t *q = (int16_t*)((char*)p + 1);
 

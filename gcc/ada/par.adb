@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,33 +23,34 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Aspects;  use Aspects;
-with Atree;    use Atree;
-with Casing;   use Casing;
-with Debug;    use Debug;
-with Elists;   use Elists;
-with Errout;   use Errout;
-with Fname;    use Fname;
-with Lib;      use Lib;
-with Namet;    use Namet;
-with Namet.Sp; use Namet.Sp;
-with Nlists;   use Nlists;
-with Nmake;    use Nmake;
-with Opt;      use Opt;
-with Output;   use Output;
-with Par_SCO;  use Par_SCO;
-with Restrict; use Restrict;
-with Scans;    use Scans;
-with Scn;      use Scn;
-with Sem_Util; use Sem_Util;
-with Sinput;   use Sinput;
-with Sinput.L; use Sinput.L;
-with Sinfo;    use Sinfo;
-with Snames;   use Snames;
+with Aspects;        use Aspects;
+with Atree;          use Atree;
+with Casing;         use Casing;
+with Debug;          use Debug;
+with Elists;         use Elists;
+with Errout;         use Errout;
+with Lib;            use Lib;
+with Namet;          use Namet;
+with Namet.Sp;       use Namet.Sp;
+with Nlists;         use Nlists;
+with Nmake;          use Nmake;
+with Opt;            use Opt;
+with Output;         use Output;
+with Par_SCO;        use Par_SCO;
+with Restrict;       use Restrict;
+with Scans;          use Scans;
+with Scn;            use Scn;
+with Sem_Util;       use Sem_Util;
+with Sinput;         use Sinput;
+with Sinput.L;       use Sinput.L;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Snames;         use Snames;
+with Stringt;        use Stringt;
 with Style;
-with Stylesw;  use Stylesw;
+with Stylesw;        use Stylesw;
 with Table;
-with Tbuild;   use Tbuild;
+with Tbuild;         use Tbuild;
 
 ---------
 -- Par --
@@ -72,6 +73,20 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    Save_Config_Attrs : Config_Switches_Type;
    --  Variable used to save values of config switches while we parse the
    --  new unit, to be restored on exit for proper recursive behavior.
+
+   Inside_Delta_Aggregate : Boolean := False;
+   --  True within a delta aggregate (but only after the "delta" token has
+   --  been scanned). Used to distinguish syntax errors from syntactically
+   --  correct "deep" delta aggregates (enabled via -gnatX0).
+
+   Inside_Abstract_State : Boolean := False;
+   --  True within an Abstract_State contract. Used to distinguish syntax error
+   --  about extended aggregates and about a malformed contract.
+
+   Save_Style_Checks : Style_Check_Options;
+   Save_Style_Check  : Boolean;
+   --  Variables for storing the original state of whether style checks should
+   --  be active in general and which particular ones should be checked.
 
    --------------------
    -- Error Recovery --
@@ -160,7 +175,7 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    --  do not set SIS_Entry_Active, because the Import means there is no body.
    --  Set False at the start of P_Subprogram, set True when an Import aspect
    --  specification is seen, and used when P_Subprogram finds a subprogram
-   --  declaration.  This is necessary because the aspects are parsed before
+   --  declaration. This is necessary because the aspects are parsed before
    --  we know we have a subprogram declaration.
 
    SIS_Labl : Node_Id;
@@ -209,6 +224,69 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    --   a BEGIN first. In this situation we simply reset the entry. We know
    --   that there is a missing body, but it seems more reasonable to let the
    --   later semantic checking discover this.
+
+   --------------------------------------------
+   -- Handling IS Used in Place of Semicolon --
+   --------------------------------------------
+
+   --  This is a somewhat trickier situation, and we can't catch it in all
+   --  cases, but we do our best to detect common situations resulting from
+   --  a "cut and paste" operation which forgets to change the IS to semicolon.
+   --  Consider the following example:
+
+   --    package body X is
+   --      procedure A;
+   --      procedure B is -- Error: IS should be semicolon
+   --      procedure C;
+   --      ...
+   --      procedure D is
+   --      begin
+   --         ...
+   --      end;
+   --    begin
+   --      ...
+   --    end; -- end of B?
+
+   --  The trouble is that the section of text from PROCEDURE B through the
+   --  END; marked "-- end of B?" constitutes a valid procedure body, and the
+   --  danger is that we find out far too late that something is wrong.
+
+   --  We have two approaches to helping to control this situation. First we
+   --  make every attempt to avoid swallowing the last END; if we can be sure
+   --  that some error will result from doing so. In particular, we won't
+   --  accept the END; unless it is exactly correct (in particular it must not
+   --  have incorrect name tokens), and we won't accept it if it is immediately
+   --  followed by end of file, WITH or SEPARATE (tokens that unmistakeably
+   --  signal the start of a compilation unit, and which therefore allow us to
+   --  reserve the END; for the outer level.) For more details on this aspect
+   --  of the handling, see package Par.Endh.
+
+   --  If we can avoid eating up the END; then the result in the absence of
+   --  any additional steps would be to post a missing END referring back to
+   --  the subprogram with the bogus IS. Similarly, if the enclosing package
+   --  has no BEGIN, then the result is a missing BEGIN message, which again
+   --  refers back to the subprogram header.
+
+   --  Such an error message is not too bad, but it's not ideal, because
+   --  the declarations following the IS have been absorbed into the wrong
+   --  scope. In the above case, this could result for example in a bogus
+   --  complaint that the body of D was missing from the package.
+
+   --  To catch at least some of these cases, we take the following additional
+   --  steps. First, a subprogram body is marked as having a suspicious IS if
+   --  the declaration line is followed by a line that starts with a symbol
+   --  that can start a declaration in the same column, or to the left of the
+   --  column in which the FUNCTION or PROCEDURE starts (normal style is to
+   --  indent any declarations that really belong a subprogram). If such a
+   --  subprogram encounters a missing BEGIN or missing END, then we decide
+   --  that the IS should have been a semicolon, and the subprogram body node
+   --  is marked (by setting the Bad_Is_Detected flag true. Note that we do
+   --  not do this for library level procedures, only for nested procedures,
+   --  since for library level procedures, we must have a body.
+
+   --  The processing for a declarative part checks to see if the last
+   --  declaration scanned is marked in this way, and if it is, the tree
+   --  is modified to reflect the IS being interpreted as a semicolon.
 
    ----------------------------------------------------
    -- Handling of Reserved Words Used as Identifiers --
@@ -277,71 +355,6 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       C_Vertical_Bar_Arrow);
       --  Consider as identifier if followed by | or =>
 
-   --------------------------------------------
-   -- Handling IS Used in Place of Semicolon --
-   --------------------------------------------
-
-   --  This is a somewhat trickier situation, and we can't catch it in all
-   --  cases, but we do our best to detect common situations resulting from
-   --  a "cut and paste" operation which forgets to change the IS to semicolon.
-   --  Consider the following example:
-
-   --    package body X is
-   --      procedure A;
-   --      procedure B is
-   --      procedure C;
-   --      ...
-   --      procedure D is
-   --      begin
-   --         ...
-   --      end;
-   --    begin
-   --      ...
-   --    end;
-
-   --  The trouble is that the section of text from PROCEDURE B through END;
-   --  constitutes a valid procedure body, and the danger is that we find out
-   --  far too late that something is wrong (indeed most compilers will behave
-   --  uncomfortably on the above example).
-
-   --  We have two approaches to helping to control this situation. First we
-   --  make every attempt to avoid swallowing the last END; if we can be sure
-   --  that some error will result from doing so. In particular, we won't
-   --  accept the END; unless it is exactly correct (in particular it must not
-   --  have incorrect name tokens), and we won't accept it if it is immediately
-   --  followed by end of file, WITH or SEPARATE (all tokens that unmistakeably
-   --  signal the start of a compilation unit, and which therefore allow us to
-   --  reserve the END; for the outer level.) For more details on this aspect
-   --  of the handling, see package Par.Endh.
-
-   --  If we can avoid eating up the END; then the result in the absence of
-   --  any additional steps would be to post a missing END referring back to
-   --  the subprogram with the bogus IS. Similarly, if the enclosing package
-   --  has no BEGIN, then the result is a missing BEGIN message, which again
-   --  refers back to the subprogram header.
-
-   --  Such an error message is not too bad (it's already a big improvement
-   --  over what many parsers do), but it's not ideal, because the declarations
-   --  following the IS have been absorbed into the wrong scope. In the above
-   --  case, this could result for example in a bogus complaint that the body
-   --  of D was missing from the package.
-
-   --  To catch at least some of these cases, we take the following additional
-   --  steps. First, a subprogram body is marked as having a suspicious IS if
-   --  the declaration line is followed by a line which starts with a symbol
-   --  that can start a declaration in the same column, or to the left of the
-   --  column in which the FUNCTION or PROCEDURE starts (normal style is to
-   --  indent any declarations which really belong a subprogram). If such a
-   --  subprogram encounters a missing BEGIN or missing END, then we decide
-   --  that the IS should have been a semicolon, and the subprogram body node
-   --  is marked (by setting the Bad_Is_Detected flag true. Note that we do
-   --  not do this for library level procedures, only for nested procedures,
-   --  since for library level procedures, we must have a body.
-
-   --  The processing for a declarative part checks to see if the last
-   --  declaration scanned is marked in this way, and if it is, the tree
-   --  is modified to reflect the IS being interpreted as a semicolon.
-
    ---------------------------------------------------
    -- Parser Type Definitions and Control Variables --
    ---------------------------------------------------
@@ -359,42 +372,36 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
 
    Expr_Form : Expr_Form_Type;
 
-   --  The following type is used for calls to P_Subprogram, P_Package, P_Task,
-   --  P_Protected to indicate which of several possibilities is acceptable.
+   --  The following type is used by P_Subprogram, P_Package, to indicate which
+   --  of several possibilities is acceptable.
 
    type Pf_Rec is record
-      Spcn : Boolean;                  -- True if specification OK
-      Decl : Boolean;                  -- True if declaration OK
-      Gins : Boolean;                  -- True if generic instantiation OK
-      Pbod : Boolean;                  -- True if proper body OK
-      Rnam : Boolean;                  -- True if renaming declaration OK
-      Stub : Boolean;                  -- True if body stub OK
-      Pexp : Boolean;                  -- True if parameterized expression OK
-      Fil2 : Boolean;                  -- Filler to fill to 8 bits
+      Spcn : Boolean; -- True if specification OK
+      Decl : Boolean; -- True if declaration OK
+      Gins : Boolean; -- True if generic instantiation OK
+      Pbod : Boolean; -- True if proper body OK
+      Rnam : Boolean; -- True if renaming declaration OK
+      Stub : Boolean; -- True if body stub OK
+      Pexp : Boolean; -- True if parameterized expression OK
    end record;
    pragma Pack (Pf_Rec);
 
    function T return Boolean renames True;
    function F return Boolean renames False;
 
-   Pf_Decl_Gins_Pbod_Rnam_Stub_Pexp : constant Pf_Rec :=
-                                       Pf_Rec'(F, T, T, T, T, T, T, F);
-   Pf_Decl_Pexp                     : constant Pf_Rec :=
-                                       Pf_Rec'(F, T, F, F, F, F, T, F);
-   Pf_Decl_Gins_Pbod_Rnam_Pexp      : constant Pf_Rec :=
-                                       Pf_Rec'(F, T, T, T, T, F, T, F);
-   Pf_Decl_Pbod_Pexp                : constant Pf_Rec :=
-                                       Pf_Rec'(F, T, F, T, F, F, T, F);
-   Pf_Pbod_Pexp                     : constant Pf_Rec :=
-                                       Pf_Rec'(F, F, F, T, F, F, T, F);
-   Pf_Spcn                         : constant Pf_Rec :=
-                                       Pf_Rec'(T, F, F, F, F, F, F, F);
+   Pf_Decl_Gins_Pbod_Rnam_Stub_Pexp : constant Pf_Rec := (F, T, T, T, T, T, T);
+   Pf_Decl_Pexp                     : constant Pf_Rec := (F, T, F, F, F, F, T);
+   Pf_Decl_Gins_Pbod_Rnam_Pexp      : constant Pf_Rec := (F, T, T, T, T, F, T);
+   Pf_Decl_Pbod_Pexp                : constant Pf_Rec := (F, T, F, T, F, F, T);
+   Pf_Pbod_Pexp                     : constant Pf_Rec := (F, F, F, T, F, F, T);
+   Pf_Spcn                          : constant Pf_Rec := (T, F, F, F, F, F, F);
    --  The above are the only allowed values of Pf_Rec arguments
 
    type SS_Rec is record
       Eftm : Boolean;      -- ELSIF can terminate sequence
       Eltm : Boolean;      -- ELSE can terminate sequence
       Extm : Boolean;      -- EXCEPTION can terminate sequence
+      Fitm : Boolean;      -- FINALLY can terminate sequence
       Ortm : Boolean;      -- OR can terminate sequence
       Sreq : Boolean;      -- at least one statement required
       Tatm : Boolean;      -- THEN ABORT can terminate sequence
@@ -403,15 +410,16 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    end record;
    pragma Pack (SS_Rec);
 
-   SS_Eftm_Eltm_Sreq : constant SS_Rec := SS_Rec'(T, T, F, F, T, F, F, F);
-   SS_Eltm_Ortm_Tatm : constant SS_Rec := SS_Rec'(F, T, F, T, F, T, F, F);
-   SS_Extm_Sreq      : constant SS_Rec := SS_Rec'(F, F, T, F, T, F, F, F);
-   SS_None           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, F);
-   SS_Ortm_Sreq      : constant SS_Rec := SS_Rec'(F, F, F, T, T, F, F, F);
-   SS_Sreq           : constant SS_Rec := SS_Rec'(F, F, F, F, T, F, F, F);
-   SS_Sreq_Whtm      : constant SS_Rec := SS_Rec'(F, F, F, F, T, F, T, F);
-   SS_Whtm           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, T, F);
-   SS_Unco           : constant SS_Rec := SS_Rec'(F, F, F, F, F, F, F, T);
+   SS_Eftm_Eltm_Sreq : constant SS_Rec := (T, T, F, F, F, T, F, F, F);
+   SS_Eltm_Ortm_Tatm : constant SS_Rec := (F, T, F, F, T, F, T, F, F);
+   SS_Extm_Fitm_Sreq : constant SS_Rec := (F, F, T, T, F, T, F, F, F);
+   SS_None           : constant SS_Rec := (F, F, F, F, F, F, F, F, F);
+   SS_Ortm_Sreq      : constant SS_Rec := (F, F, F, F, T, T, F, F, F);
+   SS_Sreq           : constant SS_Rec := (F, F, F, F, F, T, F, F, F);
+   SS_Sreq_Whtm      : constant SS_Rec := (F, F, F, F, F, T, F, T, F);
+   SS_Sreq_Fitm_Whtm : constant SS_Rec := (F, F, F, T, F, T, F, T, F);
+   SS_Whtm           : constant SS_Rec := (F, F, F, F, F, F, F, T, F);
+   SS_Unco           : constant SS_Rec := (F, F, F, F, F, F, F, F, T);
 
    Goto_List : Elist_Id;
    --  List of goto nodes appearing in the current compilation. Used to
@@ -482,11 +490,11 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       --  This field is used to provide the name of the construct being parsed
       --  and indirectly its kind. For loops and blocks, the field contains the
       --  source name or the generated one. For package specifications, bodies,
-      --  subprogram specifications and bodies the field holds the correponding
-      --  program unit name. For task declarations and bodies, protected types
-      --  and bodies, and accept statements the field hold the name of the type
-      --  or operation. For if-statements, case-statements, return statements,
-      --  and selects, the field is initialized to Error.
+      --  subprogram specifications and bodies the field holds the
+      --  corresponding program unit name. For task declarations and bodies,
+      --  protected types and bodies, and accept statements the field hold the
+      --  name of the type or operation. For if-statements, case-statements,
+      --  return statements, and selects, the field is initialized to Error.
 
       --  Note: this is a bit of an odd (mis)use of Error, since there is no
       --  Error, but we use this value as a place holder to indicate that it
@@ -562,7 +570,7 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    -- Table for Handling Suspicious Labels --
    ------------------------------------------
 
-   --  This is a special data structure which is used to deal very spefifically
+   --  This is a special data structure which is used to deal very specifically
    --  with the following error case
 
    --     label;
@@ -647,9 +655,17 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       --  procedure more than once for the same pragma. All parse-time pragma
       --  handling must be prepared to handle such multiple calls correctly.
 
-      function P_Identifier (C : Id_Check := None) return Node_Id;
+      function P_Identifier
+        (C         : Id_Check := None;
+         Force_Msg : Boolean  := False) return Node_Id;
       --  Scans out an identifier. The parameter C determines the treatment
       --  of reserved identifiers. See declaration of Id_Check for details.
+
+      --  An appropriate error message, pointing to the token, is also issued
+      --  if either this is the first occurrence of misuse of this identifier,
+      --  or if Force_Msg is True.
+
+      function P_Interpolated_String_Literal return Node_Id;
 
       function P_Pragmas_Opt return List_Id;
       --  This function scans for a sequence of pragmas in other than a
@@ -692,6 +708,28 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       function P_Subtype_Mark                         return Node_Id;
       function P_Subtype_Mark_Resync                  return Node_Id;
       function P_Unknown_Discriminant_Part_Opt        return Boolean;
+
+      procedure P_Declarative_Items
+        (Decls              : List_Id;
+         Declare_Expression : Boolean;
+         In_Spec            : Boolean;
+         In_Statements      : Boolean);
+      --  Parses a sequence of zero or more declarative items, and appends them
+      --  to Decls. Done indicates whether or not there might be additional
+      --  declarative items to parse. If Done is True, then there are no more
+      --  to parse; otherwise there might be more.
+      --
+      --  Declare_Expression is true if we are parsing a declare_expression, in
+      --  which case we want to suppress certain style checking.
+      --
+      --  In_Spec is true if we are scanning a package declaration, and is used
+      --  to generate an appropriate message if a statement is encountered in
+      --  such a context.
+      --
+      --  In_Statements is true if we are called to parse declarative items in
+      --  a sequence of statements. In this case, we do not give an error upon
+      --  encountering a statement, but return to the caller with Done = True,
+      --  so the caller can resume parsing statements.
 
       function P_Basic_Declarative_Items
         (Declare_Expression : Boolean) return List_Id;
@@ -754,11 +792,9 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
 
       function Init_Expr_Opt (P : Boolean := False) return Node_Id;
       --  If an initialization expression is present (:= expression), then
-      --  it is scanned out and returned, otherwise Empty is returned if no
-      --  initialization expression is present. This procedure also handles
-      --  certain common error cases cleanly. The parameter P indicates if
-      --  a right paren can follow the expression (default = no right paren
-      --  allowed).
+      --  it is scanned out and returned; otherwise Empty is returned. This
+      --  procedure also handles certain common error cases. P=True indicates
+      --  that a right paren can follow the expression.
 
       procedure Skip_Declaration (S : List_Id);
       --  Used when scanning statements to skip past a misplaced declaration
@@ -788,19 +824,25 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       function P_Aggregate                            return Node_Id;
       function P_Expression                           return Node_Id;
       function P_Expression_Or_Range_Attribute        return Node_Id;
-      function P_Function_Name                        return Node_Id;
       function P_Name                                 return Node_Id;
-      function P_Qualified_Simple_Name                return Node_Id;
-      function P_Qualified_Simple_Name_Resync         return Node_Id;
+      function P_Exception_Name                       return Node_Id;
+      function P_Label_Name                           return Node_Id;
+      function P_Loop_Name                            return Node_Id;
+      function P_Generic_Unit_Name                    return Node_Id;
+      function P_Library_Unit_Name                    return Node_Id;
+      function P_Package_Name                         return Node_Id;
+      function P_Parent_Unit_Name                     return Node_Id;
+      function P_Subtype_Name                         return Node_Id;
+      function P_Subtype_Name_Resync                  return Node_Id;
       function P_Simple_Expression                    return Node_Id;
       function P_Simple_Expression_Or_Range_Attribute return Node_Id;
 
       function P_Expression_If_OK return Node_Id;
       --  Scans out an expression allowing an unparenthesized case expression,
-      --  if expression, or quantified expression to appear without enclosing
-      --  parentheses. However, if such an expression is not preceded by a left
-      --  paren, and followed by a right paren, an error message will be output
-      --  noting that parenthesization is required.
+      --  if expression, quantified expression, or declare expression to appear
+      --  without enclosing parentheses. However, if such an expression is not
+      --  preceded by a left paren, and followed by a right paren, an error
+      --  message will be output noting that parenthesization is required.
 
       function P_Expression_No_Right_Paren return Node_Id;
       --  Scans out an expression in contexts where the expression cannot be
@@ -850,9 +892,11 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       function P_Loop_Parameter_Specification return Node_Id;
       --  Used in loop constructs and quantified expressions.
 
-      function P_Sequence_Of_Statements (SS_Flags : SS_Rec) return List_Id;
-      --  The argument indicates the acceptable termination tokens.
-      --  See body in Par.Ch5 for details of the use of this parameter.
+      function P_Sequence_Of_Statements
+        (SS_Flags : SS_Rec) return List_Id;
+      --  SS_Flags indicates the acceptable termination tokens; see body for
+      --  details. Handled is true if we are parsing a handled sequence of
+      --  statements.
 
       procedure Parse_Decls_Begin_End (Parent : Node_Id);
       --  Parses declarations and handled statement sequence, setting
@@ -971,6 +1015,16 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
    package Ch13 is
       function P_Representation_Clause                return Node_Id;
 
+      function P_Attribute_Designators
+        (Initial_Prefix : Node_Id) return Node_Id;
+      --  This procedure parses trailing apostrophes and attribute designators,
+      --  i.e., the "'b'c..." suffix in "a'b'c...". "a" must have already been
+      --  parsed into Initial_Prefix and the scan pointer must be pointing
+      --  right past "a". If no apostrophe is found we just return
+      --  Initial_Prefix, otherwise the return value is a chain of
+      --  N_Attribute_Reference nodes, nested via the Prefix field and ending
+      --  with Initial_Prefix.
+
       function Aspect_Specifications_Present
         (Strict : Boolean := Ada_Version < Ada_2012) return Boolean;
       --  This function tests whether the next keyword is WITH followed by
@@ -994,11 +1048,11 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
 
       procedure P_Aspect_Specifications
         (Decl      : Node_Id;
-         Semicolon : Boolean := True);
+         Semicolon : Boolean);
       --  This procedure scans out a series of aspect specifications. If
-      --  argument Semicolon is True, a terminating semicolon is also scanned.
-      --  If this argument is False, the scan pointer is left pointing past the
-      --  aspects and the caller must check for a proper terminator.
+      --  argument Semicolon is True, a terminating semicolon is also scanned;
+      --  if False, the scan pointer is left pointing past the aspects and the
+      --  caller must check for a proper terminator.
       --
       --  P_Aspect_Specifications is called with the current token pointing
       --  to either a WITH keyword starting an aspect specification, or an
@@ -1012,14 +1066,14 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       --  semicolon (with the exception that it detects WHEN used in place of
       --  WITH).
 
-      --  If Decl is Error on entry, any scanned aspect specifications are
-      --  ignored and a message is output saying aspect specifications not
-      --  permitted here. If Decl is Empty, then scanned aspect specifications
-      --  are also ignored, but no error message is given (this is used when
-      --  the caller has already taken care of the error message).
+      --  If Decl is Error or a node that does not allow aspect specifications,
+      --  then any scanned aspect specifications are ignored and a message is
+      --  output saying aspect specifications not permitted here. If Decl is
+      --  Empty, then scanned aspect specifications are also ignored, but no
+      --  error message is given (this is used when the caller has already
+      --  taken care of the error message).
 
-      function Get_Aspect_Specifications
-        (Semicolon : Boolean := True) return List_Id;
+      function Get_Aspect_Specifications (Semicolon : Boolean) return List_Id;
       --  Parse a list of aspects but do not attach them to a declaration node.
       --  Subsidiary to P_Aspect_Specifications procedure. Used when parsing
       --  a subprogram specification that may be a declaration or a body.
@@ -1213,6 +1267,7 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       procedure T_Range;
       procedure T_Record;
       procedure T_Right_Bracket;
+      procedure T_Right_Curly_Bracket;
       procedure T_Right_Paren;
       procedure T_Semicolon;
       procedure T_Then;
@@ -1258,17 +1313,19 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
 
    package Util is
       function Bad_Spelling_Of (T : Token_Type) return Boolean;
-      --  This function is called in an error situation. It checks if the
-      --  current token is an identifier whose name is a plausible bad
-      --  spelling of the given keyword token, and if so, issues an error
-      --  message, sets Token from T, and returns True. Otherwise Token is
-      --  unchanged, and False is returned.
+      --  This function is called in an error situation. Returns True if the
+      --  current token is an identifier whose name is a plausible misspelling
+      --  of the given keyword token. In the True case, sets Token to T, and
+      --  Token_Node becomes invalid.
 
       procedure Check_Bad_Layout;
       --  Check for bad indentation in RM checking mode. Used for statements
       --  and declarations. Checks if current token is at start of line and
       --  is exdented from the current expected end column, and if so an
       --  error message is generated.
+
+      procedure Check_Bad_Layout_At (Scan_State : Saved_Scan_State);
+      --  Same as Check_Bad_Layout with Scan_State as the current scan state
 
       procedure Check_Misspelling_Of (T : Token_Type);
       pragma Inline (Check_Misspelling_Of);
@@ -1349,6 +1406,18 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       --  conditions are met, an error message is issued, and the merge is
       --  carried out, modifying the Chars field of Prev.
 
+      function Missing_Semicolon_On_When return Boolean;
+      --  This function deals with the following specialized situations
+      --
+      --    when 'x' =>
+      --       exit/return [identifier]
+      --    when 'y' =>
+      --
+      --  This looks like a messed up EXIT WHEN or RETURN WHEN, when in fact
+      --  the problem is a missing semicolon. It is called with Token pointing
+      --  to the WHEN token, and returns True if a semicolon is missing before
+      --  the WHEN as in the above example.
+
       function Next_Token_Is (Tok : Token_Type) return Boolean;
       --  Looks at token after current one and returns True if the token type
       --  matches Tok. The scan is unconditionally restored on return.
@@ -1393,6 +1462,47 @@ function Par (Configuration_Pragmas : Boolean) return List_Id is
       --  Issues a warning if Warn_On_Standard_Redefinition is set True, and
       --  the Node N (which is a Defining_Identifier node with the Chars field
       --  set) is a renaming of an entity in package Standard.
+
+      -----------------------------------
+      -- Multiple defining identifiers --
+      -----------------------------------
+
+      --  RM-3.3.1(7) says:
+      --
+      --    Any declaration that includes a defining_identifier_list with
+      --    more than one defining_identifier is equivalent to a series of
+      --    declarations each containing one defining_identifier from the list,
+      --    with the rest of the text of the declaration copied for each
+      --    declaration in the series, in the same order as the list.
+      --
+      --  We parse such declarations by first calling P_Def_Ids (see below).
+      --  Then, if there are multiple identifiers, we repeatedly scan the
+      --  type and initialization expression information by resetting the
+      --  scan pointer (so that we get completely separate trees for each
+      --  occurrence).
+
+      --  Defining_Identifiers is a sequence of identifiers parsed by
+      --  P_Def_Ids. Idents holds the identifiers, and Num_Idents
+      --  points to the last-used array elements. The upper bound
+      --  is intended to be essentially infinite, so we don't bother
+      --  giving a good error message when it is exceeded -- we
+      --  simply raise an exception.
+
+      type Defining_Identifiers_Array is
+        array (Pos range 1 .. 4096) of Entity_Id;
+
+      type Defining_Identifiers is record
+         Num_Idents : Nat := 0;
+         Idents     : Defining_Identifiers_Array;
+      end record;
+
+      procedure Append
+        (Def_Ids : in out Defining_Identifiers; Def_Id : Entity_Id);
+      --  Append one defining identifier onto Def_Ids.
+
+      procedure P_Def_Ids (Def_Ids : out Defining_Identifiers);
+      --  Parse a defining_identifier_list, appending the identifiers
+      --  onto Def_Ids, which should be initially empty.
 
    end Util;
 
@@ -1555,6 +1665,11 @@ begin
    else
       Save_Config_Attrs := Save_Config_Switches;
 
+      --  Store the state of Style_Checks pragamas
+
+      Save_Style_Check := Style_Check;
+      Save_Style_Check_Options (Save_Style_Checks);
+
       --  The following loop runs more than once in syntax check mode
       --  where we allow multiple compilation units in the same file
       --  and in Multiple_Unit_Per_file mode where we skip units till
@@ -1612,6 +1727,7 @@ begin
          --  syntax mode we are interested in all units in the file.
 
          else
+
             declare
                Comp_Unit_Node : constant Node_Id := P_Compilation_Unit;
 
@@ -1636,14 +1752,12 @@ begin
                      Uname : constant String :=
                                Get_Name_String
                                  (Unit_Name (Current_Source_Unit));
-                     Name  : String (1 .. Uname'Length - 2);
-
-                  begin
+                     Name  : String renames
+                       Uname (Uname'First .. Uname'Last - 2);
                      --  Because Unit_Name includes "%s"/"%b", we need to strip
                      --  the last two characters to get the real unit name.
 
-                     Name := Uname (Uname'First .. Uname'Last - 2);
-
+                  begin
                      if Name = "ada"         or else
                         Name = "interfaces"  or else
                         Name = "system"
@@ -1699,6 +1813,13 @@ begin
 
          Restore_Config_Switches (Save_Config_Attrs);
       end loop;
+
+      --  Restore the state of Style_Checks after parsing the unit to
+      --  avoid parsed pragmas affecting other units.
+
+      Reset_Style_Check_Options;
+      Set_Style_Check_Options (Save_Style_Checks);
+      Style_Check := Save_Style_Check;
 
       --  Now that we have completely parsed the source file, we can complete
       --  the source file table entry.

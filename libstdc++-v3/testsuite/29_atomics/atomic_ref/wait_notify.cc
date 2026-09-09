@@ -1,10 +1,9 @@
-// { dg-options "-std=gnu++2a -pthread" }
-// { dg-do run { target c++2a } }
-// { dg-require-effective-target pthread }
+// { dg-do run { target c++20 } }
+// { dg-additional-options "-pthread" { target pthread } }
 // { dg-require-gthreads "" }
 // { dg-add-options libatomic }
 
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -33,16 +32,25 @@ template<typename S>
     if constexpr (std::atomic_ref<S>::is_always_lock_free)
     {
       S aa{ va };
-      S bb{ vb };
       std::atomic_ref<S> a{ aa };
-      a.wait(bb);
+      a.wait(vb);
       std::thread t([&]
         {
-	  a.store(bb);
+	  a.store(vb);
 	  a.notify_one();
         });
-      a.wait(aa);
+      a.wait(va);
       t.join();
+
+      std::atomic_ref<const S> b{ aa };
+      b.wait(va);
+      std::thread t2([&]
+        {
+	  a.store(va);
+	  a.notify_one();
+        });
+      b.wait(vb);
+      t2.join();
     }
   }
 

@@ -15,7 +15,7 @@
 @SET_MAKE@
 
 # Makefile.am -- Backtrace in libsanitizer Makefile.
-# Copyright (C) 2012-2013 Free Software Foundation, Inc.
+# Copyright (C) 2012-2024 Free Software Foundation, Inc.
 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -123,13 +123,16 @@ target_triplet = @target@
 subdir = libbacktrace
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/../config/acx.m4 \
+	$(top_srcdir)/../config/clang-plugin.m4 \
 	$(top_srcdir)/../config/depstand.m4 \
+	$(top_srcdir)/../config/gcc-plugin.m4 \
 	$(top_srcdir)/../config/lead-dot.m4 \
 	$(top_srcdir)/../config/libstdc++-raw-cxx.m4 \
 	$(top_srcdir)/../config/multi.m4 \
 	$(top_srcdir)/../config/override.m4 \
 	$(top_srcdir)/../config/stdint.m4 \
 	$(top_srcdir)/../config/toolexeclibdir.m4 \
+	$(top_srcdir)/../config/warnings.m4 \
 	$(top_srcdir)/../ltoptions.m4 $(top_srcdir)/../ltsugar.m4 \
 	$(top_srcdir)/../ltversion.m4 $(top_srcdir)/../lt~obsolete.m4 \
 	$(top_srcdir)/acinclude.m4 $(top_srcdir)/../libtool.m4 \
@@ -235,6 +238,7 @@ ALLOC_FILE = @ALLOC_FILE@
 AMTAR = @AMTAR@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
+AS_SYM_ASSIGN_DEFS = @AS_SYM_ASSIGN_DEFS@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
@@ -283,6 +287,7 @@ LIBSTDCXX_RAW_CXX_CXXFLAGS = @LIBSTDCXX_RAW_CXX_CXXFLAGS@
 LIBSTDCXX_RAW_CXX_LDFLAGS = @LIBSTDCXX_RAW_CXX_LDFLAGS@
 LIBTOOL = @LIBTOOL@
 LIPO = @LIPO@
+LLVM_CONFIG = @LLVM_CONFIG@
 LN_S = @LN_S@
 LTLIBOBJS = @LTLIBOBJS@
 MAINT = @MAINT@
@@ -312,6 +317,7 @@ STRIP = @STRIP@
 TSAN_TARGET_DEPENDENT_OBJECTS = @TSAN_TARGET_DEPENDENT_OBJECTS@
 VERSION = @VERSION@
 VIEW_FILE = @VIEW_FILE@
+WARN_FLAGS = @WARN_FLAGS@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -384,13 +390,10 @@ ACLOCAL_AMFLAGS = -I ../.. -I ../../config
 AM_CPPFLAGS = -I $(top_srcdir)/../include -I $(top_srcdir)/../libgcc \
 	-I ../../libgcc -I .. -I $(top_srcdir) -I $(top_srcdir)/../libbacktrace
 
-WARN_FLAGS = -W -Wall -Wwrite-strings -Wmissing-format-attribute \
-	     -Wcast-qual -Werror
-
 C_WARN_FLAGS = $(WARN_FLAGS) -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition
 CXX_WARN_FLAGS = $(WARN_FLAGS) -Wno-unused-parameter
 AM_CFLAGS = $(C_WARN_FLAGS) $(EXTRA_CFLAGS)
-AM_CXXFLAGS = $(CXX_WARN_FLAGS) -fno-rtti -fno-exceptions -std=gnu++14 \
+AM_CXXFLAGS = $(CXX_WARN_FLAGS) -fno-rtti -fno-exceptions -std=gnu++17 \
 	$(EXTRA_CXXFLAGS)
 noinst_LTLIBRARIES = libsanitizer_libbacktrace.la
 libsanitizer_libbacktrace_la_SOURCES = \

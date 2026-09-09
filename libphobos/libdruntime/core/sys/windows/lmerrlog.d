@@ -4,11 +4,10 @@
  * Translated from MinGW Windows headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_lmerrlog.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_lmerrlog.d)
  */
 module core.sys.windows.lmerrlog;
 version (Windows):
-@system:
 
 // COMMENT: This appears to be only for Win16. All functions are deprecated.
 
@@ -210,7 +209,7 @@ struct ERROR_LOG {
     DWORD el_data_size;
     DWORD el_nstrings;
 }
-alias ERROR_LOG* PERROR_LOG, LPERROR_LOG;
+alias PERROR_LOG = ERROR_LOG*, LPERROR_LOG = ERROR_LOG*;
 
 extern (Windows) {
     deprecated {

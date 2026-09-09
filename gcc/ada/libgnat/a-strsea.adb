@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -38,7 +38,7 @@
 with Ada.Strings.Maps; use Ada.Strings.Maps;
 with System;           use System;
 
-package body Ada.Strings.Search is
+package body Ada.Strings.Search with SPARK_Mode is
 
    -----------------------
    -- Local Subprograms --
@@ -61,13 +61,9 @@ package body Ada.Strings.Search is
       Set     : Maps.Character_Set;
       Test    : Membership) return Boolean
    is
-   begin
-      if Test = Inside then
-         return Is_In (Element, Set);
-      else
-         return not Is_In (Element, Set);
-      end if;
-   end Belongs;
+      (if Test = Inside then
+          Is_In (Element, Set)
+      else not Is_In (Element, Set));
 
    -----------
    -- Count --
@@ -81,46 +77,50 @@ package body Ada.Strings.Search is
       PL1 : constant Integer := Pattern'Length - 1;
       Num : Natural;
       Ind : Natural;
-      Cur : Natural;
 
    begin
       if Pattern = "" then
          raise Pattern_Error;
       end if;
 
+      --  Isolating the null string case to ensure Source'First, Source'Last in
+      --  Positive.
+
+      if Source = "" then
+         return 0;
+      end if;
+
       Num := 0;
-      Ind := Source'First;
+      Ind := Source'First - 1;
 
       --  Unmapped case
 
-      if Mapping'Address = Maps.Identity'Address then
-         while Ind <= Source'Last - PL1 loop
+      if Is_Identity (Mapping) then
+         while Ind < Source'Last - PL1 loop
+            Ind := Ind + 1;
             if Pattern = Source (Ind .. Ind + PL1) then
                Num := Num + 1;
-               Ind := Ind + Pattern'Length;
-            else
-               Ind := Ind + 1;
+               Ind := Ind + PL1;
             end if;
          end loop;
 
       --  Mapped case
 
       else
-         while Ind <= Source'Last - PL1 loop
-            Cur := Ind;
+         while Ind < Source'Last - PL1 loop
+            Ind := Ind + 1;
             for K in Pattern'Range loop
-               if Pattern (K) /= Value (Mapping, Source (Cur)) then
-                  Ind := Ind + 1;
+               if Pattern (K) /= Value (Mapping,
+                 Source (Ind + (K - Pattern'First)))
+               then
                   goto Cont;
-               else
-                  Cur := Cur + 1;
                end if;
             end loop;
 
             Num := Num + 1;
-            Ind := Ind + Pattern'Length;
+            Ind := Ind + PL1;
 
-         <<Cont>>
+            <<Cont>>
             null;
          end loop;
       end if;
@@ -138,11 +138,17 @@ package body Ada.Strings.Search is
       PL1 : constant Integer := Pattern'Length - 1;
       Num : Natural;
       Ind : Natural;
-      Cur : Natural;
 
    begin
       if Pattern = "" then
          raise Pattern_Error;
+      end if;
+
+      --  Isolating the null string case to ensure Source'First, Source'Last in
+      --  Positive.
+
+      if Source = "" then
+         return 0;
       end if;
 
       --  Check for null pointer in case checks are off
@@ -152,20 +158,17 @@ package body Ada.Strings.Search is
       end if;
 
       Num := 0;
-      Ind := Source'First;
-      while Ind <= Source'Last - PL1 loop
-         Cur := Ind;
+      Ind := Source'First - 1;
+      while Ind < Source'Last - PL1 loop
+         Ind := Ind + 1;
          for K in Pattern'Range loop
-            if Pattern (K) /= Mapping (Source (Cur)) then
-               Ind := Ind + 1;
+            if Pattern (K) /= Mapping (Source (Ind + (K - Pattern'First))) then
                goto Cont;
-            else
-               Cur := Cur + 1;
             end if;
          end loop;
 
          Num := Num + 1;
-         Ind := Ind + Pattern'Length;
+         Ind := Ind + PL1;
 
       <<Cont>>
          null;
@@ -179,7 +182,6 @@ package body Ada.Strings.Search is
       Set    : Maps.Character_Set) return Natural
    is
       N : Natural := 0;
-
    begin
       for J in Source'Range loop
          if Is_In (Source (J), Set) then
@@ -200,8 +202,7 @@ package body Ada.Strings.Search is
       From   : Positive;
       Test   : Membership;
       First  : out Positive;
-      Last   : out Natural)
-   is
+      Last   : out Natural) is
    begin
       --  AI05-031: Raise Index error if Source non-empty and From not in range
 
@@ -217,12 +218,14 @@ package body Ada.Strings.Search is
          if Belongs (Source (J), Set, Test) then
             First := J;
 
-            for K in J + 1 .. Source'Last loop
-               if not Belongs (Source (K), Set, Test) then
-                  Last := K - 1;
-                  return;
-               end if;
-            end loop;
+            if J < Source'Last then
+               for K in J + 1 .. Source'Last loop
+                  if not Belongs (Source (K), Set, Test) then
+                     Last := K - 1;
+                     return;
+                  end if;
+               end loop;
+            end if;
 
             --  Here if J indexes first char of token, and all chars after J
             --  are in the token.
@@ -243,19 +246,20 @@ package body Ada.Strings.Search is
       Set    : Maps.Character_Set;
       Test   : Membership;
       First  : out Positive;
-      Last   : out Natural)
-   is
+      Last   : out Natural) is
    begin
       for J in Source'Range loop
          if Belongs (Source (J), Set, Test) then
             First := J;
 
-            for K in J + 1 .. Source'Last loop
-               if not Belongs (Source (K), Set, Test) then
-                  Last := K - 1;
-                  return;
-               end if;
-            end loop;
+            if J < Source'Last then
+               for K in J + 1 .. Source'Last loop
+                  if not Belongs (Source (K), Set, Test) then
+                     Last := K - 1;
+                     return;
+                  end if;
+               end loop;
+            end if;
 
             --  Here if J indexes first char of token, and all chars after J
             --  are in the token.
@@ -274,7 +278,6 @@ package body Ada.Strings.Search is
 
       if Source'First not in Positive then
          raise Constraint_Error;
-
       else
          First := Source'First;
          Last  := 0;
@@ -292,53 +295,46 @@ package body Ada.Strings.Search is
       Mapping : Maps.Character_Mapping := Maps.Identity) return Natural
    is
       PL1 : constant Integer := Pattern'Length - 1;
-      Cur : Natural;
-
-      Ind : Integer;
-      --  Index for start of match check. This can be negative if the pattern
-      --  length is greater than the string length, which is why this variable
-      --  is Integer instead of Natural. In this case, the search loops do not
-      --  execute at all, so this Ind value is never used.
-
    begin
       if Pattern = "" then
          raise Pattern_Error;
       end if;
 
+      --  If Pattern is longer than Source, it can't be found
+
+      if Pattern'Length > Source'Length then
+         return 0;
+      end if;
+
       --  Forwards case
 
       if Going = Forward then
-         Ind := Source'First;
 
          --  Unmapped forward case
 
-         if Mapping'Address = Maps.Identity'Address then
-            for J in 1 .. Source'Length - PL1 loop
+         if Is_Identity (Mapping) then
+            for Ind in Source'First .. Source'Last - PL1 loop
                if Pattern = Source (Ind .. Ind + PL1) then
                   return Ind;
-               else
-                  Ind := Ind + 1;
                end if;
             end loop;
 
          --  Mapped forward case
 
          else
-            for J in 1 .. Source'Length - PL1 loop
-               Cur := Ind;
-
+            for Ind in Source'First .. Source'Last - PL1 loop
                for K in Pattern'Range loop
-                  if Pattern (K) /= Value (Mapping, Source (Cur)) then
+                  if Pattern (K) /= Value (Mapping,
+                    Source (Ind + (K - Pattern'First)))
+                  then
                      goto Cont1;
-                  else
-                     Cur := Cur + 1;
                   end if;
                end loop;
 
                return Ind;
 
-            <<Cont1>>
-               Ind := Ind + 1;
+               <<Cont1>>
+               null;
             end loop;
          end if;
 
@@ -347,35 +343,29 @@ package body Ada.Strings.Search is
       else
          --  Unmapped backward case
 
-         Ind := Source'Last - PL1;
-
-         if Mapping'Address = Maps.Identity'Address then
-            for J in reverse 1 .. Source'Length - PL1 loop
+         if Is_Identity (Mapping) then
+            for Ind in reverse Source'First .. Source'Last - PL1 loop
                if Pattern = Source (Ind .. Ind + PL1) then
                   return Ind;
-               else
-                  Ind := Ind - 1;
                end if;
             end loop;
 
          --  Mapped backward case
 
          else
-            for J in reverse 1 .. Source'Length - PL1 loop
-               Cur := Ind;
-
+            for Ind in reverse Source'First .. Source'Last - PL1 loop
                for K in Pattern'Range loop
-                  if Pattern (K) /= Value (Mapping, Source (Cur)) then
+                  if Pattern (K) /= Value (Mapping,
+                    Source (Ind + (K - Pattern'First)))
+                  then
                      goto Cont2;
-                  else
-                     Cur := Cur + 1;
                   end if;
                end loop;
 
                return Ind;
 
-            <<Cont2>>
-               Ind := Ind - 1;
+               <<Cont2>>
+               null;
             end loop;
          end if;
       end if;
@@ -393,9 +383,6 @@ package body Ada.Strings.Search is
       Mapping : Maps.Character_Mapping_Function) return Natural
    is
       PL1 : constant Integer := Pattern'Length - 1;
-      Ind : Natural;
-      Cur : Natural;
-
    begin
       if Pattern = "" then
          raise Pattern_Error;
@@ -416,43 +403,41 @@ package body Ada.Strings.Search is
       --  Forwards case
 
       if Going = Forward then
-         Ind := Source'First;
-         for J in 1 .. Source'Length - PL1 loop
-            Cur := Ind;
-
+         for Ind in Source'First .. Source'Last - PL1 loop
             for K in Pattern'Range loop
-               if Pattern (K) /= Mapping.all (Source (Cur)) then
+               if Pattern (K) /= Mapping.all
+                 (Source (Ind + (K - Pattern'First)))
+               then
                   goto Cont1;
-               else
-                  Cur := Cur + 1;
                end if;
+
+               pragma Loop_Invariant
+                 (for all J in Pattern'First .. K =>
+                   Pattern (J) = Mapping (Source (Ind + (J - Pattern'First))));
             end loop;
 
             return Ind;
 
-         <<Cont1>>
-            Ind := Ind + 1;
+            <<Cont1>>
+            null;
          end loop;
 
       --  Backwards case
 
       else
-         Ind := Source'Last - PL1;
-         for J in reverse 1 .. Source'Length - PL1 loop
-            Cur := Ind;
-
+         for Ind in reverse Source'First .. Source'Last - PL1 loop
             for K in Pattern'Range loop
-               if Pattern (K) /= Mapping.all (Source (Cur)) then
+               if Pattern (K) /= Mapping.all
+                 (Source (Ind + (K - Pattern'First)))
+               then
                   goto Cont2;
-               else
-                  Cur := Cur + 1;
                end if;
             end loop;
 
             return Ind;
 
-         <<Cont2>>
-            Ind := Ind - 1;
+            <<Cont2>>
+            null;
          end loop;
       end if;
 
@@ -466,8 +451,7 @@ package body Ada.Strings.Search is
      (Source : String;
       Set    : Maps.Character_Set;
       Test   : Membership := Inside;
-      Going  : Direction  := Forward) return Natural
-   is
+      Going  : Direction  := Forward) return Natural is
    begin
       --  Forwards case
 
@@ -500,6 +484,7 @@ package body Ada.Strings.Search is
       Going   : Direction := Forward;
       Mapping : Maps.Character_Mapping := Maps.Identity) return Natural
    is
+      Result : Natural;
    begin
 
       --  AI05-056: If source is empty result is always zero
@@ -512,7 +497,7 @@ package body Ada.Strings.Search is
             raise Index_Error;
          end if;
 
-         return
+         Result :=
            Index (Source (From .. Source'Last), Pattern, Forward, Mapping);
 
       else
@@ -520,9 +505,11 @@ package body Ada.Strings.Search is
             raise Index_Error;
          end if;
 
-         return
+         Result :=
            Index (Source (Source'First .. From), Pattern, Backward, Mapping);
       end if;
+
+      return Result;
    end Index;
 
    function Index
@@ -624,6 +611,13 @@ package body Ada.Strings.Search is
       Going  : Direction := Forward) return Natural
    is
    begin
+
+      --  For equivalence with Index, if Source is empty the result is 0
+
+      if Source'Length = 0 then
+         return 0;
+      end if;
+
       if Going = Forward then
          if From < Source'First then
             raise Index_Error;
@@ -641,5 +635,13 @@ package body Ada.Strings.Search is
            Index_Non_Blank (Source (Source'First .. From), Backward);
       end if;
    end Index_Non_Blank;
+
+   function Is_Identity
+     (Mapping : Maps.Character_Mapping) return Boolean
+   with SPARK_Mode => Off
+   is
+   begin
+      return Mapping'Address = Maps.Identity'Address;
+   end Is_Identity;
 
 end Ada.Strings.Search;

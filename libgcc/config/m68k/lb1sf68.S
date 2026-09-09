@@ -1,5 +1,5 @@
 /* libgcc routines for 68000 w/o floating-point hardware.
-   Copyright (C) 1994-2021 Free Software Foundation, Inc.
+   Copyright (C) 1994-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -435,7 +435,10 @@ $_exception_handler:
 	.text
 	FUNC(__mulsi3)
 	.globl	SYM (__mulsi3)
+	.globl	SYM (__mulsi3_internal)
+	.hidden	SYM (__mulsi3_internal)
 SYM (__mulsi3):
+SYM (__mulsi3_internal):
 	movew	sp@(4), d0	/* x0 -> d0 */
 	muluw	sp@(10), d0	/* x0*y1 */
 	movew	sp@(6), d1	/* x1 -> d1 */
@@ -458,7 +461,10 @@ SYM (__mulsi3):
 	.text
 	FUNC(__udivsi3)
 	.globl	SYM (__udivsi3)
+	.globl	SYM (__udivsi3_internal)
+	.hidden	SYM (__udivsi3_internal)
 SYM (__udivsi3):
+SYM (__udivsi3_internal):
 #ifndef __mcoldfire__
 	movel	d2, sp@-
 	movel	sp@(12), d1	/* d1 = divisor */
@@ -534,7 +540,10 @@ L2:	subql	IMM (1),d4
 	.text
 	FUNC(__divsi3)
 	.globl	SYM (__divsi3)
+	.globl	SYM (__divsi3_internal)
+	.hidden	SYM (__divsi3_internal)
 SYM (__divsi3):
+SYM (__divsi3_internal):
 	movel	d2, sp@-
 
 	moveq	IMM (1), d2	/* sign of result stored in d2 (=1 or =-1) */
@@ -557,7 +566,7 @@ L1:	movel	sp@(8), d0	/* d0 = dividend */
 
 L2:	movel	d1, sp@-
 	movel	d0, sp@-
-	PICCALL	SYM (__udivsi3)	/* divide abs(dividend) by abs(divisor) */
+	PICCALL	SYM (__udivsi3_internal)	/* divide abs(dividend) by abs(divisor) */
 	addql	IMM (8), sp
 
 	tstb	d2
@@ -577,13 +586,13 @@ SYM (__umodsi3):
 	movel	sp@(4), d0	/* d0 = dividend */
 	movel	d1, sp@-
 	movel	d0, sp@-
-	PICCALL	SYM (__udivsi3)
+	PICCALL	SYM (__udivsi3_internal)
 	addql	IMM (8), sp
 	movel	sp@(8), d1	/* d1 = divisor */
 #ifndef __mcoldfire__
 	movel	d1, sp@-
 	movel	d0, sp@-
-	PICCALL	SYM (__mulsi3)	/* d0 = (a/b)*b */
+	PICCALL	SYM (__mulsi3_internal)	/* d0 = (a/b)*b */
 	addql	IMM (8), sp
 #else
 	mulsl	d1,d0
@@ -603,13 +612,13 @@ SYM (__modsi3):
 	movel	sp@(4), d0	/* d0 = dividend */
 	movel	d1, sp@-
 	movel	d0, sp@-
-	PICCALL	SYM (__divsi3)
+	PICCALL	SYM (__divsi3_internal)
 	addql	IMM (8), sp
 	movel	sp@(8), d1	/* d1 = divisor */
 #ifndef __mcoldfire__
 	movel	d1, sp@-
 	movel	d0, sp@-
-	PICCALL	SYM (__mulsi3)	/* d0 = (a/b)*b */
+	PICCALL	SYM (__mulsi3_internal)	/* d0 = (a/b)*b */
 	addql	IMM (8), sp
 #else
 	mulsl	d1,d0
@@ -626,7 +635,7 @@ SYM (__modsi3):
 	.globl	SYM (_fpCCR)
 	.globl  $_exception_handler
 
-QUIET_NaN      = 0xffffffff
+QUIET_NaN      = 0x7fffffff
 
 D_MAX_EXP      = 0x07ff
 D_BIAS         = 1022
@@ -682,7 +691,7 @@ Ld$den:
 
 Ld$infty:
 Ld$overflow:
-| Return a properly signed INFINITY and set the exception flags 
+| Return a properly signed INFINITY and set the exception flags
 	movel	IMM (0x7ff00000),d0
 	movel	IMM (0),d1
 	orl	d7,d0
@@ -691,9 +700,10 @@ Ld$overflow:
 	PICJUMP	$_exception_handler
 
 Ld$underflow:
-| Return 0 and set the exception flags 
+| Return a properly signed 0 and set the exception flags
 	movel	IMM (0),d0
 	movel	d0,d1
+	orl	d7,d0
 	movew	IMM (INEXACT_RESULT+UNDERFLOW),d7
 	moveq	IMM (DOUBLE_FLOAT),d6
 	PICJUMP	$_exception_handler
@@ -702,6 +712,7 @@ Ld$inop:
 | Return a quiet NaN and set the exception flags
 	movel	IMM (QUIET_NaN),d0
 	movel	d0,d1
+	bset	IMM (31),d1
 	movew	IMM (INEXACT_RESULT+INVALID_OPERATION),d7
 	moveq	IMM (DOUBLE_FLOAT),d6
 	PICJUMP	$_exception_handler
@@ -1374,6 +1385,8 @@ Ladddf$a:
 	bge	2f			|
 	movel	d0,d0           	| check for zero, since we don't  '
 	bne	Ladddf$ret		| want to return -0 by mistake
+	movel	d1,d1			|
+	bne	Ladddf$ret		|
 	bclr	IMM (31),d7		|
 	bra	Ladddf$ret		|
 2:
@@ -2071,6 +2084,7 @@ Ldivdf$b$nf:
 | If d2 == 0x7ff00000 we have to check d3.
 	tstl	d3		|
 	bne	Ld$inop		| if d3 <> 0, b is NaN
+	movel	a0,d7		| put a's sign
 	bra	Ld$underflow	| else b is +/-INFINITY, so signal underflow
 
 Ldivdf$a$nf:
@@ -2081,8 +2095,7 @@ Ldivdf$a$nf:
 | If a is INFINITY we have to check b
 	cmpl	d7,d2		| compare b with INFINITY 
 	bge	Ld$inop		| if b is NaN or INFINITY return NaN
-	tstl	d3		|
-	bne	Ld$inop		| 
+	movl	a0,d7		| restore sign bit to d7
 	bra	Ld$overflow	| else return overflow
 
 | If a number is denormalized we put an exponent of 1 but do not put the 
@@ -2177,6 +2190,7 @@ Lround$exit:
 #endif
 	beq	2f		| if not loop back
 	bra	1b              |
+	movel	a0,d7		| get back sign bit into d7
 	bra	Ld$underflow	| safety check, shouldn't execute '
 2:	orl	d6,d2		| this is a trick so we don't lose  '
 	orl	d7,d3		| the bits which were flushed right
@@ -2539,7 +2553,7 @@ Lround$to$minus:
 	.globl	SYM (_fpCCR)
 	.globl  $_exception_handler
 
-QUIET_NaN    = 0xffffffff
+QUIET_NaN    = 0x7fffffff
 SIGNL_NaN    = 0x7f800001
 INFINITY     = 0x7f800000
 
@@ -2597,7 +2611,7 @@ Lf$den:
 
 Lf$infty:
 Lf$overflow:
-| Return a properly signed INFINITY and set the exception flags 
+| Return a properly signed INFINITY and set the exception flags
 	movel	IMM (INFINITY),d0
 	orl	d7,d0
 	moveq	IMM (INEXACT_RESULT+OVERFLOW),d7
@@ -2605,8 +2619,9 @@ Lf$overflow:
 	PICJUMP	$_exception_handler
 
 Lf$underflow:
-| Return 0 and set the exception flags 
+| Return a properly signed 0 and set the exception flags
 	moveq	IMM (0),d0
+	orl	d7,d0
 	moveq	IMM (INEXACT_RESULT+UNDERFLOW),d7
 	moveq	IMM (SINGLE_FLOAT),d6
 	PICJUMP	$_exception_handler
@@ -2927,7 +2942,7 @@ Laddsf$4:
 #else
 	cmpl	IMM (0xff),d2
 #endif
-	bhi	1f
+	bge	1f
 	bclr	IMM (FLT_MANT_DIG-1),d0
 #ifndef __mcoldfire__
 	lslw	IMM (7),d2

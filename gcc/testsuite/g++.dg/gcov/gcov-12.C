@@ -1,6 +1,6 @@
 /* PR 51113 */
-/* { dg-options "-fprofile-arcs -ftest-coverage -fpic" } */
-/* { dg-do run { target native } } */
+/* { dg-options "-fprofile-arcs -ftest-coverage -fpic -fno-implicit-constexpr" } */
+/* { dg-do run } */
 /* { dg-additional-sources "gcovpart-12b.C" } */
 
 struct Foo {

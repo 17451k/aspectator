@@ -64,7 +64,7 @@ TEST_UNIFORM_Z (divr_1_f64_m_tied1, svfloat64_t,
 		z0 = svdivr_m (p0, z0, 1))
 
 /*
-** divr_1_f64_m_untied: { xfail *-*-* }
+** divr_1_f64_m_untied:
 **	fmov	(z[0-9]+\.d), #1\.0(?:e\+0)?
 **	movprfx	z0, z1
 **	fdivr	z0\.d, p0/m, z0\.d, \1
@@ -85,7 +85,7 @@ TEST_UNIFORM_Z (divr_0p5_f64_m_tied1, svfloat64_t,
 		z0 = svdivr_m (p0, z0, 0.5))
 
 /*
-** divr_0p5_f64_m_untied: { xfail *-*-* }
+** divr_0p5_f64_m_untied:
 **	fmov	(z[0-9]+\.d), #(?:0\.5|5\.0e-1)
 **	movprfx	z0, z1
 **	fdivr	z0\.d, p0/m, z0\.d, \1
@@ -239,7 +239,7 @@ TEST_UNIFORM_ZD (divr_d4_f64_x_tied1, svfloat64_t, double,
 		 z0 = svdivr_x (p0, z0, d4))
 
 /*
-** divr_d4_f64_x_untied: { xfail *-*-* }
+** divr_d4_f64_x_untied:
 **	mov	z0\.d, d4
 **	fdiv	z0\.d, p0/m, z0\.d, z1\.d
 **	ret

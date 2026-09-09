@@ -1,6 +1,7 @@
 /* { dg-do compile { target { powerpc*-*-* } } } */
+/* Skip powerpc*-*-darwin* powerpc-*-eabi as dropped popcntb_ok.  */
+/* { dg-skip-if "" { powerpc*-*-darwin* powerpc-*-eabi } } */
 /* { dg-require-effective-target lp64 } */
-/* { dg-require-effective-target powerpc_popcntb_ok } */
 /* { dg-options "-mdejagnu-cpu=power5" } */
 
 void abort ();
@@ -8,7 +9,7 @@ void abort ();
 unsigned long long int
 do_compare (unsigned long long int a, unsigned long long int b)
 {
-  return __builtin_cmpb (a, b);	/* { dg-warning "implicit declaration of function '__builtin_cmpb'" } */
+  return __builtin_cmpb (a, b);	/* { dg-error "'__builtin_p6_cmpb' requires the '-mcpu=power6' option" } */
 }
 
 void

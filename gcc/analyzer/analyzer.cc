@@ -1,5 +1,5 @@
 /* Utility functions for the analyzer.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2026 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -18,17 +18,12 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-#include "config.h"
-#include "system.h"
-#include "coretypes.h"
-#include "tree.h"
-#include "function.h"
-#include "basic-block.h"
-#include "gimple.h"
-#include "diagnostic.h"
+#include "analyzer/common.h"
+
+#include "tree-pretty-print.h"
+#include "diagnostics/event-id.h"
+#include "tree-dfa.h"
 #include "intl.h"
-#include "function.h"
-#include "analyzer/analyzer.h"
 
 #if ENABLE_ANALYZER
 
@@ -41,6 +36,8 @@ namespace ana {
 location_t
 get_stmt_location (const gimple *stmt, function *fun)
 {
+  if (!stmt)
+    return UNKNOWN_LOCATION;
   if (get_pure_location (stmt->location) == UNKNOWN_LOCATION)
     {
       /* Workaround for missing location information for clobber
@@ -63,8 +60,53 @@ get_stmt_location (const gimple *stmt, function *fun)
 static tree
 fixup_tree_for_diagnostic_1 (tree expr, hash_set<tree> *visited);
 
+/* Attemp to generate a tree for the LHS of ASSIGN_STMT.
+   VISITED must be non-NULL; it is used to ensure termination.  */
+
+static tree
+get_diagnostic_tree_for_gassign_1 (const gassign *assign_stmt,
+				   hash_set<tree> *visited)
+{
+  enum tree_code code = gimple_assign_rhs_code (assign_stmt);
+
+  /* Reverse the effect of extract_ops_from_tree during
+     gimplification.  */
+  switch (get_gimple_rhs_class (code))
+    {
+    default:
+    case GIMPLE_INVALID_RHS:
+      gcc_unreachable ();
+    case GIMPLE_TERNARY_RHS:
+    case GIMPLE_BINARY_RHS:
+    case GIMPLE_UNARY_RHS:
+      {
+	tree t = make_node (code);
+	TREE_TYPE (t) = TREE_TYPE (gimple_assign_lhs (assign_stmt));
+	unsigned num_rhs_args = gimple_num_ops (assign_stmt) - 1;
+	for (unsigned i = 0; i < num_rhs_args; i++)
+	  {
+	    tree op = gimple_op (assign_stmt, i + 1);
+	    if (op)
+	      {
+		op = fixup_tree_for_diagnostic_1 (op, visited);
+		if (op == NULL_TREE)
+		  return NULL_TREE;
+	      }
+	    TREE_OPERAND (t, i) = op;
+	  }
+	return t;
+      }
+    case GIMPLE_SINGLE_RHS:
+      {
+	tree op = gimple_op (assign_stmt, 1);
+	op = fixup_tree_for_diagnostic_1 (op, visited);
+	return op;
+      }
+    }
+}
+
 /*  Subroutine of fixup_tree_for_diagnostic_1, called on SSA names.
-    Attempt to reconstruct a a tree expression for SSA_NAME
+    Attempt to reconstruct a tree expression for SSA_NAME
     based on its def-stmt.
     SSA_NAME must be non-NULL.
     VISITED must be non-NULL; it is used to ensure termination.
@@ -86,56 +128,22 @@ maybe_reconstruct_from_def_stmt (tree ssa_name,
     {
     default:
       gcc_unreachable ();
+    case GIMPLE_ASM:
     case GIMPLE_NOP:
     case GIMPLE_PHI:
       /* Can't handle these.  */
       return NULL_TREE;
     case GIMPLE_ASSIGN:
-      {
-	enum tree_code code = gimple_assign_rhs_code (def_stmt);
-
-	/* Reverse the effect of extract_ops_from_tree during
-	   gimplification.  */
-	switch (get_gimple_rhs_class (code))
-	  {
-	  default:
-	  case GIMPLE_INVALID_RHS:
-	    gcc_unreachable ();
-	  case GIMPLE_TERNARY_RHS:
-	  case GIMPLE_BINARY_RHS:
-	  case GIMPLE_UNARY_RHS:
-	    {
-	      tree t = make_node (code);
-	      TREE_TYPE (t) = TREE_TYPE (ssa_name);
-	      unsigned num_rhs_args = gimple_num_ops (def_stmt) - 1;
-	      for (unsigned i = 0; i < num_rhs_args; i++)
-		{
-		  tree op = gimple_op (def_stmt, i + 1);
-		  if (op)
-		    {
-		      op = fixup_tree_for_diagnostic_1 (op, visited);
-		      if (op == NULL_TREE)
-			return NULL_TREE;
-		    }
-		  TREE_OPERAND (t, i) = op;
-		}
-	      return t;
-	    }
-	  case GIMPLE_SINGLE_RHS:
-	    {
-	      tree op = gimple_op (def_stmt, 1);
-	      op = fixup_tree_for_diagnostic_1 (op, visited);
-	      return op;
-	    }
-	  }
-      }
-      break;
+      return get_diagnostic_tree_for_gassign_1
+	(as_a <const gassign *> (def_stmt), visited);
     case GIMPLE_CALL:
       {
 	gcall *call_stmt = as_a <gcall *> (def_stmt);
 	tree return_type = gimple_call_return_type (call_stmt);
 	tree fn = fixup_tree_for_diagnostic_1 (gimple_call_fn (call_stmt),
 					       visited);
+	if (fn == NULL_TREE)
+	  return NULL_TREE;
 	unsigned num_args = gimple_call_num_args (call_stmt);
 	auto_vec<tree> args (num_args);
 	for (unsigned i = 0; i < num_args; i++)
@@ -146,6 +154,7 @@ maybe_reconstruct_from_def_stmt (tree ssa_name,
 	      return NULL_TREE;
 	    args.quick_push (arg);
 	  }
+	gcc_assert (fn);
 	return build_call_array_loc (gimple_location (call_stmt),
 				     return_type, fn,
 				     num_args, args.address ());
@@ -165,8 +174,13 @@ fixup_tree_for_diagnostic_1 (tree expr, hash_set<tree> *visited)
       && TREE_CODE (expr) == SSA_NAME
       && (SSA_NAME_VAR (expr) == NULL_TREE
 	  || DECL_ARTIFICIAL (SSA_NAME_VAR (expr))))
-    if (tree expr2 = maybe_reconstruct_from_def_stmt (expr, visited))
-      return expr2;
+    {
+      if (tree var = SSA_NAME_VAR (expr))
+	if (VAR_P (var) && DECL_HAS_DEBUG_EXPR_P (var))
+	  return DECL_DEBUG_EXPR (var);
+      if (tree expr2 = maybe_reconstruct_from_def_stmt (expr, visited))
+	return expr2;
+    }
   return expr;
 }
 
@@ -188,6 +202,80 @@ fixup_tree_for_diagnostic (tree expr)
   return fixup_tree_for_diagnostic_1 (expr, &visited);
 }
 
+/* Attempt to generate a tree for the LHS of ASSIGN_STMT.  */
+
+tree
+get_diagnostic_tree_for_gassign (const gassign *assign_stmt)
+{
+  hash_set<tree> visited;
+  return get_diagnostic_tree_for_gassign_1 (assign_stmt, &visited);
+}
+
+/* Generate a JSON value for NODE, which can be NULL_TREE.
+   This is intended for debugging the analyzer rather than serialization and
+   thus is a string (or null, for NULL_TREE).  */
+
+std::unique_ptr<json::value>
+tree_to_json (tree node)
+{
+  if (!node)
+    return std::make_unique<json::literal> (json::JSON_NULL);
+
+  pretty_printer pp;
+  dump_generic_node (&pp, node, 0, TDF_VOPS|TDF_MEMSYMS, false);
+  return std::make_unique<json::string> (pp_formatted_text (&pp));
+}
+
+/* Generate a JSON value for EVENT_ID.
+   This is intended for debugging the analyzer rather than serialization and
+   thus is a string matching those seen in event messags (or null,
+   for unknown).  */
+
+std::unique_ptr<json::value>
+diagnostic_event_id_to_json (const diagnostics::paths::event_id_t &event_id)
+{
+  if (event_id.known_p ())
+    {
+      pretty_printer pp;
+      pp_printf (&pp, "%@", &event_id);
+      return std::make_unique<json::string> (pp_formatted_text (&pp));
+    }
+  else
+    return std::make_unique<json::literal> (json::JSON_NULL);
+}
+
+/* Generate a JSON value for OFFSET.
+   This is intended for debugging the analyzer rather than serialization and
+   thus is a string.  */
+
+std::unique_ptr<json::value>
+bit_offset_to_json (const bit_offset_t &offset)
+{
+  pretty_printer pp;
+  pp_wide_int_large (&pp, offset, SIGNED);
+  return std::make_unique<json::string> (pp_formatted_text (&pp));
+}
+
+/* Generate a JSON value for OFFSET.
+   This is intended for debugging the analyzer rather than serialization and
+   thus is a string.  */
+
+std::unique_ptr<json::value>
+byte_offset_to_json (const byte_offset_t &offset)
+{
+  pretty_printer pp;
+  pp_wide_int_large (&pp, offset, SIGNED);
+  return std::make_unique<json::string> (pp_formatted_text (&pp));
+}
+
+/* Workaround for lack of const-correctness of ssa_default_def.  */
+
+tree
+get_ssa_default_def (const function &fun, tree var)
+{
+  return ssa_default_def (const_cast <function *> (&fun), var);
+}
+
 } // namespace ana
 
 /* Helper function for checkers.  Is the CALL to the given function name,
@@ -197,28 +285,35 @@ fixup_tree_for_diagnostic (tree expr)
    is_named_call_p should be used instead, using a fndecl from
    get_fndecl_for_call; this function should only be used for special cases
    where it's not practical to get at the region model, or for special
-   analyzer functions such as __analyzer_dump.  */
+   analyzer functions such as __analyzer_dump.
+
+   If LOOK_IN_STD is true, then also look for within std:: for the name.  */
 
 bool
-is_special_named_call_p (const gcall *call, const char *funcname,
-			 unsigned int num_args)
+is_special_named_call_p (const gcall &call, const char *funcname,
+			 unsigned int num_args, bool look_in_std)
 {
   gcc_assert (funcname);
 
-  tree fndecl = gimple_call_fndecl (call);
+  tree fndecl = gimple_call_fndecl (&call);
   if (!fndecl)
     return false;
 
-  return is_named_call_p (fndecl, funcname, call, num_args);
+  if (is_named_call_p (fndecl, funcname, call, num_args))
+    return true;
+  if (look_in_std)
+    if (is_std_named_call_p (fndecl, funcname, call, num_args))
+      return true;
+  return false;
 }
 
 /* Helper function for checkers.  Is FNDECL an extern fndecl at file scope
    that has the given FUNCNAME?
 
-   Compare with special_function_p in calls.c.  */
+   Compare with special_function_p in calls.cc.  */
 
 bool
-is_named_call_p (tree fndecl, const char *funcname)
+is_named_call_p (const_tree fndecl, const char *funcname)
 {
   gcc_assert (fndecl);
   gcc_assert (funcname);
@@ -245,10 +340,10 @@ is_named_call_p (tree fndecl, const char *funcname)
 }
 
 /* Return true if FNDECL is within the namespace "std".
-   Compare with cp/typeck.c: decl_in_std_namespace_p, but this doesn't
+   Compare with cp/typeck.cc: decl_in_std_namespace_p, but this doesn't
    rely on being the C++ FE (or handle inline namespaces inside of std).  */
 
-static inline bool
+bool
 is_std_function_p (const_tree fndecl)
 {
   tree name_decl = DECL_NAME (fndecl);
@@ -270,7 +365,7 @@ is_std_function_p (const_tree fndecl)
 /* Like is_named_call_p, but look for std::FUNCNAME.  */
 
 bool
-is_std_named_call_p (tree fndecl, const char *funcname)
+is_std_named_call_p (const_tree fndecl, const char *funcname)
 {
   gcc_assert (fndecl);
   gcc_assert (funcname);
@@ -292,8 +387,8 @@ is_std_named_call_p (tree fndecl, const char *funcname)
    arguments?  */
 
 bool
-is_named_call_p (tree fndecl, const char *funcname,
-		 const gcall *call, unsigned int num_args)
+is_named_call_p (const_tree fndecl, const char *funcname,
+		 const gcall &call, unsigned int num_args)
 {
   gcc_assert (fndecl);
   gcc_assert (funcname);
@@ -301,7 +396,7 @@ is_named_call_p (tree fndecl, const char *funcname,
   if (!is_named_call_p (fndecl, funcname))
     return false;
 
-  if (gimple_call_num_args (call) != num_args)
+  if (gimple_call_num_args (&call) != num_args)
     return false;
 
   return true;
@@ -310,8 +405,8 @@ is_named_call_p (tree fndecl, const char *funcname,
 /* Like is_named_call_p, but check for std::FUNCNAME.  */
 
 bool
-is_std_named_call_p (tree fndecl, const char *funcname,
-		     const gcall *call, unsigned int num_args)
+is_std_named_call_p (const_tree fndecl, const char *funcname,
+		     const gcall &call, unsigned int num_args)
 {
   gcc_assert (fndecl);
   gcc_assert (funcname);
@@ -319,7 +414,7 @@ is_std_named_call_p (tree fndecl, const char *funcname,
   if (!is_std_named_call_p (fndecl, funcname))
     return false;
 
-  if (gimple_call_num_args (call) != num_args)
+  if (gimple_call_num_args (&call) != num_args)
     return false;
 
   return true;
@@ -328,12 +423,12 @@ is_std_named_call_p (tree fndecl, const char *funcname,
 /* Return true if stmt is a setjmp or sigsetjmp call.  */
 
 bool
-is_setjmp_call_p (const gcall *call)
+is_setjmp_call_p (const gcall &call)
 {
   if (is_special_named_call_p (call, "setjmp", 1)
       || is_special_named_call_p (call, "sigsetjmp", 2))
     /* region_model::on_setjmp requires a pointer.  */
-    if (POINTER_TYPE_P (TREE_TYPE (gimple_call_arg (call, 0))))
+    if (POINTER_TYPE_P (TREE_TYPE (gimple_call_arg (&call, 0))))
       return true;
 
   return false;
@@ -342,16 +437,46 @@ is_setjmp_call_p (const gcall *call)
 /* Return true if stmt is a longjmp or siglongjmp call.  */
 
 bool
-is_longjmp_call_p (const gcall *call)
+is_longjmp_call_p (const gcall &call)
 {
   if (is_special_named_call_p (call, "longjmp", 2)
       || is_special_named_call_p (call, "siglongjmp", 2))
     /* exploded_node::on_longjmp requires a pointer for the initial
        argument.  */
-    if (POINTER_TYPE_P (TREE_TYPE (gimple_call_arg (call, 0))))
+    if (POINTER_TYPE_P (TREE_TYPE (gimple_call_arg (&call, 0))))
       return true;
 
   return false;
+}
+
+bool
+is_cxa_throw_p (const gcall &call)
+{
+  tree fndecl = gimple_call_fndecl (&call);
+  if (!fndecl)
+    return false;
+
+  return is_named_call_p (fndecl, "__cxa_throw");
+}
+
+bool
+is_cxa_rethrow_p (const gcall &call)
+{
+  tree fndecl = gimple_call_fndecl (&call);
+  if (!fndecl)
+    return false;
+
+  return is_named_call_p (fndecl, "__cxa_rethrow");
+}
+
+bool
+is_cxa_end_catch_p (const gcall &call)
+{
+  tree fndecl = gimple_call_fndecl (&call);
+  if (!fndecl)
+    return false;
+
+  return is_named_call_p (fndecl, "__cxa_end_catch");
 }
 
 /* For a CALL that matched is_special_named_call_p or is_named_call_p for
@@ -359,9 +484,9 @@ is_longjmp_call_p (const gcall *call)
    diagnostics (stripping the leading underscores).  */
 
 const char *
-get_user_facing_name (const gcall *call)
+get_user_facing_name (const gcall &call)
 {
-  tree fndecl = gimple_call_fndecl (call);
+  tree fndecl = gimple_call_fndecl (&call);
   gcc_assert (fndecl);
 
   tree identifier = DECL_NAME (fndecl);
@@ -391,32 +516,58 @@ get_user_facing_name (const gcall *call)
 label_text
 make_label_text (bool can_colorize, const char *fmt, ...)
 {
-  pretty_printer *pp = global_dc->printer->clone ();
-  pp_clear_output_area (pp);
+  std::unique_ptr<pretty_printer> pp (global_dc->clone_printer ());
+  pp_clear_output_area (pp.get ());
 
   if (!can_colorize)
-    pp_show_color (pp) = false;
+    pp_show_color (pp.get ()) = false;
 
-  text_info ti;
   rich_location rich_loc (line_table, UNKNOWN_LOCATION);
 
   va_list ap;
 
   va_start (ap, fmt);
 
-  ti.format_spec = _(fmt);
-  ti.args_ptr = &ap;
-  ti.err_no = 0;
-  ti.x_data = NULL;
-  ti.m_richloc = &rich_loc;
-
-  pp_format (pp, &ti);
-  pp_output_formatted_text (pp);
+  text_info ti (_(fmt), &ap, 0, nullptr, &rich_loc);
+  pp_format (pp.get (), &ti);
+  pp_output_formatted_text (pp.get ());
 
   va_end (ap);
 
-  label_text result = label_text::take (xstrdup (pp_formatted_text (pp)));
-  delete pp;
+  label_text result = label_text::take (xstrdup (pp_formatted_text (pp.get ())));
+  return result;
+}
+
+/* As above, but with singular vs plural.  */
+
+label_text
+make_label_text_n (bool can_colorize, unsigned HOST_WIDE_INT n,
+		   const char *singular_fmt,
+		   const char *plural_fmt, ...)
+{
+  std::unique_ptr<pretty_printer> pp (global_dc->clone_printer ());
+  pp_clear_output_area (pp.get ());
+
+  if (!can_colorize)
+    pp_show_color (pp.get ()) = false;
+
+  rich_location rich_loc (line_table, UNKNOWN_LOCATION);
+
+  va_list ap;
+
+  va_start (ap, plural_fmt);
+
+  const char *fmt = ngettext (singular_fmt, plural_fmt, n);
+
+  text_info ti (fmt, &ap, 0, nullptr, &rich_loc);
+
+  pp_format (pp.get (), &ti);
+  pp_output_formatted_text (pp.get ());
+
+  va_end (ap);
+
+  label_text result
+    = label_text::take (xstrdup (pp_formatted_text (pp.get ())));
   return result;
 }
 

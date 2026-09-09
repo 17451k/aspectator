@@ -1,4 +1,4 @@
-/* Copyright (C) 2002-2021 Free Software Foundation, Inc.
+/* Copyright (C) 2002-2026 Free Software Foundation, Inc.
    Contributed by Andy Vaught
    F2003 I/O support contributed by Jerry DeLisle
 
@@ -33,6 +33,9 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include <gthr.h>
 
 #define gcc_unreachable() __builtin_unreachable ()
+
+/* Used for building error message strings.  */
+#define IOMSG_LEN 256
 
 /* POSIX 2008 specifies that the extended locale stuff is found in
    locale.h, but some systems have them in xlocale.h.  */
@@ -98,10 +101,6 @@ typedef struct array_loop_spec
   index_type step;
 }
 array_loop_spec;
-
-/* User defined input/output iomsg length. */
-
-#define IOMSG_LEN 256
 
 /* Subroutine formatted_dtio (struct, unit, iotype, v_list, iostat,
 			      iomsg, (_iotype), (_iomsg))  */
@@ -535,7 +534,7 @@ typedef struct st_parameter_dt
 	     character string is being read so don't use commas to shorten a
 	     formatted field width.  */
 	  unsigned sf_read_comma : 1;
-	  /* A namelist specific flag used to enable reading input from 
+	  /* A namelist specific flag used to enable reading input from
 	     line_buffer for logical reads.  */
 	  unsigned line_buffer_enabled : 1;
 	  /* An internal unit specific flag used to identify that the associated
@@ -649,7 +648,7 @@ typedef struct gfc_unit
 {
   int unit_number;
   stream *s;
-  
+
   /* Treap links.  */
   struct gfc_unit *left, *right;
   int priority;
@@ -690,7 +689,7 @@ typedef struct gfc_unit
      from the UNIT_ROOT tree, but doesn't free it and the
      last of the waiting threads will do that.
      This must be either atomically increased/decreased, or
-     always guarded by UNIT_LOCK.  */
+     always guarded by UNIT_RWLOCK.  */
   int waiting;
   /* Flag set by close_unit if the unit as been closed.
      Must be manipulated under unit's lock.  */
@@ -706,10 +705,10 @@ typedef struct gfc_unit
 
   /* The format hash table.  */
   struct format_hash_entry format_hash_table[FORMAT_HASH_SIZE];
-  
+
   /* Formatting buffer.  */
   struct fbuf *fbuf;
-  
+
   /* Function pointer, points to list_read worker functions.  */
   int (*next_char_fn_ptr) (st_parameter_dt *);
   void (*push_char_fn_ptr) (st_parameter_dt *, int);
@@ -720,6 +719,9 @@ typedef struct gfc_unit
   gfc_array_char *string_unit_desc;
   int internal_unit_kind;
 
+  /* Track when a gfc_unit is reserved for an internal unit.  */
+  bool internal_reserved;
+
   /* DTIO Parent/Child procedure, 0 = parent, >0 = child level.  */
   int child_dtio;
 
@@ -729,6 +731,7 @@ typedef struct gfc_unit
   int last_char;
   bool has_size;
   GFC_IO_INT size_used;
+  intptr_t self;
 }
 gfc_unit;
 
@@ -769,8 +772,13 @@ internal_proto(default_recl);
 extern gfc_unit *unit_root;
 internal_proto(unit_root);
 
-extern __gthread_mutex_t unit_lock;
-internal_proto(unit_lock);
+#ifdef __GTHREAD_RWLOCK_INIT
+extern __gthread_rwlock_t unit_rwlock;
+internal_proto(unit_rwlock);
+#else
+extern __gthread_mutex_t unit_rwlock;
+internal_proto(unit_rwlock);
+#endif
 
 extern int close_unit (gfc_unit *);
 internal_proto(close_unit);
@@ -778,8 +786,8 @@ internal_proto(close_unit);
 extern gfc_unit *set_internal_unit (st_parameter_dt *, gfc_unit *, int);
 internal_proto(set_internal_unit);
 
-extern void stash_internal_unit (st_parameter_dt *);
-internal_proto(stash_internal_unit);
+extern void check_for_recursive (st_parameter_dt *dtp);
+internal_proto(check_for_recursive);
 
 extern gfc_unit *find_unit (int);
 internal_proto(find_unit);
@@ -857,8 +865,14 @@ internal_proto (transfer_array_inner);
 extern void set_integer (void *, GFC_INTEGER_LARGEST, int);
 internal_proto(set_integer);
 
+extern void set_unsigned (void *, GFC_UINTEGER_LARGEST, int);
+internal_proto(set_unsigned);
+
 extern GFC_UINTEGER_LARGEST si_max (int);
 internal_proto(si_max);
+
+extern GFC_UINTEGER_LARGEST us_max (int);
+internal_proto(us_max);
 
 extern int convert_real (st_parameter_dt *, void *, const char *, int);
 internal_proto(convert_real);
@@ -886,6 +900,10 @@ internal_proto(read_radix);
 
 extern void read_decimal (st_parameter_dt *, const fnode *, char *, int);
 internal_proto(read_decimal);
+
+extern void read_decimal_unsigned (st_parameter_dt *, const fnode *, char *,
+				   int);
+internal_proto(read_decimal_unsigned);
 
 extern void read_user_defined (st_parameter_dt *, void *);
 internal_proto(read_user_defined);
@@ -936,6 +954,9 @@ internal_proto(write_f);
 
 extern void write_i (st_parameter_dt *, const fnode *, const char *, int);
 internal_proto(write_i);
+
+extern void write_iu (st_parameter_dt *, const fnode *, const char *, int);
+internal_proto(write_iu);
 
 extern void write_l (st_parameter_dt *, const fnode *, char *, int);
 internal_proto(write_l);
@@ -995,7 +1016,7 @@ predec_waiting_locked (gfc_unit *u)
 
      if (predec_waiting_locked (u) == 0)
          // destroy u
-	 
+
      could be further optimized by making this be an __ATOMIC_RELEASE,
      and then inserting a
 
@@ -1015,9 +1036,15 @@ dec_waiting_unlocked (gfc_unit *u)
 #ifdef HAVE_ATOMIC_FETCH_ADD
   (void) __atomic_fetch_add (&u->waiting, -1, __ATOMIC_RELAXED);
 #else
-  __gthread_mutex_lock (&unit_lock);
+#ifdef __GTHREAD_RWLOCK_INIT
+  __gthread_rwlock_wrlock (&unit_rwlock);
   u->waiting--;
-  __gthread_mutex_unlock (&unit_lock);
+  __gthread_rwlock_unlock (&unit_rwlock);
+#else
+  __gthread_mutex_lock (&unit_rwlock);
+  u->waiting--;
+  __gthread_mutex_unlock (&unit_rwlock);
+#endif
 #endif
 }
 
@@ -1063,7 +1090,8 @@ default_width_for_float (int kind)
     {
     case 4:  return 15;
     case 8:  return 25;
-    case 16: return 42;
+    case 16:
+    case 17: return 42;
     default: return  0;
     }
 }
@@ -1075,7 +1103,8 @@ default_precision_for_float (int kind)
     {
     case 4:  return 7;
     case 8:  return 16;
-    case 16: return 33;
+    case 16:
+    case 17: return 33;
     default: return 0;
     }
 }

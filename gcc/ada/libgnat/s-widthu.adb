@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,32 +29,32 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-function System.Width_U (Lo, Hi : Uns) return Natural is
-   W : Natural;
-   T : Uns;
+package body System.Width_U is
 
-begin
-   if Lo > Hi then
-      return 0;
+   function Width (Lo, Hi : Uns) return Natural is
+      W : Natural;
+      T : Uns;
+   begin
+      if Lo > Hi then
+         return 0;
+      else
+         --  Minimum value is 2, one for space, one for digit
 
-   else
-      --  Minimum value is 2, one for sign, one for digit
+         W := 2;
 
-      W := 2;
+         --  Get max of absolute values
 
-      --  Get max of absolute values, but avoid bomb if we have the maximum
-      --  negative number (note that First + 1 has same digits as First)
+         T := Uns'Max (Lo, Hi);
 
-      T := Uns'Max (Lo, Hi);
+         --  Increase value if more digits required
 
-      --  Increase value if more digits required
+         while T >= 10 loop
+            T := T / 10;
+            W := W + 1;
+         end loop;
 
-      while T >= 10 loop
-         T := T / 10;
-         W := W + 1;
-      end loop;
-
-      return W;
-   end if;
+         return W;
+      end if;
+   end Width;
 
 end System.Width_U;

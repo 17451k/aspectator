@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,7 +27,7 @@ pragma Style_Checks (All_Checks);
 --  Turn off subprogram body ordering check. Subprograms are in order
 --  by RM section rather than alphabetical
 
-with Sinfo.CN; use Sinfo.CN;
+with Sinfo.CN;       use Sinfo.CN;
 
 separate (Par)
 package body Ch11 is
@@ -56,17 +56,23 @@ package body Ch11 is
    --  Error_Recovery : Cannot raise Error_Resync
 
    function P_Handled_Sequence_Of_Statements return Node_Id is
-      Handled_Stmt_Seq_Node  : Node_Id;
+      Handled_Stmt_Seq_Node : Node_Id;
    begin
       Handled_Stmt_Seq_Node :=
         New_Node (N_Handled_Sequence_Of_Statements, Token_Ptr);
       Set_Statements
-        (Handled_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Extm_Sreq));
+        (Handled_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Extm_Fitm_Sreq));
 
       if Token = Tok_Exception then
          Scan; -- past EXCEPTION
          Set_Exception_Handlers
            (Handled_Stmt_Seq_Node, Parse_Exception_Handlers);
+      end if;
+
+      if Token = Tok_Finally then
+         Scan; -- past FINALLY
+         Set_Finally_Statements
+           (Handled_Stmt_Seq_Node, P_Sequence_Of_Statements (SS_Sreq));
       end if;
 
       return Handled_Stmt_Seq_Node;
@@ -141,7 +147,8 @@ package body Ch11 is
       end loop;
 
       TF_Arrow;
-      Set_Statements (Handler_Node, P_Sequence_Of_Statements (SS_Sreq_Whtm));
+      Set_Statements
+        (Handler_Node, P_Sequence_Of_Statements (SS_Sreq_Fitm_Whtm));
       return Handler_Node;
    end P_Exception_Handler;
 
@@ -162,7 +169,6 @@ package body Ch11 is
 
    function P_Exception_Choice return Node_Id is
    begin
-
       if Token = Tok_Others then
          Scan; -- past OTHERS
          return New_Node (N_Others_Choice, Prev_Token_Ptr);
@@ -231,6 +237,24 @@ package body Ch11 is
 
          Scan; -- past WITH
          Set_Expression (Raise_Node, P_Expression);
+      end if;
+
+      if Token = Tok_When then
+         Error_Msg_GNAT_Extension ("raise when statement", Token_Ptr);
+
+         Mutate_Nkind (Raise_Node, N_Raise_When_Statement);
+
+         if Token = Tok_When and then not Missing_Semicolon_On_When then
+            Scan; -- past WHEN
+            Set_Condition (Raise_Node, P_Expression_No_Right_Paren);
+
+         --  Allow IF instead of WHEN, giving error message
+
+         elsif Token = Tok_If then
+            T_When;
+            Scan; -- past IF used in place of WHEN
+            Set_Condition (Raise_Node, P_Expression_No_Right_Paren);
+         end if;
       end if;
 
       TF_Semicolon;

@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2021 Free Software Foundation, Inc.
+# Copyright (C) 2001-2026 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -38,8 +38,8 @@ proc ${tool}_check_compile {testcase option objname gcc_output} {
 	return 0
     }
 
-    if [string match "*internal compiler error*" $gcc_output] then {
-	${tool}_fail $testcase "$option (internal compiler error)"
+    if [regexp -line -- "internal compiler error.*" $gcc_output ice] then {
+	${tool}_fail $testcase "$option ($ice)"
 	return 0
     }
 
@@ -172,12 +172,48 @@ if { [info exists env(GCC_RUNTEST_PARALLELIZE_DIR)] \
      && [info procs gcc_parallelize_saved_runtest_file_p] == [list] } then {
     global gcc_runtest_parallelize_counter
     global gcc_runtest_parallelize_counter_minor
+    global gcc_runtest_parallelize_limit_minor
     global gcc_runtest_parallelize_enable
     global gcc_runtest_parallelize_dir
     global gcc_runtest_parallelize_last
 
+    # GCC testsuite is parallelised by starting N runtest processes -- each
+    # with its own test directory.  These N runtest processes ALL go through
+    # the relevant .exp and ALL attempt to run every test.  And they go
+    # through the tests the same order -- this is important, and if there is
+    # a bug that causes different runtest processes to enumerate the tests
+    # differently, then things will break and some tests will be skipped, while
+    # others will be ran several times.
+    # So, just before a runtest processes runs a specific test it asks
+    # "runtest_file_p" routine whether a particular test is part of
+    # the requested testsuite.  We override this function so that it
+    # returns "yes" to the first-arrived runtest process, and "no" to all
+    # subsequent runtest processes -- this is implemented by creating a marker
+    # file, which persist till the end of the test run.  We optimize this
+    # a bit by batching 10 tests and using a single marker file for the batch.
+    #
+    # Note that the runtest processes all race each other to get to the next
+    # test batch.  This means that batch allocation between testsuite runs
+    # is very likely to change.
+    #
+    # To confirm or deny suspicion that tests are skipped or executed
+    # multiple times due to runtest processes enumerating tests differently ...
+    # 1. Uncomment the three below "verbose -log gcc_parallel_test_run_p ..."
+    #    debug print-outs.
+    # 2. Run the testsuite with "-v" added to RUNTESTFLAGS
+    # 3. Extract debug print-outs with something like:
+    #    for i in $(find -name "*.log.sep"); do
+    #      grep gcc_parallel_test_run_p $i \
+    #        | sed -e "s/\([^ ]*\) \([^ ]*\) \([^ ]*\) \([^ ]*\)/\3 \2/" \
+    #        | sed -e "s#\(/testsuite/[a-z+]*\)[0-9]*/#\1N/#" > $i.order
+    #    done
+    # 4. Compare debug print-outs produced by individual runtest processes:
+    #    find -name "*.log.sep.order" | xargs md5sum | sort
+    # 5. Check that MD5 hashes of all .order files of the same testsuite match
+    #    and investigate if they don't.
     set gcc_runtest_parallelize_counter 0
     set gcc_runtest_parallelize_counter_minor 0
+    set gcc_runtest_parallelize_limit_minor 10
     set gcc_runtest_parallelize_enable 1
     set gcc_runtest_parallelize_dir [getenv GCC_RUNTEST_PARALLELIZE_DIR]
     set gcc_runtest_parallelize_last 0
@@ -185,6 +221,7 @@ if { [info exists env(GCC_RUNTEST_PARALLELIZE_DIR)] \
     proc gcc_parallel_test_run_p { testcase } {
 	global gcc_runtest_parallelize_counter
 	global gcc_runtest_parallelize_counter_minor
+	global gcc_runtest_parallelize_limit_minor
 	global gcc_runtest_parallelize_enable
 	global gcc_runtest_parallelize_dir
 	global gcc_runtest_parallelize_last
@@ -194,10 +231,10 @@ if { [info exists env(GCC_RUNTEST_PARALLELIZE_DIR)] \
 	}
 
 	# Only test the filesystem every 10th iteration
-	incr gcc_runtest_parallelize_counter_minor
-	if { $gcc_runtest_parallelize_counter_minor == 10 } {
+	if { $gcc_runtest_parallelize_counter_minor >= $gcc_runtest_parallelize_limit_minor } {
 	    set gcc_runtest_parallelize_counter_minor 0
 	}
+	incr gcc_runtest_parallelize_counter_minor
 	if { $gcc_runtest_parallelize_counter_minor != 1 } {
 	    #verbose -log "gcc_parallel_test_run_p $testcase $gcc_runtest_parallelize_counter $gcc_runtest_parallelize_last"
 	    return $gcc_runtest_parallelize_last
@@ -246,6 +283,7 @@ if { [info exists env(GCC_RUNTEST_PARALLELIZE_DIR)] \
 
 proc dg-additional-options { args } {
     upvar dg-extra-tool-flags extra-tool-flags
+    global srcdir
 
     if { [llength $args] > 3 } {
 	error "[lindex $args 0]: too many arguments"
@@ -268,11 +306,34 @@ proc dg-additional-options { args } {
 # main source file.
 
 set additional_sources ""
+set additional_sources_omit_on_compile ""
 set additional_sources_used ""
 
 proc dg-additional-sources { args } {
     global additional_sources
-    set additional_sources [lindex $args 1]
+    global additional_sources_omit_on_compile
+
+    if { [llength $args] > 3 } {
+	error "[lindex $args 0]: too many arguments"
+	return
+    }
+
+    set target [lindex $args 2]
+    if { [llength $args] >= 3 && [lindex $target 0] == "linkonly" } {
+	append additional_sources_omit_on_compile " [lindex $args 1]"
+	set target [lreplace $target 0 1]
+    }
+
+    if { [llength $args] >= 3 && $target != ""} {
+	switch [dg-process-target $target] {
+	    "S" { append additional_sources " [lindex $args 1]" }
+	    "N" { }
+	    "F" { error "[lindex $args 0]: `xfail' not allowed here" }
+	    "P" { error "[lindex $args 0]: `xfail' not allowed here" }
+	}
+    } else {
+	append additional_sources " [lindex $args 1]"
+    }
 }
 
 # Record additional files -- other than source files -- that must be
@@ -298,7 +359,7 @@ proc gcc_adjust_linker_flags_list { args } {
 	    continue
 	} elseif { $skip != "" } then {
 	    set skip ""
-	} elseif { $opt == "-Xlinker" } then {
+	} elseif { $opt == "-Xlinker" || $opt == "-T" } then {
 	    set skip $opt
 	} elseif { ![string match "-*" $opt] \
 		       && [file isfile $opt] } {
@@ -348,20 +409,43 @@ proc gcc_adjust_linker_flags {} {
 
 # Return an updated version of OPTIONS that mentions any additional
 # source files registered with dg-additional-sources.  SOURCE is the
-# name of the test case.
+# name of the test case.  If DEST is given and TYPE does not require
+# linking, additional sources are noted as unsupported rather than
+# added, because the compiler rejects a single output for multiple
+# sources.
 
-proc dg-additional-files-options { options source } {
+proc dg-additional-files-options { options source dest type } {
     gcc_adjust_linker_flags
 
     global additional_sources
+    global additional_sources_omit_on_compile
     global additional_sources_used
     global additional_files
     set to_download [list]
-    if { $additional_sources != "" } then {
+    if { $additional_sources_omit_on_compile != "" \
+	     && $additional_sources != "" \
+	     && $type != "executable" && $dest != "" } then {
+	set linkonly ""
+	foreach s $additional_sources {
+	    foreach s2 $additional_sources_omit_on_compile {
+		if { $s == $s2 } {
+		    unsupported "$s: additional-source will not be used to build $dest"
+		    set s ""
+		    break
+		}
+	    }
+	    if { $s != "" } {
+		append linkonly " $s"
+	    }
+	}
+	set additional_sources "$linkonly"
+    }
+    if { $additional_sources == "" } then {
+    } else {
 	if [is_remote host] {
 	    lappend options "additional_flags=$additional_sources"
 	}
-	regsub -all "^| " $additional_sources " [file dirname $source]/" additional_sources
+	regsub -all {^ *|  *} $additional_sources " [file dirname $source]/" additional_sources
 	if ![is_remote host] {
 	    lappend options "additional_flags=$additional_sources"
 	}
@@ -469,7 +553,7 @@ proc handle-dg-regexps { text } {
 
 	# Escape newlines in $rexp so that we can print them in
 	# pass/fail results.
-	set escaped_regex [string map {"\n" "\\n"} $rexp]
+	set escaped_regex [string map {"\n" "\\n" "\r" "\\r"} $rexp]
 	verbose "escaped_regex: ${escaped_regex}" 4
 
 	set title "$testname_with_flags dg-regexp $linenum"
@@ -515,15 +599,16 @@ proc aarch64-arch-dg-options { args } {
 
     set add_arch 1
     set add_tune 1
+    set add_override 1
     set checks_output [string equal [lindex $do_what 0] "compile"]
     set options [lindex $args 1]
 
     foreach option [split $options] {
 	switch -glob -- $option {
 	    -march=* { set add_arch 0 }
-	    -mcpu=* { set add_arch 0; set add_tune 0 }
-	    -mtune=* { set add_tune 0 }
-	    -moverride=* { set add_tune 0 }
+	    -mcpu=* { set add_arch 0; set add_tune 0; set add_override 0}
+	    -mtune=* { set add_tune 0; set add_override 0 }
+	    -moverride=* { set add_override 0 }
 	    -save-temps { set checks_output 1 }
 	    --save-temps { set checks_output 1 }
 	    -fdump* { set checks_output 1 }
@@ -535,9 +620,14 @@ proc aarch64-arch-dg-options { args } {
 	append options " $aarch64_default_testing_arch"
     }
 
-    if { $add_tune && $checks_output } {
+    if { $checks_output } {
 	# Turn off any default tuning and codegen tweaks.
-	append options " -mtune=generic -moverride=tune=none"
+        if { $add_tune } {
+            append options " -mtune=generic"
+        }
+        if { $add_override } {
+            append options " -moverride=tune=none"
+        }
     }
 
     uplevel 1 aarch64-old-dg-options [lreplace $args 1 1 $options]

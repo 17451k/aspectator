@@ -1,5 +1,5 @@
 /* Tracking equivalence classes and constraints at a point on an execution path.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2026 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -25,6 +25,12 @@ namespace ana {
 
 class constraint_manager;
 
+enum class bound_kind
+{
+  lower,
+  upper
+};
+
 /* One of the end-points of a range.  */
 
 struct bound
@@ -33,7 +39,7 @@ struct bound
   bound (tree constant, bool closed)
   : m_constant (constant), m_closed (closed) {}
 
-  void ensure_closed (bool is_upper);
+  void ensure_closed (enum bound_kind bound_kind);
 
   const char * get_relation_as_str () const;
 
@@ -44,8 +50,9 @@ struct bound
 /* A range of values, used for determining if a value has been
    constrained to just one possible constant value.  */
 
-struct range
+class range
 {
+public:
   range () : m_lower_bound (), m_upper_bound () {}
   range (const bound &lower, const bound &upper)
   : m_lower_bound (lower), m_upper_bound (upper) {}
@@ -60,8 +67,169 @@ struct range
   bool below_lower_bound (tree rhs_const) const;
   bool above_upper_bound (tree rhs_const) const;
 
+  bool add_bound (bound b, enum bound_kind bound_kind);
+  bool add_bound (enum tree_code op, tree rhs_const);
+
+private:
   bound m_lower_bound;
   bound m_upper_bound;
+};
+
+/* A closed range of values with constant integer bounds
+   e.g. [3, 5] for the set {3, 4, 5}.  */
+
+struct bounded_range
+{
+  bounded_range (const_tree lower, const_tree upper);
+
+  void dump_to_pp (pretty_printer *pp, bool show_types) const;
+  void dump (bool show_types) const;
+
+  std::unique_ptr<json::object> to_json () const;
+
+  std::unique_ptr<text_art::widget>
+  make_dump_widget (const text_art::dump_widget_info &dwi) const;
+
+  bool contains_p (tree cst) const;
+
+  bool intersects_p (const bounded_range &other,
+		     bounded_range *out) const;
+
+  bool operator== (const bounded_range &other) const;
+  bool operator!= (const bounded_range &other) const
+  {
+    return !(*this == other);
+  }
+
+  static int cmp (const bounded_range &a, const bounded_range &b);
+
+  bool singleton_p () const
+  {
+    return tree_int_cst_equal (m_lower, m_upper);
+  }
+
+  tree m_lower;
+  tree m_upper;
+
+private:
+  static void set_json_attr (json::object &obj, const char *name, tree value);
+};
+
+/* A collection of bounded_range instances, suitable
+   for representing the ranges on a case label within a switch
+   statement.  */
+
+struct bounded_ranges
+{
+public:
+  typedef bounded_ranges key_t;
+
+  bounded_ranges (const bounded_range &range);
+  bounded_ranges (const vec<bounded_range> &ranges);
+  bounded_ranges (enum tree_code op, tree rhs_const);
+
+  bool operator== (const bounded_ranges &other) const;
+
+  hashval_t get_hash () const { return m_hash; }
+
+  void dump_to_pp (pretty_printer *pp, bool show_types) const;
+  void dump (bool show_types) const;
+
+  std::unique_ptr<json::value> to_json () const;
+
+  void add_to_dump_widget (text_art::tree_widget &parent,
+			   const text_art::dump_widget_info &dwi) const;
+
+  tristate eval_condition (enum tree_code op,
+			   tree rhs_const,
+			   bounded_ranges_manager *mgr) const;
+
+  bool contain_p (tree cst) const;
+  bool empty_p () const { return m_ranges.length () == 0; }
+
+  static int cmp (const bounded_ranges *a, const bounded_ranges *b);
+
+  unsigned get_count () const { return m_ranges.length (); }
+  const bounded_range &get_range (unsigned idx) const { return m_ranges[idx]; }
+
+private:
+  void canonicalize ();
+  void validate () const;
+
+  friend class bounded_ranges_manager;
+
+  auto_vec<bounded_range> m_ranges;
+  hashval_t m_hash;
+};
+
+} // namespace ana
+
+template <> struct default_hash_traits<bounded_ranges::key_t>
+: public member_function_hash_traits<bounded_ranges::key_t>
+{
+  static const bool empty_zero_p = true;
+};
+
+namespace ana {
+
+/* An object to own and consolidate bounded_ranges instances.  */
+
+class bounded_ranges_manager
+{
+public:
+  ~bounded_ranges_manager ();
+
+  const bounded_ranges *get_or_create_empty ();
+  const bounded_ranges *get_or_create_point (const_tree value);
+  const bounded_ranges *get_or_create_range (const_tree lower_bound,
+					     const_tree upper_bound);
+  const bounded_ranges *
+  get_or_create_union (const vec <const bounded_ranges *> &others);
+  const bounded_ranges *
+  get_or_create_intersection (const bounded_ranges *a,
+			      const bounded_ranges *b);
+  const bounded_ranges *
+  get_or_create_inverse (const bounded_ranges *other, tree type);
+
+  void log_stats (logger *logger, bool show_objs) const;
+
+  const bounded_ranges *
+  make_case_label_ranges (const gswitch *switch_stmt,
+			  tree case_label);
+
+private:
+  const bounded_ranges *consolidate (bounded_ranges *);
+
+  struct hash_traits_t : public typed_noop_remove<bounded_ranges *>
+  {
+    typedef bounded_ranges *key_type;
+    typedef bounded_ranges *value_type;
+
+    static inline bool
+    equal (const key_type &k1, const key_type &k2)
+    {
+      return *k1 == *k2;
+    }
+    static inline hashval_t
+    hash (const key_type &k)
+    {
+      return k->get_hash ();
+    }
+    static inline bool is_empty (key_type k) { return k == nullptr; }
+    static inline void mark_empty (key_type &k) { k = nullptr; }
+    static inline bool is_deleted (key_type k)
+    {
+      return k == reinterpret_cast<key_type> (1);
+    }
+
+    static const bool empty_zero_p = true;
+  };
+  struct traits_t : public simple_hashmap_traits<hash_traits_t,
+						 bounded_ranges *>
+  {
+  };
+  typedef hash_map<bounded_ranges *, bounded_ranges *, traits_t> map_t;
+  map_t m_map;
 };
 
 /* An equivalence class within a constraint manager: a set of
@@ -75,7 +243,7 @@ public:
   equiv_class (const equiv_class &other);
 
   hashval_t hash () const;
-  bool operator== (const equiv_class &other);
+  bool operator== (const equiv_class &other) const;
 
   void add (const svalue *sval);
   bool del (const svalue *sval);
@@ -88,7 +256,13 @@ public:
 
   void print (pretty_printer *pp) const;
 
-  json::object *to_json () const;
+  std::unique_ptr<json::object> to_json () const;
+
+  std::unique_ptr<text_art::tree_widget>
+  make_dump_widget (const text_art::dump_widget_info &dwi,
+		    unsigned id) const;
+
+  bool contains_non_constant_p () const;
 
   /* An equivalence class can contain multiple constants (e.g. multiple
      different zeroes, for different types); these are just for the last
@@ -162,7 +336,11 @@ class constraint
 
   void print (pretty_printer *pp, const constraint_manager &cm) const;
 
-  json::object *to_json () const;
+  std::unique_ptr<json::object> to_json () const;
+
+  std::unique_ptr<text_art::widget>
+  make_dump_widget (const text_art::dump_widget_info &dwi,
+		    const constraint_manager &cm) const;
 
   hashval_t hash () const;
   bool operator== (const constraint &other) const;
@@ -190,6 +368,36 @@ class fact_visitor
   virtual void on_fact (const svalue *lhs,
 			enum tree_code,
 			const svalue *rhs) = 0;
+  virtual void on_ranges (const svalue *lhs,
+			  const bounded_ranges *ranges) = 0;
+};
+
+class bounded_ranges_constraint
+{
+public:
+  bounded_ranges_constraint (equiv_class_id ec_id,
+			     const bounded_ranges *ranges)
+  : m_ec_id (ec_id), m_ranges (ranges)
+  {
+  }
+
+  void print (pretty_printer *pp, const constraint_manager &cm) const;
+
+  std::unique_ptr<json::object> to_json () const;
+
+  bool operator== (const bounded_ranges_constraint &other) const;
+  bool operator!= (const bounded_ranges_constraint &other) const
+  {
+    return !(*this == other);
+  }
+
+  void add_to_hash (inchash::hash *hstate) const;
+
+  std::unique_ptr<text_art::tree_widget>
+  make_dump_widget (const text_art::dump_widget_info &dwi) const;
+
+  equiv_class_id m_ec_id;
+  const bounded_ranges *m_ranges;
 };
 
 /* A collection of equivalence classes and constraints on them.
@@ -219,7 +427,10 @@ public:
   void dump (FILE *fp) const;
   void dump () const;
 
-  json::object *to_json () const;
+  std::unique_ptr<json::object> to_json () const;
+
+  std::unique_ptr<text_art::tree_widget>
+  make_dump_widget (const text_art::dump_widget_info &dwi) const;
 
   const equiv_class &get_equiv_class_by_index (unsigned idx) const
   {
@@ -248,8 +459,12 @@ public:
 			       enum tree_code op,
 			       equiv_class_id rhs_ec_id);
 
+  bool add_bounded_ranges (const svalue *sval,
+			   const bounded_ranges *ranges);
+
   bool get_equiv_class_by_svalue (const svalue *sval,
 				    equiv_class_id *out) const;
+  bool sval_constrained_p (const svalue *sval) const;
   equiv_class_id get_or_add_equiv_class (const svalue *sval);
   tristate eval_condition (equiv_class_id lhs,
 			   enum tree_code op,
@@ -269,6 +484,7 @@ public:
 
   void on_liveness_change (const svalue_set &live_svalues,
 			   const region_model *model);
+  void purge_state_involving (const svalue *sval);
 
   void canonicalize ();
 
@@ -280,13 +496,21 @@ public:
 
   void validate () const;
 
+  bounded_ranges_manager *get_range_manager () const;
+
+  bool replay_call_summary (call_summary_replay &r,
+			    const constraint_manager &summary);
+
   auto_delete_vec<equiv_class> m_equiv_classes;
   auto_vec<constraint> m_constraints;
+  auto_vec<bounded_ranges_constraint> m_bounded_ranges_constraints;
 
  private:
   void add_constraint_internal (equiv_class_id lhs_id,
 				enum constraint_op c_op,
 				equiv_class_id rhs_id);
+  bool impossible_derived_conditions_p (const svalue *lhs,
+					const svalue *rhs) const;
 
   region_model_manager *m_mgr;
 };

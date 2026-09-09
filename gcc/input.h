@@ -1,6 +1,6 @@
 /* Declarations for variables relating to reading the source file.
    Used by parsers, lexical analyzers, and error message routines.
-   Copyright (C) 1993-2021 Free Software Foundation, Inc.
+   Copyright (C) 1993-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -23,6 +23,8 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "line-map.h"
 
+namespace diagnostics { class file_cache; }
+
 extern GTY(()) class line_maps *line_table;
 extern GTY(()) class line_maps *saved_line_table;
 
@@ -32,70 +34,103 @@ extern GTY(()) class line_maps *saved_line_table;
 /* The location for declarations in "<built-in>" */
 #define BUILTINS_LOCATION ((location_t) 1)
 
-/* line-map.c reserves RESERVED_LOCATION_COUNT to the user.  Ensure
+/* Returns the translated string referring to the special location.  */
+const char *special_fname_builtin ();
+
+/* line-map.cc reserves RESERVED_LOCATION_COUNT to the user.  Ensure
    both UNKNOWN_LOCATION and BUILTINS_LOCATION fit into that.  */
 STATIC_ASSERT (BUILTINS_LOCATION < RESERVED_LOCATION_COUNT);
+
+/* Hasher for 'location_t' values satisfying '!RESERVED_LOCATION_P', thus able
+   to use 'UNKNOWN_LOCATION'/'BUILTINS_LOCATION' as spare values for
+   'Empty'/'Deleted'.  */
+/* Per PR103157 "'gengtype': 'typedef' causing infinite-recursion code to be
+   generated", don't use
+       typedef int_hash<location_t, UNKNOWN_LOCATION, BUILTINS_LOCATION>
+         location_hash;
+   here.
+
+   It works for a single-use case, but when using a 'struct'-based variant
+       struct location_hash
+         : int_hash<location_t, UNKNOWN_LOCATION, BUILTINS_LOCATION> {};
+   in more than one place, 'gengtype' generates duplicate functions (thus:
+   "error: redefinition of 'void gt_ggc_mx(location_hash&)'" etc.).
+   Attempting to mark that one up with GTY options, we run into a 'gengtype'
+   "parse error: expected '{', have '<'", which probably falls into category
+   "understanding of C++ is limited", as documented in 'gcc/doc/gty.texi'.
+
+   Thus, use a plain ol' '#define':
+*/
+#define location_hash int_hash<location_t, UNKNOWN_LOCATION, BUILTINS_LOCATION>
 
 extern bool is_location_from_builtin_token (location_t);
 extern expanded_location expand_location (location_t);
 
-extern int location_compute_display_column (expanded_location exploc,
-					    int tabstop);
+class cpp_char_column_policy;
 
-/* A class capturing the bounds of a buffer, to allow for run-time
-   bounds-checking in a checked build.  */
+extern int
+location_compute_display_column (diagnostics::file_cache &fc,
+				 expanded_location exploc,
+				 const cpp_char_column_policy &policy);
 
-class char_span
-{
- public:
-  char_span (const char *ptr, size_t n_elts) : m_ptr (ptr), m_n_elts (n_elts) {}
+extern char *
+get_source_text_between (diagnostics::file_cache &, location_t, location_t);
 
-  /* Test for a non-NULL pointer.  */
-  operator bool() const { return m_ptr; }
-
-  /* Get length, not including any 0-terminator (which may not be,
-     in fact, present).  */
-  size_t length () const { return m_n_elts; }
-
-  const char *get_buffer () const { return m_ptr; }
-
-  char operator[] (int idx) const
-  {
-    gcc_assert (idx >= 0);
-    gcc_assert ((size_t)idx < m_n_elts);
-    return m_ptr[idx];
-  }
-
-  char_span subspan (int offset, int n_elts) const
-  {
-    gcc_assert (offset >= 0);
-    gcc_assert (offset < (int)m_n_elts);
-    gcc_assert (n_elts >= 0);
-    gcc_assert (offset + n_elts <= (int)m_n_elts);
-    return char_span (m_ptr + offset, n_elts);
-  }
-
-  char *xstrdup () const
-  {
-    return ::xstrndup (m_ptr, m_n_elts);
-  }
-
- private:
-  const char *m_ptr;
-  size_t m_n_elts;
-};
-
-extern char_span location_get_source_line (const char *file_path, int line);
-
-extern bool location_missing_trailing_newline (const char *file_path);
 extern expanded_location
 expand_location_to_spelling_point (location_t,
 				   enum location_aspect aspect
-				     = LOCATION_ASPECT_CARET);
+				     = location_aspect::caret);
 extern location_t expansion_point_location_if_in_system_header (location_t);
 extern location_t expansion_point_location (location_t);
 
 extern location_t input_location;
+
+extern location_t location_with_discriminator (location_t, int);
+extern bool has_discriminator (location_t);
+extern int get_discriminator_from_loc (location_t);
+
+/* Hierarchical discriminator support for AutoFDO.
+Discriminator format: [Base:8][Multiplicity:7][CopyID:11][Unused:6]
+- Base discriminator (bits 0-7): Distinguishes instructions at same line
+- Multiplicity (bits 8-14): Duplication factor for unrolling/vectorization
+- CopyID (bits 15-25): Unique identifier for code copies
+- Unused (bits 26-31): Reserved.  */
+
+/* Discriminator bit layout constants.  */
+#define DISCR_BASE_BITS 8
+#define DISCR_MULTIPLICITY_BITS 7
+#define DISCR_COPYID_BITS 11
+#define DISCR_UNUSED_BITS 6
+
+#define DISCR_BASE_MASK ((1u << DISCR_BASE_BITS) - 1)
+#define DISCR_MULTIPLICITY_MASK ((1u << DISCR_MULTIPLICITY_BITS) - 1)
+#define DISCR_COPYID_MASK ((1u << DISCR_COPYID_BITS) - 1)
+
+#define DISCR_BASE_SHIFT 0
+#define DISCR_MULTIPLICITY_SHIFT DISCR_BASE_BITS
+#define DISCR_COPYID_SHIFT (DISCR_BASE_BITS + DISCR_MULTIPLICITY_BITS)
+
+/* Maximum values for each discriminator field.  */
+#define DISCR_BASE_MAX DISCR_BASE_MASK
+#define DISCR_MULTIPLICITY_MAX DISCR_MULTIPLICITY_MASK
+#define DISCR_COPYID_MAX DISCR_COPYID_MASK
+
+/* Structure to hold hierarchical discriminator components.  */
+struct discriminator_components
+{
+  unsigned int base;         /* Front-end discriminator (bits 0-7).  */
+  unsigned int multiplicity; /* Duplication factor (bits 8-14).  */
+  unsigned int copyid;       /* Copy identifier (bits 15-25).  */
+};
+
+/* Create location with hierarchical discriminator.  */
+extern location_t
+location_with_discriminator_components (location_t,
+					const discriminator_components &);
+
+/* Get discriminator components from location.  */
+extern discriminator_components
+get_discriminator_components_from_loc (location_t);
 
 #define LOCATION_FILE(LOC) ((expand_location (LOC)).file)
 #define LOCATION_LINE(LOC) ((expand_location (LOC)).line)
@@ -119,7 +154,7 @@ extern location_t input_location;
    that is part of a macro replacement-list defined in a system
    header, but expanded in a non-system file.  */
 
-static inline int
+inline int
 in_system_header_at (location_t loc)
 {
   return linemap_location_in_system_header_p (line_table, loc);
@@ -128,7 +163,7 @@ in_system_header_at (location_t loc)
 /* Return true if LOCATION is the locus of a token that
    comes from a macro expansion, false otherwise.  */
 
-static inline bool
+inline bool
 from_macro_expansion_at (location_t loc)
 {
   return linemap_location_from_macro_expansion_p (line_table, loc);
@@ -138,13 +173,13 @@ from_macro_expansion_at (location_t loc)
    a macro definition, false otherwise.  This differs from from_macro_expansion_at
    in its treatment of macro arguments, for which this returns false.  */
 
-static inline bool
+inline bool
 from_macro_definition_at (location_t loc)
 {
   return linemap_location_from_macro_definition_p (line_table, loc);
 }
 
-static inline location_t
+inline location_t
 get_pure_location (location_t loc)
 {
   return get_pure_location (line_table, loc);
@@ -152,7 +187,7 @@ get_pure_location (location_t loc)
 
 /* Get the start of any range encoded within location LOC.  */
 
-static inline location_t
+inline location_t
 get_start (location_t loc)
 {
   return get_range_from_loc (line_table, loc).m_start;
@@ -160,7 +195,7 @@ get_start (location_t loc)
 
 /* Get the endpoint of any range encoded within location LOC.  */
 
-static inline location_t
+inline location_t
 get_finish (location_t loc)
 {
   return get_range_from_loc (line_table, loc).m_finish;
@@ -174,10 +209,6 @@ void dump_line_table_statistics (void);
 
 void dump_location_info (FILE *stream);
 
-void diagnostics_file_cache_fini (void);
-
-void diagnostics_file_cache_forcibly_evict_file (const char *file_path);
-
 class GTY(()) string_concat
 {
 public:
@@ -186,8 +217,6 @@ public:
   int m_num;
   location_t * GTY ((atomic)) m_locs;
 };
-
-struct location_hash : int_hash <location_t, UNKNOWN_LOCATION> { };
 
 class GTY(()) string_concat_db
 {
@@ -203,7 +232,7 @@ class GTY(()) string_concat_db
   static location_t get_key_loc (location_t loc);
 
   /* For the fields to be private, we must grant access to the
-     generated code in gtype-desc.c.  */
+     generated code in gtype-desc.cc.  */
 
   friend void ::gt_ggc_mx_string_concat_db (void *x_p);
   friend void ::gt_pch_nx_string_concat_db (void *x_p);

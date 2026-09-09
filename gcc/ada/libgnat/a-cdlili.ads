@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -36,7 +36,7 @@ with Ada.Iterator_Interfaces;
 with Ada.Containers.Helpers;
 private with Ada.Finalization;
 private with Ada.Streams;
-private with Ada.Strings.Text_Output;
+private with Ada.Strings.Text_Buffers;
 
 generic
    type Element_Type is private;
@@ -58,15 +58,17 @@ is
       Default_Iterator  => Iterate,
       Iterator_Element  => Element_Type,
       Aggregate         => (Empty       => Empty,
-                            Add_Unnamed => Append);
+                            Add_Unnamed => Append),
+      Preelaborable_Initialization;
 
-   pragma Preelaborable_Initialization (List);
-
-   type Cursor is private;
-   pragma Preelaborable_Initialization (Cursor);
+   type Cursor is private
+   with
+      Preelaborable_Initialization;
 
    Empty_List : constant List;
+
    function Empty return List;
+   pragma Ada_2022 (Empty);
 
    No_Element : constant Cursor;
 
@@ -100,12 +102,12 @@ is
       Process   : not null access procedure (Element : in out Element_Type));
 
    type Constant_Reference_Type
-      (Element : not null access constant Element_Type) is private
+      (Element : not null access constant Element_Type) is limited private
    with
       Implicit_Dereference => Element;
 
    type Reference_Type
-     (Element : not null access Element_Type) is private
+     (Element : not null access Element_Type) is limited private
    with
       Implicit_Dereference => Element;
 
@@ -286,7 +288,7 @@ private
      end record with Put_Image => Put_Image;
 
    procedure Put_Image
-     (S : in out Ada.Strings.Text_Output.Sink'Class; V : List);
+     (S : in out Ada.Strings.Text_Buffers.Root_Buffer_Type'Class; V : List);
 
    overriding procedure Adjust (Container : in out List);
 
@@ -372,10 +374,10 @@ private
 
    for Reference_Type'Read use Read;
 
-   --  Three operations are used to optimize in the expansion of "for ... of"
-   --  loops: the Next(Cursor) procedure in the visible part, and the following
-   --  Pseudo_Reference and Get_Element_Access functions. See Sem_Ch5 for
-   --  details.
+   --  See Ada.Containers.Vectors for documentation on the following
+
+   procedure _Next (Position : in out Cursor) renames Next;
+   procedure _Previous (Position : in out Cursor) renames Previous;
 
    function Pseudo_Reference
      (Container : aliased List'Class) return Reference_Control_Type;

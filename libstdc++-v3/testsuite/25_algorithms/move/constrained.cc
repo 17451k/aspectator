@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,8 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do run { target c++2a } }
+// { dg-do run { target c++20 } }
 
 #include <algorithm>
 #include <vector>
@@ -26,6 +25,7 @@
 using __gnu_test::test_container;
 using __gnu_test::test_range;
 using __gnu_test::input_iterator_wrapper;
+using __gnu_test::input_iterator_wrapper_nocopy;
 using __gnu_test::output_iterator_wrapper;
 using __gnu_test::forward_iterator_wrapper;
 
@@ -193,6 +193,17 @@ test04()
   VERIFY( ranges::count(y, 0, &X::moved) == 6 );
 }
 
+void
+test05()
+{
+  // PR libstdc++/101599
+  int x[] = {1,2,3};
+  test_range<int, input_iterator_wrapper_nocopy> rx(x);
+  std::vector<int> v(4, 0);
+  ranges::move(rx, v.begin());
+  VERIFY( ranges::equal(v, (int[]){1,2,3,0}) );
+}
+
 int
 main()
 {
@@ -200,4 +211,5 @@ main()
   test02();
   static_assert(test03());
   test04();
+  test05();
 }

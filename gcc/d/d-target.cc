@@ -1,5 +1,5 @@
 /* d-target.cc -- Target interface for the D front end.
-   Copyright (C) 2013-2021 Free Software Foundation, Inc.
+   Copyright (C) 2013-2026 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -35,14 +35,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm.h"
 #include "tm_p.h"
 #include "target.h"
+#include "calls.h"
 
 #include "d-tree.h"
 #include "d-target.h"
 
 /* Implements the Target interface defined by the front end.
    Used for retrieving target-specific information.  */
-
-Target target;
 
 /* Internal key handlers for `__traits(getTargetInfo)'.  */
 static tree d_handle_target_cpp_std (void);
@@ -88,9 +87,6 @@ define_float_constants (T &f, tree type)
 
   /* Floating-point NaN.  */
   real_nan (&f.nan.rv (), "", 1, mode);
-
-  /* Signalling floating-point NaN.  */
-  real_nan (&f.snan.rv (), "", 0, mode);
 
   /* Floating-point +Infinity if the target supports infinities.  */
   real_inf (&f.infinity.rv ());
@@ -142,19 +138,19 @@ Target::_init (const Param &)
   /* Define what type to use for size_t, ptrdiff_t.  */
   if (this->ptrsize == 8)
     {
-      global.params.isLP64 = true;
-      Type::tsize_t = Type::basic[Tuns64];
-      Type::tptrdiff_t = Type::basic[Tint64];
+      this->isLP64 = true;
+      Type::tsize_t = Type::basic[(int)TY::Tuns64];
+      Type::tptrdiff_t = Type::basic[(int)TY::Tint64];
     }
   else if (this->ptrsize == 4)
     {
-      Type::tsize_t = Type::basic[Tuns32];
-      Type::tptrdiff_t = Type::basic[Tint32];
+      Type::tsize_t = Type::basic[(int)TY::Tuns32];
+      Type::tptrdiff_t = Type::basic[(int)TY::Tint32];
     }
   else if (this->ptrsize == 2)
     {
-      Type::tsize_t = Type::basic[Tuns16];
-      Type::tptrdiff_t = Type::basic[Tint16];
+      Type::tsize_t = Type::basic[(int)TY::Tuns16];
+      Type::tptrdiff_t = Type::basic[(int)TY::Tint16];
     }
   else
     sorry ("D does not support pointers on this target.");
@@ -162,17 +158,16 @@ Target::_init (const Param &)
   Type::thash_t = Type::tsize_t;
 
   /* Set-up target C ABI.  */
-  this->c.longsize = int_size_in_bytes (long_integer_type_node);
+  this->c.boolsize = (BOOL_TYPE_SIZE / BITS_PER_UNIT);
+  this->c.shortsize = (SHORT_TYPE_SIZE / BITS_PER_UNIT);
+  this->c.intsize = (INT_TYPE_SIZE / BITS_PER_UNIT);
+  this->c.longsize = (LONG_TYPE_SIZE / BITS_PER_UNIT);
+  this->c.long_longsize = (LONG_LONG_TYPE_SIZE / BITS_PER_UNIT);
   this->c.long_doublesize = int_size_in_bytes (long_double_type_node);
+  this->c.wchar_tsize = (WCHAR_TYPE_SIZE / BITS_PER_UNIT);
 
-  /* Define what type to use for wchar_t.  We don't want to support wide
-     characters less than "short" in D.  */
-  if (WCHAR_TYPE_SIZE == 32)
-    this->c.twchar_t = Type::basic[Tdchar];
-  else if (WCHAR_TYPE_SIZE == 16)
-    this->c.twchar_t = Type::basic[Twchar];
-  else
-    sorry ("D does not support wide characters on this target.");
+  this->c.bitFieldStyle = targetm.ms_bitfield_layout_p (unknown_type_node)
+    ? TargetC::BitFieldStyle::MS : TargetC::BitFieldStyle::Gcc_Clang;
 
   /* Set-up target C++ ABI.  */
   this->cpp.reverseOverloads = false;
@@ -181,6 +176,12 @@ Target::_init (const Param &)
 
   /* Set-up target Objective-C ABI.  */
   this->objc.supported = false;
+
+  /* Set-up environmental settings.  */
+  this->obj_ext = "o";
+  this->lib_ext = "a";
+  this->dll_ext = "so";
+  this->run_noext = true;
 
   /* Initialize all compile-time properties for floating-point types.
      Should ensure that our real_t type is able to represent real_value.  */
@@ -219,7 +220,7 @@ unsigned
 Target::fieldalign (Type *type)
 {
   /* Work out the correct alignment for the field decl.  */
-  unsigned int align = type->alignsize () * BITS_PER_UNIT;
+  unsigned int align = dmd::alignsize (type) * BITS_PER_UNIT;
 
 #ifdef BIGGEST_FIELD_ALIGNMENT
   align = MIN (align, (unsigned) BIGGEST_FIELD_ALIGNMENT);
@@ -240,7 +241,7 @@ Target::fieldalign (Type *type)
 /* Returns a Type for the va_list type of the target.  */
 
 Type *
-Target::va_listType (const Loc &, Scope *)
+Target::va_listType (Loc, Scope *)
 {
   if (this->tvalist)
     return this->tvalist;
@@ -273,13 +274,13 @@ Target::isVectorTypeSupported (int sz, Type *type)
     type = Type::tuns8;
 
   /* No support for non-trivial types, complex types, or booleans.  */
-  if (!type->isTypeBasic () || type->iscomplex () || type->ty == Tbool)
+  if (!type->isTypeBasic () || dmd::isComplex (type) || type->ty == TY::Tbool)
     return 2;
 
   /* In [simd/vector extensions], which vector types are supported depends on
      the target.  The implementation is expected to only support the vector
      types that are implemented in the target's hardware.  */
-  unsigned HOST_WIDE_INT nunits = sz / type->size ();
+  unsigned HOST_WIDE_INT nunits = sz / dmd::size (type);
   tree ctype = build_vector_type (build_ctype (type), nunits);
 
   if (!targetm.vector_mode_supported_p (TYPE_MODE (ctype)))
@@ -293,52 +294,33 @@ Target::isVectorTypeSupported (int sz, Type *type)
    Returns true if the operation is supported or type is not a vector.  */
 
 bool
-Target::isVectorOpSupported (Type *type, TOK op, Type *)
+Target::isVectorOpSupported (Type *type, EXP op, Type *)
 {
-  if (type->ty != Tvector)
+  if (type->ty != TY::Tvector)
     return true;
 
   /* Don't support if type is non-scalar, such as __vector(void[]).  */
-  if (!type->isscalar ())
+  if (!dmd::isScalar (type))
     return false;
 
   /* Don't support if expression cannot be represented.  */
   switch (op)
     {
-    case TOKpow:
-    case TOKpowass:
+    case EXP::pow:
+    case EXP::powAssign:
       /* pow() is lowered as a function call.  */
       return false;
 
-    case TOKmod:
-    case TOKmodass:
+    case EXP::mod:
+    case EXP::modAssign:
       /* fmod() is lowered as a function call.  */
-      if (type->isfloating ())
+      if (dmd::isFloating (type))
 	return false;
       break;
 
-    case TOKandand:
-    case TOKoror:
+    case EXP::andAnd:
+    case EXP::orOr:
       /* Logical operators must have a result type of bool.  */
-      return false;
-
-    case TOKue:
-    case TOKlg:
-    case TOKule:
-    case TOKul:
-    case TOKuge:
-    case TOKug:
-    case TOKle:
-    case TOKlt:
-    case TOKge:
-    case TOKgt:
-    case TOKleg:
-    case TOKunord:
-    case TOKequal:
-    case TOKnotequal:
-    case TOKidentity:
-    case TOKnotidentity:
-      /* Comparison operators must have a result type of bool.  */
       return false;
 
     default:
@@ -353,7 +335,7 @@ Target::isVectorOpSupported (Type *type, TOK op, Type *)
 const char *
 TargetCPP::toMangle (Dsymbol *s)
 {
-  return toCppMangleItanium (s);
+  return dmd::toCppMangleItanium (s);
 }
 
 /* Return the symbol mangling of CD for C++ linkage.  */
@@ -361,7 +343,7 @@ TargetCPP::toMangle (Dsymbol *s)
 const char *
 TargetCPP::typeInfoMangle (ClassDeclaration *cd)
 {
-  return cppTypeInfoMangleItanium (cd);
+  return dmd::cppTypeInfoMangleItanium (cd);
 }
 
 /* Get mangle name of a this-adjusting thunk to the function declaration FD
@@ -370,7 +352,7 @@ TargetCPP::typeInfoMangle (ClassDeclaration *cd)
 const char *
 TargetCPP::thunkMangle (FuncDeclaration *fd, int offset)
 {
-  return cppThunkMangleItanium (fd, offset);
+  return dmd::cppThunkMangleItanium (fd, offset);
 }
 
 /* For a vendor-specific type, return a string containing the C++ mangling.
@@ -379,7 +361,8 @@ TargetCPP::thunkMangle (FuncDeclaration *fd, int offset)
 const char *
 TargetCPP::typeMangle (Type *type)
 {
-  if (type->isTypeBasic () || type->ty == Tvector || type->ty == Tstruct)
+  if (type->isTypeBasic () || type->ty == TY::Tvector
+      || type->ty == TY::Tstruct)
     {
       tree ctype = build_ctype (type);
       return targetm.mangle_type (ctype);
@@ -392,32 +375,21 @@ TargetCPP::typeMangle (Type *type)
    ARG to an extern(C++) function.  */
 
 Type *
-TargetCPP::parameterType (Parameter *arg)
+TargetCPP::parameterType (Type *type)
 {
-  Type *t = arg->type->merge2 ();
-  if (arg->storageClass & (STCout | STCref))
-    t = t->referenceTo ();
-  else if (arg->storageClass & STClazy)
-    {
-      /* Mangle as delegate.  */
-      Type *td = TypeFunction::create (NULL, t, VARARGnone, LINKd);
-      td = TypeDelegate::create (td);
-      t = t->merge2 ();
-    }
-
   /* Could be a va_list, which we mangle as a pointer.  */
   Type *tvalist = target.va_listType (Loc (), NULL);
-  if (t->ty == Tsarray && tvalist->ty == Tsarray)
+  if (type->ty == TY::Tsarray && tvalist->ty == TY::Tsarray)
     {
-      Type *tb = t->toBasetype ()->mutableOf ();
+      Type *tb = dmd::mutableOf (type->toBasetype ());
       if (tb == tvalist)
 	{
-	  tb = t->nextOf ()->pointerTo ();
-	  t = tb->castMod (t->mod);
+	  tb = dmd::pointerTo (type->nextOf ());
+	  type = dmd::castMod (tb, type->mod);
 	}
     }
 
-  return t;
+  return type;
 }
 
 /* Checks whether TYPE is a vendor-specific fundamental type.  Stores the result
@@ -450,10 +422,10 @@ Target::systemLinkage (void)
       /* In [attribute/linkage], `System' is the same as `Windows' on Windows
 	 platforms, and `C' on other platforms.  */
       if (link_system)
-	return LINKwindows;
+	return LINK::windows;
     }
 
-  return LINKc;
+  return LINK::c;
 }
 
 /* Generate a TypeTuple of the equivalent types used to determine if a
@@ -477,12 +449,14 @@ Target::isReturnOnStack (TypeFunction *tf, bool)
   /* Need the back-end type to determine this, but this is called from the
      frontend before semantic processing is finished.  An accurate value
      is not currently needed anyway.  */
-  if (tf->isref)
+  if (tf->isRef ())
     return false;
 
   Type *tn = tf->next->toBasetype ();
+  if (dmd::size (tn) == SIZE_INVALID)
+    return false;
 
-  return (tn->ty == Tstruct || tn->ty == Tsarray);
+  return (tn->ty == TY::Tstruct || tn->ty == TY::Tsarray);
 }
 
 /* Add all target info in HANDLERS to D_TARGET_INFO_TABLE for use by
@@ -543,7 +517,7 @@ d_handle_target_object_format (void)
    LOC is the location to use for the returned expression.  */
 
 Expression *
-Target::getTargetInfo (const char *key, const Loc &loc)
+Target::getTargetInfo (const char *key, Loc loc)
 {
   unsigned ix;
   d_target_info_spec *spec;
@@ -575,12 +549,62 @@ Target::getTargetInfo (const char *key, const Loc &loc)
   return NULL;
 }
 
-/**
- * Returns true if the implementation for object monitors is always defined
- * in the D runtime library (rt/monitor_.d).  */
+/* Returns true if the callee invokes destructors for arguments.  */
+
+bool
+Target::isCalleeDestroyingArgs (TypeFunction *tf)
+{
+  return tf->linkage == LINK::d;
+}
+
+/* Returns true if the implementation for object monitors is always defined
+   in the D runtime library (rt/monitor_.d).  */
 
 bool
 Target::libraryObjectMonitors (FuncDeclaration *, Statement *)
 {
   return true;
+}
+
+/* Returns true if the target supports `pragma(linkerDirective)'.  */
+
+bool
+Target::supportsLinkerDirective (void) const
+{
+  return false;
+}
+
+/* Decides whether an `in' parameter of the specified POD type PARAM_TYPE is to
+   be passed by reference or by value.  This is used only when compiling with
+   `-fpreview=in' enabled.  */
+
+bool
+Target::preferPassByRef (Type *param_type)
+{
+  /* See note in Target::isReturnOnStack.  */
+  Type *tb = param_type->toBasetype ();
+  if (dmd::size (tb) == SIZE_INVALID)
+    return false;
+
+  return (tb->ty == TY::Tstruct || tb->ty == TY::Tsarray);
+}
+
+/* Returns true if the specified bit-field FIELD contributes to the alignment
+   of the containing aggregate.  */
+
+bool
+TargetC::contributesToAggregateAlignment(BitFieldDeclaration *field)
+{
+  if (this->bitFieldStyle == TargetC::BitFieldStyle::MS)
+    return true;
+
+  if (PCC_BITFIELD_TYPE_MATTERS)
+    {
+      /* Named bit-fields contribute to alignment. Some targets also apply the
+	 same rules to unnamed bit-fields too.  */
+      if (!field->isAnonymous () || targetm.align_anon_bitfield ())
+	return true;
+    }
+
+  return false;
 }

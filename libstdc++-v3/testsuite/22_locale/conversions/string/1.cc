@@ -1,6 +1,6 @@
 // { dg-do run { target c++11 } }
 
-// Copyright (C) 2015-2021 Free Software Foundation, Inc.
+// Copyright (C) 2015-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -29,6 +29,7 @@ struct cvt : std::codecvt<Elem, char, std::mbstate_t> { };
 
 template<typename Elem>
 using str_conv = std::wstring_convert<cvt<Elem>, Elem>;
+// { dg-warning "deprecated" "" { target c++17 } 31 }
 
 using std::string;
 using std::wstring;
@@ -51,6 +52,7 @@ void test01()
 
 void test02()
 {
+#ifdef _GLIBCXX_USE_WCHAR_T
   typedef str_conv<wchar_t> wsc;
   wsc c;
   string input = "Fool for a lifetime";
@@ -71,6 +73,7 @@ void test02()
 
   __gnu_test::implicitly_default_constructible test;
   test.operator()<wsc>(); // P0935R0
+#endif
 }
 
 int main()

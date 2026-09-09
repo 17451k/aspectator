@@ -10,9 +10,9 @@ void test3882()
 }
 
 /******************************************/
-// 12619
+// https://issues.dlang.org/show_bug.cgi?id=12619
 
-extern (C) @system nothrow pure void* memcpy(void* s1, in void* s2, size_t n);
+extern (C) @system nothrow pure void* memcpy(void* s1, const void* s2, size_t n);
 // -> weakly pure
 
 void test12619() pure
@@ -22,7 +22,7 @@ void test12619() pure
 }
 
 /******************************************/
-// 12760
+// https://issues.dlang.org/show_bug.cgi?id=12760
 
 struct S12760(T)
 {
@@ -41,11 +41,11 @@ struct K12760
 }
 
 /******************************************/
-// 12909
+// https://issues.dlang.org/show_bug.cgi?id=12909
 
 int f12909(immutable(int[])[int] aa) pure nothrow
 {
-    //aa[0] = [];   // fix for issue 13701
+    //aa[0] = [];   // fix for https://issues.dlang.org/show_bug.cgi?id=13701
     return 0;
 }
 
@@ -60,13 +60,13 @@ void test12909()
 }
 
 /******************************************/
-// 13899
+// https://issues.dlang.org/show_bug.cgi?id=13899
 
 const struct Foo13899
 {
-    int opApply(immutable int delegate(in ref int) pure nothrow dg) pure nothrow
+    int opApply(immutable int delegate(const ref int) pure nothrow dg) pure nothrow
     {
-        return 1;
+        return 0;
     }
 }
 
@@ -75,4 +75,43 @@ void test13899()
     foreach (x; Foo13899())
     {
     }
+}
+
+import core.checkedint;
+
+// check inlining of checkedint with -wi
+T testCheckedSigned(T)(T x, T y)
+{
+    bool overflow;
+    T z = adds(x, y, overflow);
+    z = subs(z, x, overflow);
+    z = muls(z, x, overflow);
+    z = negs(z, overflow);
+    return z;
+}
+
+T testCheckedUnsigned(T)(T x, T y)
+{
+    bool overflow;
+    T z = addu(x, y, overflow);
+    z = subu(z, x, overflow);
+    z = mulu(z, x, overflow);
+    return z;
+}
+
+void testCkeckedInt()
+{
+    assert(testCheckedSigned!int(3,4) == -12);
+    assert(testCheckedSigned!long(3,4) == -12);
+    static if (is(cent))
+        assert(testCheckedSigned!cent(3,4) == -12);
+
+    bool overflow;
+    assert(mulu(cast(long)3, cast(uint)4, overflow) == 12);
+    assert(mulu(cast(ulong)3, cast(uint)4, overflow) == 12);
+
+    assert(testCheckedUnsigned!uint(3,4) == 12);
+    assert(testCheckedUnsigned!ulong(3,4) == 12);
+    static if (is(ucent))
+        assert(testCheckedUnsigned!ucent(3,4) == 12);
 }

@@ -9,11 +9,11 @@ static void bar(int a, int *ptr)
 {
   do
   {
-    int b;   /* { dg-message "declared" } */
-    if (b < 40) {
-      ptr[0] = b; /* { dg-warning "may be used uninitialized" } */
+    int b;
+    if (b < 40) { /* { dg-warning "is used uninitialized" "" { target c++26 } } */
+      ptr[0] = b;
     }
-    b += 1;
+    b += 1; /* { dg-warning "is used uninitialized" "" { target { c || c++23_down } } } */
     ptr++;
   }
   while (--a != 0);

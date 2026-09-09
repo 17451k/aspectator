@@ -5,11 +5,10 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_rapi.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_rapi.d)
  */
 module core.sys.windows.rapi;
 version (Windows):
-@system:
 
 /* Comment from MinGW
    NOTE: This strictly does not belong in the Win32 API since it's
@@ -31,7 +30,7 @@ interface IRAPIStream
     HRESULT GetRapiStat(RAPISTREAMFLAG, DWORD*);
 }
 
-alias HRESULT function(DWORD, BYTE, DWORD, BYTE, IRAPIStream) RAPIEXT;
+alias RAPIEXT = HRESULT function(DWORD, BYTE, DWORD, BYTE, IRAPIStream);
 
 struct RAPIINIT
 {

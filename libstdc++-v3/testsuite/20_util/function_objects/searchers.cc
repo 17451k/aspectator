@@ -1,4 +1,4 @@
-// Copyright (C) 2014-2021 Free Software Foundation, Inc.
+// Copyright (C) 2014-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,25 +16,29 @@
 // <http://www.gnu.org/licenses/>.
 
 // { dg-do run { target c++17 } }
+// { dg-add-options no_pch }
 
 #include <functional>
+
+#if __STDC_HOSTED__
+# ifndef __cpp_lib_boyer_moore_searcher
+#  error "Feature-test macro for searchers missing in <functional>"
+# elif __cpp_lib_boyer_moore_searcher < 201603
+#  error "Feature-test macro for searchers has wrong value in <functional>"
+# endif
+#endif // HOSTED
+
+#include <string_view>
 #include <cstring>
 #include <cctype>
-#ifdef _GLIBCXX_USE_WCHAR_T
-# include <cwchar>
-#endif
 #include <algorithm>
 #include <testsuite_hooks.h>
 
-#ifndef __cpp_lib_boyer_moore_searcher
-# error "Feature-test macro for searchers missing"
-#elif __cpp_lib_boyer_moore_searcher < 201603
-# error "Feature-test macro for searchers has wrong value"
-#endif
-
 using std::default_searcher;
+#if __STDC_HOSTED__
 using std::boyer_moore_searcher;
 using std::boyer_moore_horspool_searcher;
+#endif // HOSTED
 
 void
 test01()
@@ -53,8 +57,10 @@ test01()
     auto nlen = std::strlen(n);
     auto ne = n + nlen;
     default_searcher d(n, ne);
+#if __STDC_HOSTED__
     boyer_moore_searcher bm(n, ne);
     boyer_moore_horspool_searcher bmh(n, ne);
+#endif // HOSTED
     for (auto h : haystacks)
     {
       auto he = h + std::strlen(h);
@@ -65,6 +71,8 @@ test01()
 	VERIFY( d_res.second == d_res.first );
       else
 	VERIFY( d_res.second == (d_res.first + nlen) );
+
+#if __STDC_HOSTED__
       auto bm_res = bm(h, he);
       VERIFY( bm_res.first == res );
       if (res == he)
@@ -77,6 +85,7 @@ test01()
 	VERIFY( bmh_res.second == bmh_res.first );
       else
 	VERIFY( bmh_res.second == (bmh_res.first + nlen) );
+#endif
     }
   }
 }
@@ -84,7 +93,6 @@ test01()
 void
 test02()
 {
-#ifdef _GLIBCXX_USE_WCHAR_T
   const wchar_t s[] = { L'a', (wchar_t)-97, L'a', L'\0' };
   const wchar_t* needles[] = {
     s, L"", L"a", L"aa", L"aaa", L"ab", L"cd", L"abcd", L"abcdabcd", L"abcabcd"
@@ -96,14 +104,16 @@ test02()
 
   for (auto n : needles)
   {
-    auto nlen = std::wcslen(n);
+    auto nlen = std::char_traits<wchar_t>::length(n);
     auto ne = n + nlen;
     default_searcher d(n, ne);
+#if __STDC_HOSTED__
     boyer_moore_searcher bm(n, ne);
     boyer_moore_horspool_searcher bmh(n, ne);
+#endif // HOSTED
     for (auto h : haystacks)
     {
-      auto he = h + std::wcslen(h);
+      auto he = h + std::char_traits<wchar_t>::length(h);
       auto res = std::search(h, he, n, ne);
       auto d_res = d(h, he);
       VERIFY( d_res.first == res );
@@ -111,6 +121,7 @@ test02()
 	VERIFY( d_res.second == d_res.first );
       else
 	VERIFY( d_res.second == (d_res.first + nlen) );
+#if __STDC_HOSTED__
       auto bm_res = bm(h, he);
       VERIFY( bm_res.first == res );
       if (res == he)
@@ -123,9 +134,9 @@ test02()
 	VERIFY( bmh_res.second == bmh_res.first );
       else
 	VERIFY( bmh_res.second == (bmh_res.first + nlen) );
+#endif // HOSTED
     }
   }
-#endif
 }
 
 void
@@ -151,8 +162,10 @@ test03()
   const char* he = haystack + std::strlen(haystack);
 
   default_searcher d(needle, ne, eq);
+#if __STDC_HOSTED__
   boyer_moore_searcher bm(needle, ne, eq, eq);
   boyer_moore_horspool_searcher bmh(needle, ne, eq, eq);
+#endif
 
   auto res = std::search(haystack, he, needle, ne, eq);
   auto d_res = d(haystack, he);
@@ -161,6 +174,7 @@ test03()
     VERIFY( d_res.second == d_res.first );
   else
     VERIFY( d_res.second == (d_res.first + nlen) );
+#if __STDC_HOSTED__
   auto bm_res = bm(haystack, he);
   VERIFY( bm_res.first == res );
   if (res == he)
@@ -173,6 +187,7 @@ test03()
     VERIFY( bmh_res.second == bmh_res.first );
   else
     VERIFY( bmh_res.second == (bmh_res.first + nlen) );
+#endif // HOSTED
 }
 
 int

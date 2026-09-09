@@ -1,5 +1,5 @@
 /* Target Definitions for R8C/M16C/M32C
-   Copyright (C) 2005-2021 Free Software Foundation, Inc.
+   Copyright (C) 2005-2026 Free Software Foundation, Inc.
    Contributed by Red Hat.
 
    This file is part of GCC.
@@ -179,10 +179,6 @@ machine_function;
 #define SHORT_TYPE_SIZE 16
 #define LONG_TYPE_SIZE 32
 #define LONG_LONG_TYPE_SIZE 64
-
-#define FLOAT_TYPE_SIZE 32
-#define DOUBLE_TYPE_SIZE 64
-#define LONG_DOUBLE_TYPE_SIZE 64
 
 #define DEFAULT_SIGNED_CHAR 1
 
@@ -452,7 +448,7 @@ enum reg_class
 
 #define DWARF_FRAME_REGISTERS 20
 #define DWARF_FRAME_REGNUM(N) m32c_dwarf_frame_regnum (N)
-#define DBX_REGISTER_NUMBER(N) m32c_dwarf_frame_regnum (N)
+#define DEBUGGER_REGNO(N) m32c_dwarf_frame_regnum (N)
 
 #undef ASM_PREFERRED_EH_DATA_FORMAT
 /* This is the same as the default in practice, except that by making
@@ -472,7 +468,6 @@ enum reg_class
 
 /* Passing Function Arguments on the Stack */
 
-#define PUSH_ARGS 1
 #define PUSH_ROUNDING(N) m32c_push_rounding (N)
 #define CALL_POPS_ARGS(C) 0
 
@@ -523,7 +518,7 @@ typedef struct m32c_cumulative_args
 #define MAX_REGS_PER_ADDRESS 1
 
 /* This is passed to the macros below, so that they can be implemented
-   in m32c.c.  */
+   in m32c.cc.  */
 #ifdef REG_OK_STRICT
 #define REG_OK_STRICT_V 1
 #else

@@ -292,13 +292,44 @@ int bt(const scope size_t* p, size_t bitnum) pure @system
 /**
  * Tests and complements the bit.
  */
-int btc(size_t* p, size_t bitnum) pure @system;
-
+int btc(size_t* p, size_t bitnum) pure @system
+{
+    static if (size_t.sizeof == 8)
+    {
+        int result = ((p[bitnum >> 6] & (1L << (bitnum & 63)))) != 0;
+        p[bitnum >> 6] ^= (1L << (bitnum & 63));
+        return result;
+    }
+    else static if (size_t.sizeof == 4)
+    {
+        int result = ((p[bitnum >> 5] & (1L << (bitnum & 31)))) != 0;
+        p[bitnum >> 5] ^= (1L << (bitnum & 31));
+        return result;
+    }
+    else
+        static assert(0);
+}
 
 /**
  * Tests and resets (sets to 0) the bit.
  */
-int btr(size_t* p, size_t bitnum) pure @system;
+int btr(size_t* p, size_t bitnum) pure @system
+{
+    static if (size_t.sizeof == 8)
+    {
+        int result = ((p[bitnum >> 6] & (1L << (bitnum & 63)))) != 0;
+        p[bitnum >> 6] &= ~(1L << (bitnum & 63));
+        return result;
+    }
+    else static if (size_t.sizeof == 4)
+    {
+        int result = ((p[bitnum >> 5] & (1L << (bitnum & 31)))) != 0;
+        p[bitnum >> 5] &= ~(1L << (bitnum & 31));
+        return result;
+    }
+    else
+        static assert(0);
+}
 
 
 /**
@@ -314,7 +345,23 @@ p[index / (size_t.sizeof*8)] & (1 << (index & ((size_t.sizeof*8) - 1)))
  *      A non-zero value if the bit was set, and a zero
  *      if it was clear.
  */
-int bts(size_t* p, size_t bitnum) pure @system;
+int bts(size_t* p, size_t bitnum) pure @system
+{
+    static if (size_t.sizeof == 8)
+    {
+        int result = ((p[bitnum >> 6] & (1L << (bitnum & 63)))) != 0;
+        p[bitnum >> 6] |= (1L << (bitnum & 63));
+        return result;
+    }
+    else static if (size_t.sizeof == 4)
+    {
+        int result = ((p[bitnum >> 5] & (1L << (bitnum & 31)))) != 0;
+        p[bitnum >> 5] |= (1L << (bitnum & 31));
+        return result;
+    }
+    else
+        static assert(0);
+}
 
 ///
 @system pure unittest
@@ -704,6 +751,11 @@ private int softPopcnt(N)(N x) pure
     return cast(int) x;
 }
 
+version (DigitalMars) version (AArch64)
+{
+    int _popcnt(ulong x) pure;
+}
+
 version (DigitalMars) version (AnyX86)
 {
     /**
@@ -755,17 +807,6 @@ version (DigitalMars) version (AnyX86)
             }
         }
     }
-}
-
-
-deprecated("volatileLoad has been moved to core.volatile. Use core.volatile.volatileLoad instead.")
-{
-    public import core.volatile : volatileLoad;
-}
-
-deprecated("volatileStore has been moved to core.volatile. Use core.volatile.volatileStore instead.")
-{
-    public import core.volatile : volatileStore;
 }
 
 
@@ -951,6 +992,9 @@ pure T rol(T)(const T value, const uint count)
     if (__traits(isIntegral, T) && __traits(isUnsigned, T))
 {
     assert(count < 8 * T.sizeof);
+    if (count == 0)
+        return cast(T) value;
+
     return cast(T) ((value << count) | (value >> (T.sizeof * 8 - count)));
 }
 /// ditto
@@ -958,6 +1002,9 @@ pure T ror(T)(const T value, const uint count)
     if (__traits(isIntegral, T) && __traits(isUnsigned, T))
 {
     assert(count < 8 * T.sizeof);
+    if (count == 0)
+        return cast(T) value;
+
     return cast(T) ((value >> count) | (value << (T.sizeof * 8 - count)));
 }
 /// ditto
@@ -965,6 +1012,9 @@ pure T rol(uint count, T)(const T value)
     if (__traits(isIntegral, T) && __traits(isUnsigned, T))
 {
     static assert(count < 8 * T.sizeof);
+    static if (count == 0)
+        return cast(T) value;
+
     return cast(T) ((value << count) | (value >> (T.sizeof * 8 - count)));
 }
 /// ditto
@@ -972,6 +1022,9 @@ pure T ror(uint count, T)(const T value)
     if (__traits(isIntegral, T) && __traits(isUnsigned, T))
 {
     static assert(count < 8 * T.sizeof);
+    static if (count == 0)
+        return cast(T) value;
+
     return cast(T) ((value >> count) | (value << (T.sizeof * 8 - count)));
 }
 
@@ -994,4 +1047,9 @@ unittest
 
     assert(rol!3(a) == 0b10000111);
     assert(ror!3(a) == 0b00011110);
+
+    enum c = rol(uint(1), 0);
+    enum d = ror(uint(1), 0);
+    assert(c == uint(1));
+    assert(d == uint(1));
 }

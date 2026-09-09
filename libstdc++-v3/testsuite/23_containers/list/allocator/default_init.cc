@@ -1,4 +1,4 @@
-// Copyright (C) 2017-2021 Free Software Foundation, Inc.
+// Copyright (C) 2017-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -17,12 +17,12 @@
 
 // { dg-do run { target c++11 } }
 // { dg-options "-O0" }
-// { dg-xfail-run-if "PR c++/65816" { *-*-* } }
 
 #include <list>
 #include <testsuite_hooks.h>
 #include <testsuite_allocator.h>
 
+#include <cstring>
 #include <ext/aligned_buffer.h>
 
 using T = int;
@@ -35,7 +35,7 @@ void test01()
   typedef std::list<T, alloc_type> test_type;
 
   __gnu_cxx::__aligned_buffer<test_type> buf;
-  __builtin_memset(buf._M_addr(), ~0, sizeof(test_type));
+  std::memset(buf._M_addr(), ~0, sizeof(test_type));
 
   VERIFY( buf._M_ptr()->get_allocator().state != 0 );
 
@@ -52,7 +52,7 @@ void test02()
   typedef std::list<T, alloc_type> test_type;
 
   __gnu_cxx::__aligned_buffer<test_type> buf;
-  __builtin_memset(buf._M_addr(), ~0, sizeof(test_type));
+  std::memset(buf._M_addr(), ~0, sizeof(test_type));
 
   VERIFY( buf._M_ptr()->get_allocator().state != 0 );
 

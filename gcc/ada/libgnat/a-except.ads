@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -45,13 +45,13 @@ package Ada.Exceptions is
    pragma Preelaborate;
    --  In accordance with Ada 2005 AI-362.
 
-   type Exception_Id is private;
-   pragma Preelaborable_Initialization (Exception_Id);
+   type Exception_Id is private
+   with Preelaborable_Initialization;
 
    Null_Id : constant Exception_Id;
 
-   type Exception_Occurrence is limited private;
-   pragma Preelaborable_Initialization (Exception_Occurrence);
+   type Exception_Occurrence is limited private
+   with Preelaborable_Initialization;
 
    type Exception_Occurrence_Access is access all Exception_Occurrence;
 
@@ -120,7 +120,7 @@ package Ada.Exceptions is
 
    --  Ada 2005 (AI-438): The language revision introduces the following
    --  subprograms and attribute definitions. We do not provide them
-   --  explicitly. instead, the corresponding stream attributes are made
+   --  explicitly. Instead, the corresponding stream attributes are made
    --  available through a pragma Stream_Convert in the private part.
 
    --  procedure Read_Exception_Occurrence
@@ -163,6 +163,14 @@ private
 
    Null_Id : constant Exception_Id := null;
 
+   pragma Machine_Attribute (Raise_Exception, "expected_throw");
+   pragma Machine_Attribute (Reraise_Occurrence, "expected_throw");
+   --  Tell the compiler that an exception is likely after calling
+   --  these subprograms. This could eventually be used for hot/cold
+   --  partitioning. For now, this only enables the control flow
+   --  redundancy to avoid duplicating a check before the No_Return
+   --  call and in the exception handler for the call.
+
    -------------------------
    -- Private Subprograms --
    -------------------------
@@ -177,6 +185,7 @@ private
 
    procedure Raise_Exception_Always (E : Exception_Id; Message : String := "");
    pragma No_Return (Raise_Exception_Always);
+   pragma Machine_Attribute (Raise_Exception_Always, "expected_throw");
    pragma Export (Ada, Raise_Exception_Always, "__gnat_raise_exception");
    --  This differs from Raise_Exception only in that the caller has determined
    --  that for sure the parameter E is not null, and that therefore no check
@@ -184,32 +193,20 @@ private
    --  Raise_Exception_Always if it can determine this is the case. The Export
    --  allows this routine to be accessed from Pure units.
 
-   procedure Raise_From_Signal_Handler
-     (E : Exception_Id;
-      M : System.Address);
-   pragma Export
-     (Ada, Raise_From_Signal_Handler,
-           "ada__exceptions__raise_from_signal_handler");
-   pragma No_Return (Raise_From_Signal_Handler);
-   --  This routine is used to raise an exception from a signal handler. The
-   --  signal handler has already stored the machine state (i.e. the state that
-   --  corresponds to the location at which the signal was raised). E is the
-   --  Exception_Id specifying what exception is being raised, and M is a
-   --  pointer to a null-terminated string which is the message to be raised.
-   --  Note that this routine never returns, so it is permissible to simply
-   --  jump to this routine, rather than call it. This may be appropriate for
-   --  systems where the right way to get out of signal handler is to alter the
-   --  PC value in the machine state or in some other way ask the operating
-   --  system to return here rather than to the original location.
+   pragma Machine_Attribute (Raise_Exception_Always,
+                             "strub", "callable");
+   --  Make it callable from strub contexts
 
-   procedure Raise_From_Controlled_Operation
-     (X : Ada.Exceptions.Exception_Occurrence);
+   procedure Raise_From_Controlled_Operation (X : Exception_Occurrence);
    pragma No_Return (Raise_From_Controlled_Operation);
    pragma Export
      (Ada, Raise_From_Controlled_Operation,
            "__gnat_raise_from_controlled_operation");
    --  Raise Program_Error, providing information about X (an exception raised
    --  during a controlled operation) in the exception message.
+   pragma Machine_Attribute (Raise_From_Controlled_Operation,
+                             "expected_throw");
+   --  Mark it like internal exception-raising subprograms
 
    procedure Reraise_Library_Exception_If_Any;
    pragma Export
@@ -220,6 +217,7 @@ private
 
    procedure Reraise_Occurrence_Always (X : Exception_Occurrence);
    pragma No_Return (Reraise_Occurrence_Always);
+   pragma Machine_Attribute (Reraise_Occurrence_Always, "expected_throw");
    --  This differs from Raise_Occurrence only in that the caller guarantees
    --  that for sure the parameter X is not the null occurrence, and that
    --  therefore this procedure cannot return. The expander uses this routine
@@ -227,6 +225,7 @@ private
 
    procedure Reraise_Occurrence_No_Defer (X : Exception_Occurrence);
    pragma No_Return (Reraise_Occurrence_No_Defer);
+   pragma Machine_Attribute (Reraise_Occurrence_No_Defer, "expected_throw");
    --  Exactly like Reraise_Occurrence, except that abort is not deferred
    --  before the call and the parameter X is known not to be the null
    --  occurrence. This is used in generated code when it is known that abort
@@ -301,8 +300,10 @@ private
    pragma Stream_Convert (Exception_Occurrence, String_To_EO, EO_To_String);
    --  Functions for implementing Exception_Occurrence stream attributes
 
-   pragma Warnings (Off, "aggregate not fully initialized");
-   Null_Occurrence : constant Exception_Occurrence := (others => <>);
-   pragma Warnings (On, "aggregate not fully initialized");
+   Null_Occurrence : constant Exception_Occurrence :=
+     (Machine_Occurrence => System.Null_Address,
+      Msg => (others => '*'),
+      Tracebacks => (others => System.Traceback_Entries.Null_TB_Entry),
+      others => <>);
 
 end Ada.Exceptions;

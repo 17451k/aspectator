@@ -1,6 +1,6 @@
 /* Get common system includes and various definitions and declarations
    based on target macros.
-   Copyright (C) 2000-2021 Free Software Foundation, Inc.
+   Copyright (C) 2000-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -50,6 +50,14 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 extern void *malloc (size_t);
 #endif
 
+#ifndef calloc
+extern void *calloc(size_t, size_t);
+#endif
+
+#ifndef realloc
+extern void *realloc(void *, size_t);
+#endif
+
 #ifndef free
 extern void free (void *);
 #endif
@@ -59,7 +67,7 @@ extern int atexit (void (*)(void));
 #endif
 
 #ifndef abort
-extern void abort (void) __attribute__ ((__noreturn__));
+#define abort() __builtin_trap ()
 #endif
 
 #ifndef strlen
@@ -127,9 +135,6 @@ extern int errno;
 /* Use gcc_unreachable() to mark unreachable locations (like an
    unreachable default case of a switch.  Do not use gcc_assert(0).  */
 #define gcc_unreachable() (abort ())
-
-#define CONST_CAST2(TOTYPE,FROMTYPE,X) ((__extension__(union {FROMTYPE _q; TOTYPE _nq;})(X))._nq)
-#define CONST_CAST(TYPE,X) CONST_CAST2 (TYPE, const TYPE, (X))
 
 /* Filename handling macros.  */
 #include "filenames.h"

@@ -1,5 +1,6 @@
 /* { dg-lto-do run } */
 /* { dg-lto-options { {-O2 -flto-partition=max -fdump-ipa-modref -fno-ipa-sra -flto} } } */
+/* { dg-require-effective-target linker_plugin } */
 extern void copy (int *a, int *b);
 extern void barrier ();
 extern int *ptr;
@@ -14,4 +15,4 @@ main()
     __builtin_abort ();
   return 0;
 }
-/* { dg-final { scan-wpa-ipa-dump "parm 1 flags: nodirectescape"  "modref"  } } */
+/* { dg-final { scan-wpa-ipa-dump "parm 1 flags: no_direct_clobber no_direct_escape"  "modref"  } } */

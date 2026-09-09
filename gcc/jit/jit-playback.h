@@ -1,5 +1,5 @@
 /* Internals of libgccjit: classes for playing back recorded API calls.
-   Copyright (C) 2013-2021 Free Software Foundation, Inc.
+   Copyright (C) 2013-2026 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -21,18 +21,28 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef JIT_PLAYBACK_H
 #define JIT_PLAYBACK_H
 
+#include <string>
 #include <utility> // for std::pair
+#include <vector>
 
 #include "timevar.h"
+#include "varasm.h"
 
 #include "jit-recording.h"
+#include "jit-target.h"
 
-struct diagnostic_context;
-struct diagnostic_info;
+namespace diagnostics
+{
+  class context;
+  struct diagnostic_info;
+}
 
 namespace gcc {
 
 namespace jit {
+
+const char* fn_attribute_to_string (gcc_jit_fn_attribute attr);
+const char* variable_attribute_to_string (gcc_jit_variable_attribute attr);
 
 /**********************************************************************
  Playback.
@@ -40,11 +50,18 @@ namespace jit {
 
 namespace playback {
 
+void
+set_variable_string_attribute (
+  const std::vector<std::pair<gcc_jit_variable_attribute,
+			      std::string>> &attributes,
+  tree decl);
+
 /* playback::context is an abstract base class.
 
-   The two concrete subclasses are:
+   The three concrete subclasses are:
    - playback::compile_to_memory
-   - playback::compile_to_file.  */
+   - playback::compile_to_file.
+   - playback::populate_target_info  */
 
 class context : public log_user
 {
@@ -65,10 +82,13 @@ public:
   type *
   get_type (enum gcc_jit_types type);
 
+  void
+  set_output_ident (const char* ident);
+
   type *
   new_array_type (location *loc,
 		  type *element_type,
-		  int num_elements);
+		  uint64_t num_elements);
 
   field *
   new_field (location *loc,
@@ -103,13 +123,24 @@ public:
 		const char *name,
 		const auto_vec<param *> *params,
 		int is_variadic,
-		enum built_in_function builtin_id);
+		enum built_in_function builtin_id,
+		const std::vector<gcc_jit_fn_attribute> &attributes,
+		const std::vector<std::pair<gcc_jit_fn_attribute,
+					    std::string>> &string_attributes,
+		const std::vector<std::pair<gcc_jit_fn_attribute,
+					    std::vector<int>>>
+					    &int_array_attributes,
+		bool is_target_builtin);
 
   lvalue *
   new_global (location *loc,
 	      enum gcc_jit_global_kind kind,
 	      type *type,
-	      const char *name);
+	      const char *name,
+	      enum global_var_flags flags,
+	      const std::vector<std::pair<gcc_jit_variable_attribute,
+					  std::string>> &attributes,
+	      bool readonly);
 
   lvalue *
   new_global_initialized (location *loc,
@@ -118,12 +149,35 @@ public:
                           size_t element_size,
                           size_t initializer_num_elem,
                           const void *initializer,
-                          const char *name);
+			  const char *name,
+			  enum global_var_flags flags,
+			  const std::vector<std::pair<
+					    gcc_jit_variable_attribute,
+					    std::string>>
+					    &attributes,
+			  bool readonly);
+
+  rvalue *
+  new_ctor (location *log,
+	    type *type,
+	    const auto_vec<field*> *fields,
+	    const auto_vec<rvalue*> *rvalues);
+
+
+  void
+  global_set_init_rvalue (lvalue* variable,
+			  rvalue* init);
 
   template <typename HOST_TYPE>
   rvalue *
   new_rvalue_from_const (type *type,
 			 HOST_TYPE value);
+
+  rvalue *
+  new_sizeof (type *type);
+
+  rvalue *
+  new_alignof (type *type);
 
   rvalue *
   new_string_literal (const char *value);
@@ -132,6 +186,12 @@ public:
   new_rvalue_from_vector (location *loc,
 			  type *type,
 			  const auto_vec<rvalue *> &elements);
+
+  rvalue *
+  new_rvalue_vector_perm (location *loc,
+			  rvalue* elements1,
+			  rvalue* elements2,
+			  rvalue* mask);
 
   rvalue *
   new_unary_op (location *loc,
@@ -148,7 +208,7 @@ public:
   rvalue *
   new_comparison (location *loc,
 		  enum gcc_jit_comparison op,
-		  rvalue *a, rvalue *b);
+		  rvalue *a, rvalue *b, type *vec_result_type);
 
   rvalue *
   new_call (location *loc,
@@ -167,10 +227,24 @@ public:
 	    rvalue *expr,
 	    type *type_);
 
+  rvalue *
+  new_bitcast (location *loc,
+	       rvalue *expr,
+	       type *type_);
+
   lvalue *
   new_array_access (location *loc,
 		    rvalue *ptr,
 		    rvalue *index);
+
+  rvalue *
+  convert_vector (location *loc,
+		  rvalue *vector,
+		  type *type);
+  lvalue *
+  new_vector_access (location *loc,
+		     rvalue *vector,
+		     rvalue *index);
 
   void
   set_str_option (enum gcc_jit_str_option opt,
@@ -228,8 +302,8 @@ public:
   get_first_error () const;
 
   void
-  add_diagnostic (struct diagnostic_context *context,
-		  struct diagnostic_info *diagnostic);
+  add_diagnostic (const char *text,
+		  const diagnostics::diagnostic_info &diagnostic);
 
   void
   set_tree_location (tree t, location *loc);
@@ -254,6 +328,23 @@ public:
 
   void add_top_level_asm (const char *asm_stmts);
 
+  target_info *get_target_info ()
+  {
+      return &m_target_info;
+  }
+
+  target_info *move_target_info ()
+  {
+    target_info *info = new target_info {std::move (m_target_info)};
+    m_target_info = target_info{};
+    return info;
+  }
+
+  bool get_abort_on_unsupported_target_builtin () const
+  {
+    return m_recording_ctxt->get_abort_on_unsupported_target_builtin ();
+  }
+
 private:
   void dump_generated_code ();
 
@@ -271,7 +362,12 @@ private:
   source_file *
   get_source_file (const char *filename);
 
+  tree
+  get_tree_node_for_type (enum gcc_jit_types type_);
+
   void handle_locations ();
+
+  void init_types ();
 
   const char * get_path_c_file () const;
   const char * get_path_s_file () const;
@@ -281,7 +377,11 @@ private:
   global_new_decl (location *loc,
                    enum gcc_jit_global_kind kind,
                    type *type,
-                   const char *name);
+		   const char *name,
+		   enum global_var_flags flags,
+		   const std::vector<std::pair<gcc_jit_variable_attribute,
+					       std::string>> &attributes,
+		   bool readonly);
   lvalue *
   global_finalize_lvalue (tree inner);
 
@@ -289,8 +389,9 @@ private:
 
   /* Functions for implementing "compile".  */
 
-  void acquire_mutex ();
-  void release_mutex ();
+  void lock ();
+  void unlock ();
+  struct scoped_lock;
 
   void
   make_fake_args (vec <char *> *argvec,
@@ -347,13 +448,15 @@ private:
   auto_vec<source_file *> m_source_files;
 
   auto_vec<std::pair<tree, location *> > m_cached_locations;
+
+  target_info m_target_info;
 };
 
 class compile_to_memory : public context
 {
  public:
   compile_to_memory (recording::context *ctxt);
-  void postprocess (const char *ctxt_progname) FINAL OVERRIDE;
+  void postprocess (const char *ctxt_progname) final override;
 
   result *get_result_obj () const { return m_result; }
 
@@ -367,7 +470,7 @@ class compile_to_file : public context
   compile_to_file (recording::context *ctxt,
 		   enum gcc_jit_output_kind output_kind,
 		   const char *output_path);
-  void postprocess (const char *ctxt_progname) FINAL OVERRIDE;
+  void postprocess (const char *ctxt_progname) final override;
 
  private:
   void
@@ -377,6 +480,18 @@ class compile_to_file : public context
  private:
   enum gcc_jit_output_kind m_output_kind;
   const char *m_output_path;
+};
+
+class populate_target_info : public context
+{
+ public:
+  populate_target_info (recording::context *ctxt) : context (ctxt)
+  {
+  }
+
+  void postprocess (const char *) final override
+  {
+  }
 };
 
 
@@ -420,6 +535,11 @@ public:
     return new type (build_qualified_type (m_inner, TYPE_QUAL_VOLATILE));
   }
 
+  type *get_restrict () const
+  {
+    return new type (build_qualified_type (m_inner, TYPE_QUAL_RESTRICT));
+  }
+
   type *get_aligned (size_t alignment_in_bytes) const;
   type *get_vector (size_t num_units) const;
 
@@ -458,7 +578,7 @@ public:
   function(context *ctxt, tree fndecl, enum gcc_jit_function_kind kind);
 
   void gt_ggc_mx ();
-  void finalizer () FINAL OVERRIDE;
+  void finalizer () final override;
 
   tree get_return_type_as_tree () const;
 
@@ -469,7 +589,9 @@ public:
   lvalue *
   new_local (location *loc,
 	     type *type,
-	     const char *name);
+	     const char *name,
+	     const std::vector<std::pair<gcc_jit_variable_attribute,
+					 std::string>> &attributes);
 
   block*
   new_block (const char *name);
@@ -537,7 +659,7 @@ public:
   block (function *func,
 	 const char *name);
 
-  void finalizer () FINAL OVERRIDE;
+  void finalizer () final override;
 
   tree as_label_decl () const { return m_label_decl; }
 
@@ -670,6 +792,33 @@ public:
   rvalue *
   get_address (location *loc);
 
+  void
+  set_tls_model (enum tls_model tls_model)
+  {
+    set_decl_tls_model (as_tree (), tls_model);
+  }
+
+  void
+  set_link_section (const char* name)
+  {
+    set_decl_section_name (as_tree (), name);
+  }
+
+  void
+  set_register_name (const char* reg_name)
+  {
+    set_user_assembler_name (as_tree (), reg_name);
+    DECL_REGISTER (as_tree ()) = 1;
+    DECL_HARD_REGISTER (as_tree ()) = 1;
+  }
+
+  void
+  set_alignment (int alignment)
+  {
+      SET_DECL_ALIGN (as_tree (), alignment * BITS_PER_UNIT);
+      DECL_USER_ALIGN (as_tree ()) = 1;
+  }
+
 private:
   bool mark_addressable (location *loc);
 };
@@ -698,7 +847,7 @@ class source_file : public wrapper
 {
 public:
   source_file (tree filename);
-  void finalizer () FINAL OVERRIDE;
+  void finalizer () final override;
 
   source_line *
   get_source_line (int line_num);
@@ -719,7 +868,7 @@ class source_line : public wrapper
 {
 public:
   source_line (source_file *file, int line_num);
-  void finalizer () FINAL OVERRIDE;
+  void finalizer () final override;
 
   location *
   get_location (recording::location *rloc, int column_num);
@@ -729,7 +878,7 @@ public:
   vec<location *> m_locations;
 
 private:
-  source_file *m_source_file;
+  source_file *m_source_file ATTRIBUTE_UNUSED;
   int m_line_num;
 };
 
@@ -748,7 +897,7 @@ public:
 
 private:
   recording::location *m_recording_loc;
-  source_line *m_line;
+  source_line *m_line ATTRIBUTE_UNUSED;
   int m_column_num;
 };
 
@@ -759,5 +908,7 @@ extern playback::context *active_playback_ctxt;
 } // namespace gcc::jit
 
 } // namespace gcc
+
+extern hash_map<nofree_string_hash, tree> target_builtins;
 
 #endif /* JIT_PLAYBACK_H */

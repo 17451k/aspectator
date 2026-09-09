@@ -1,5 +1,5 @@
 /* Definitions of target machine for Visium.
-   Copyright (C) 2002-2021 Free Software Foundation, Inc.
+   Copyright (C) 2002-2026 Free Software Foundation, Inc.
    Contributed by C.Nettleton, J.P.Parkes and P.Garbett.
 
    This file is part of GCC.
@@ -119,7 +119,7 @@
    data area approach is no longer used, these pointers are no longer
    supported.
 
-   The macro and function pointers are described below. 
+   The macro and function pointers are described below.
 
    INIT_EXPANDERS:
 
@@ -330,33 +330,16 @@
    it is rounded up to one unit.) */
 #define CHAR_TYPE_SIZE  8
 
-/* `FLOAT_TYPE_SIZE'
-
-   A C expression for the size in bits of the type `float' on the
-   target machine.  If you don't define this, the default is one word. */
-#define FLOAT_TYPE_SIZE  32
-
-/* `DOUBLE_TYPE_SIZE'
-
-   A C expression for the size in bits of the type `double' on the
-   target machine.  If you don't define this, the default is two
-   words. */
-#define DOUBLE_TYPE_SIZE  64
-
-/* `LONG_DOUBLE_TYPE_SIZE'
-
-   A C expression for the size in bits of the type `long double' on
-   the target machine.  If you don't define this, the default is two
-   words. */
-#define LONG_DOUBLE_TYPE_SIZE   DOUBLE_TYPE_SIZE
-
 /* `WIDEST_HARDWARE_FP_SIZE'
 
    A C expression for the size in bits of the widest floating-point
    format supported by the hardware.  If you define this macro, you
-   must specify a value less than or equal to the value of
-   `LONG_DOUBLE_TYPE_SIZE'.  If you do not define this macro, the
-   value of `LONG_DOUBLE_TYPE_SIZE' is the default. */
+   must specify a value less than or equal to mode precision of the
+   mode used for C type long double (from hook
+   targetm.c.mode_for_floating_type with tree_index
+   TI_LONG_DOUBLE_TYPE).  If you do not define this macro, mode
+   precision of the mode used for C type long double is the
+   default.  */
 
 /* `DEFAULT_SIGNED_CHAR'
 
@@ -376,7 +359,7 @@
    with spaces, and write first any length keyword, then `unsigned' if
    appropriate, and finally `int'.  The string must exactly match one
    of the data type names defined in the function
-   `init_decl_processing' in the file `c-decl.c'.  You may not omit
+   `init_decl_processing' in the file `c-decl.cc'.  You may not omit
    `int' or change the order--that would cause the compiler to crash
    on startup.
 
@@ -1032,7 +1015,7 @@ struct visium_args
     A difficulty is setting the correct instruction parity at run time.
 
 
-    TRAMPOLINE_SIZE 
+    TRAMPOLINE_SIZE
     A C expression for the size in bytes of the trampoline, as an integer. */
 #define TRAMPOLINE_SIZE (visium_cpu == PROCESSOR_GR6 ? 24 : 20)
 
@@ -1234,7 +1217,7 @@ do									\
 
    `EXTRA_SECTION_FUNCTIONS'
 
-   One or more functions to be defined in `varasm.c'.  These functions
+   One or more functions to be defined in `varasm.cc'.  These functions
    should do jobs analogous to those of `text_section' and
    `data_section', for your additional sections.  Do not define this
    macro if you do not define `EXTRA_SECTIONS'.
@@ -1344,7 +1327,7 @@ do									\
    `IMMEDIATE_PREFIX'
 
    If defined, C string expressions to be used for the `%R', `%L',
-   `%U', and `%I' options of `asm_fprintf' (see `final.c').  These are
+   `%U', and `%I' options of `asm_fprintf' (see `final.cc').  These are
    useful when a single `md' file must support multiple assembler
    formats.  In that case, the various `tm.h' files can define these
    macros differently. */
@@ -1491,7 +1474,7 @@ do									\
    This describes how to specify debugging information.
 
     mda is known to GDB, but not to GCC. */
-#define DBX_REGISTER_NUMBER(REGNO) \
+#define DEBUGGER_REGNO(REGNO) \
   ((REGNO) > MDB_REGNUM ? (REGNO) + 1 : (REGNO))
 
 /* `DEBUGGER_AUTO_OFFSET (X)'
@@ -1500,7 +1483,7 @@ do									\
    automatic variable having address X (an RTL expression).  The
    default computation assumes that X is based on the frame-pointer
    and gives the offset from the frame-pointer.  This is required for
-   targets that produce debugging output for DBX and allow the frame-pointer
+   targets that produce debugging output for debugger and allow the frame-pointer
    to be eliminated when the `-g' options is used. */
 #define DEBUGGER_AUTO_OFFSET(X) \
   (GET_CODE (X) == PLUS ? INTVAL (XEXP (X, 1)) : 0)

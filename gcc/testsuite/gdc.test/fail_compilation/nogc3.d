@@ -1,14 +1,13 @@
 // REQUIRED_ARGS: -o-
-// PERMUTE_ARGS:
 
 /***************** AssignExp *******************/
 
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/nogc3.d(16): Error: setting 'length' in @nogc function 'nogc3.testArrayLength' may cause GC allocation
-fail_compilation/nogc3.d(17): Error: setting 'length' in @nogc function 'nogc3.testArrayLength' may cause GC allocation
-fail_compilation/nogc3.d(18): Error: setting 'length' in @nogc function 'nogc3.testArrayLength' may cause GC allocation
+fail_compilation/nogc3.d(15): Error: setting this array's `length` causes a GC allocation in `@nogc` function `testArrayLength`
+fail_compilation/nogc3.d(16): Error: setting this array's `length` causes a GC allocation in `@nogc` function `testArrayLength`
+fail_compilation/nogc3.d(17): Error: setting this array's `length` causes a GC allocation in `@nogc` function `testArrayLength`
 ---
 */
 @nogc void testArrayLength(int[] a)
@@ -25,8 +24,8 @@ void barCall();
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/nogc3.d(35): Error: @nogc function 'nogc3.testCall' cannot call non-@nogc function pointer 'fp'
-fail_compilation/nogc3.d(36): Error: @nogc function 'nogc3.testCall' cannot call non-@nogc function 'nogc3.barCall'
+fail_compilation/nogc3.d(34): Error: `@nogc` function `nogc3.testCall` cannot call non-@nogc function pointer `fp`
+fail_compilation/nogc3.d(35): Error: `@nogc` function `nogc3.testCall` cannot call non-@nogc function `nogc3.barCall`
 ---
 */
 @nogc void testCall()
@@ -44,10 +43,12 @@ fail_compilation/nogc3.d(36): Error: @nogc function 'nogc3.testCall' cannot call
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/nogc3.d(53): Error: function nogc3.testClosure1 is @nogc yet allocates closures with the GC
-fail_compilation/nogc3.d(56):        nogc3.testClosure1.bar closes over variable x at fail_compilation/nogc3.d(55)
-fail_compilation/nogc3.d(65): Error: function nogc3.testClosure3 is @nogc yet allocates closures with the GC
-fail_compilation/nogc3.d(68):        nogc3.testClosure3.bar closes over variable x at fail_compilation/nogc3.d(67)
+fail_compilation/nogc3.d(54): Error: function `nogc3.testClosure1` is `@nogc` yet allocates closure for `testClosure1()` with the GC
+fail_compilation/nogc3.d(57):        function `bar` closes over variable `x`
+fail_compilation/nogc3.d(56):        `x` declared here
+fail_compilation/nogc3.d(66): Error: function `nogc3.testClosure3` is `@nogc` yet allocates closure for `testClosure3()` with the GC
+fail_compilation/nogc3.d(69):        function `bar` closes over variable `x`
+fail_compilation/nogc3.d(68):        `x` declared here
 ---
 */
 @nogc auto testClosure1()
@@ -74,10 +75,10 @@ fail_compilation/nogc3.d(68):        nogc3.testClosure3.bar closes over variable
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/nogc3.d(86): Error: array literal in @nogc function 'nogc3.foo13702' may cause GC allocation
-fail_compilation/nogc3.d(87): Error: array literal in @nogc function 'nogc3.foo13702' may cause GC allocation
-fail_compilation/nogc3.d(93): Error: array literal in @nogc function 'nogc3.bar13702' may cause GC allocation
-fail_compilation/nogc3.d(92): Error: array literal in @nogc function 'nogc3.bar13702' may cause GC allocation
+fail_compilation/nogc3.d(87): Error: this array literal causes a GC allocation in `@nogc` function `foo13702`
+fail_compilation/nogc3.d(88): Error: this array literal causes a GC allocation in `@nogc` function `foo13702`
+fail_compilation/nogc3.d(94): Error: this array literal causes a GC allocation in `@nogc` function `bar13702`
+fail_compilation/nogc3.d(93): Error: this array literal causes a GC allocation in `@nogc` function `bar13702`
 ---
 */
 int[] foo13702(bool b) @nogc
@@ -92,4 +93,34 @@ int[] bar13702(bool b) @nogc
         return [1];     // error <- no error report
     auto aux = 1 ~ [2]; // error
     return aux;
+}
+
+/**********  Enum and pointer types ***************/
+// https://github.com/dlang/dmd/issues/21052
+/*
+TEST_OUTPUT:
+---
+fail_compilation/nogc3.d(111): Error: this array literal causes a GC allocation in `@nogc` function `f`
+fail_compilation/nogc3.d(112): Error: this array literal causes a GC allocation in `@nogc` function `f`
+---
+*/
+
+void f() @nogc
+{
+    enum DA : int[] { a = [1,2,3] }
+    DA da = DA.a;
+    int i = *cast(int*)cast(char[4])['0', '0', '0', '0'];
+}
+
+/*
+TEST_OUTPUT:
+---
+fail_compilation/nogc3.d(125): Error: this array literal causes a GC allocation in `@nogc` function `g`
+---
+*/
+
+// https://github.com/dlang/dmd/issues/21054
+void g() @nogc
+{
+    int[] x = (int[2]).init[];
 }

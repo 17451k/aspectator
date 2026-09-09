@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2013-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2013-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -36,7 +36,7 @@ private with Ada.Finalization;
 private with Ada.Streams;
 
 private with System.Atomic_Counters;
-private with Ada.Strings.Text_Output;
+private with Ada.Strings.Text_Buffers;
 
 generic
    type Element_Type (<>) is private;
@@ -47,8 +47,9 @@ package Ada.Containers.Indefinite_Holders is
    pragma Preelaborate (Indefinite_Holders);
    pragma Remote_Types (Indefinite_Holders);
 
-   type Holder is tagged private;
-   pragma Preelaborable_Initialization (Holder);
+   type Holder is tagged private
+   with
+      Preelaborable_Initialization;
 
    Empty_Holder : constant Holder;
 
@@ -69,17 +70,18 @@ package Ada.Containers.Indefinite_Holders is
    procedure Query_Element
      (Container : Holder;
       Process   : not null access procedure (Element : Element_Type));
+
    procedure Update_Element
      (Container : in out Holder;
       Process   : not null access procedure (Element : in out Element_Type));
 
    type Constant_Reference_Type
-      (Element : not null access constant Element_Type) is private
+     (Element : not null access constant Element_Type) is limited private
    with
       Implicit_Dereference => Element;
 
    type Reference_Type
-     (Element : not null access Element_Type) is private
+     (Element : not null access Element_Type) is limited private
    with
       Implicit_Dereference => Element;
 
@@ -105,9 +107,10 @@ private
    use Ada.Streams;
 
    type Element_Access is access all Element_Type;
+
    type Holder_Access is access all Holder;
 
-   type Shared_Holder is record
+   type Shared_Holder is limited record
       Counter : System.Atomic_Counters.Atomic_Counter;
       Element : Element_Access;
    end record;
@@ -134,7 +137,7 @@ private
    end record with Put_Image => Put_Image;
 
    procedure Put_Image
-     (S : in out Ada.Strings.Text_Output.Sink'Class; V : Holder);
+     (S : in out Ada.Strings.Text_Buffers.Root_Buffer_Type'Class; V : Holder);
 
    for Holder'Read use Read;
    for Holder'Write use Write;

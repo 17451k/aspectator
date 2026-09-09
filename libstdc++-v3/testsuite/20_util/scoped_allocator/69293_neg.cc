@@ -1,4 +1,4 @@
-// Copyright (C) 2016-2021 Free Software Foundation, Inc.
+// Copyright (C) 2016-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,6 +16,8 @@
 // <http://www.gnu.org/licenses/>.
 
 // { dg-do compile { target c++11 } }
+// FIXME [!HOSTED]: avoidable std::allocator use
+// { dg-require-effective-target hosted }
 
 // PR libstdc++/69293
 
@@ -40,6 +42,8 @@ static_assert(uses_allocator<X, inner_alloc_type>{}, "");
 static_assert(!is_constructible<X, allocator_arg_t, inner_alloc_type>{}, "");
 static_assert(!is_constructible<X, inner_alloc_type>{}, "");
 
+// { dg-error "too many initializers" "" { target c++20 } 0 }
+
 void
 test01()
 {
@@ -47,8 +51,4 @@ test01()
   auto p = sa.allocate(1);
   sa.construct(p);  // this is required to be ill-formed
   // { dg-error "failed: .* uses_allocator is true" "" { target *-*-* } 0 }
-  // { dg-error "too many initializers for 'X'" "" { target c++2a } 0 }
 }
-
-// Needed because of PR c++/92193
-// { dg-prune-output "no matching function for call to" }

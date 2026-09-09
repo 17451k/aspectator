@@ -3,10 +3,15 @@
 
 /* We're looking for a constant argument a PHI node.  There
    should only be one if we unpropagate correctly.  */
-/* { dg-final { scan-tree-dump-times ", 1" 1 "uncprop1"} } */
+/* { dg-final { scan-tree-dump-times "<1\|, 1" 1 "uncprop1"} } */
 
 typedef long unsigned int size_t;
 typedef union gimple_statement_d *gimple;
+int end_imm_use_stmt_p (void);
+void next_imm_use_stmt (void);
+int arf (void);
+int boo (void);
+void update_stmt (void);
 unsigned char
 propagate_with_phi ()
 {
