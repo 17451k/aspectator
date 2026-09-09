@@ -4309,7 +4309,7 @@ ldv_print_translation_unit (tree t, bool isdecl)
      However, GCC represents them differently and C back-end can't process
      corresponding typedefs similarly. Since typedef duplicates are redundant,
      simply skip them. */
-  if (TREE_CODE (t) == TYPE_DECL && !DECL_ORIGINAL_TYPE (t))
+  if (TREE_CODE (t) == TYPE_DECL && (!DECL_ORIGINAL_TYPE (t) || LDV_TYPEDEF_REDECLARED (t)))
     return;
 
   /* This is the artificial function added just to correspond to the C standard.

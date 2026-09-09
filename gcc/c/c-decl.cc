@@ -3245,6 +3245,16 @@ merge_decls (tree newdecl, tree olddecl, tree newtype, tree oldtype)
     DECL_CONTEXT (olddecl) = olddecl_context;
     if (TREE_CODE (olddecl) == FUNCTION_DECL)
       DECL_ARGUMENTS (olddecl) = olddecl_arguments;
+
+    /* LDV extension begin. */
+
+    /* Remember that the typedef was redeclared so that the C back-end can
+       skip its redundant redeclarations later. Do this after the copying
+       above, which resets the flags of OLDDECL. */
+    if (TREE_CODE (olddecl) == TYPE_DECL)
+      LDV_TYPEDEF_REDECLARED (olddecl) = 1;
+
+    /* LDV extension end. */
   }
 
   /* If OLDDECL had its DECL_RTL instantiated, re-invoke make_decl_rtl

@@ -22,6 +22,12 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #define LDV_ERROR(msg) error ("LDV: %s: %d: %s", __FILE__, __LINE__, msg)
 
+/* Nonzero for a TYPE_DECL that was redeclared. Before GCC 16, redeclared
+   typedefs had no DECL_ORIGINAL_TYPE, but now merge_decls () copies it from
+   the previous declaration. The C front end does not use DECL_LANG_FLAG_6 for
+   TYPE_DECLs. */
+#define LDV_TYPEDEF_REDECLARED(NODE) DECL_LANG_FLAG_6 (TYPE_DECL_CHECK (NODE))
+
 
 /* Names for different line directive levels. */
 enum

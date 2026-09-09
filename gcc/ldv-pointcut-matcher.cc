@@ -1156,7 +1156,7 @@ ldv_match_typedecl (tree t, const char *file_path, ldv_ppk pp_kind)
     }
 
   /* See comments for ldv_print_translation_unit().*/
-  if (TREE_CODE (t) == TYPE_DECL && !DECL_ORIGINAL_TYPE (t))
+  if (TREE_CODE (t) == TYPE_DECL && (!DECL_ORIGINAL_TYPE (t) || LDV_TYPEDEF_REDECLARED (t)))
     return;
 
   match = ldv_create_info_match ();
