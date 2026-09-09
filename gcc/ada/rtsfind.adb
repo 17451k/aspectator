@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,35 +23,37 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;    use Atree;
-with Casing;   use Casing;
-with Csets;    use Csets;
-with Debug;    use Debug;
-with Einfo;    use Einfo;
-with Elists;   use Elists;
-with Errout;   use Errout;
+with Atree;          use Atree;
+with Casing;         use Casing;
+with Csets;          use Csets;
+with Debug;          use Debug;
+with Einfo.Entities; use Einfo.Entities;
+with Einfo.Utils;    use Einfo.Utils;
+with Elists;         use Elists;
+with Errout;         use Errout;
 with Exp_Dist;
-with Fname;    use Fname;
-with Fname.UF; use Fname.UF;
-with Ghost;    use Ghost;
-with Lib;      use Lib;
-with Lib.Load; use Lib.Load;
-with Namet;    use Namet;
-with Nlists;   use Nlists;
-with Nmake;    use Nmake;
-with Output;   use Output;
-with Opt;      use Opt;
-with Restrict; use Restrict;
-with Sem;      use Sem;
-with Sem_Aux;  use Sem_Aux;
-with Sem_Ch7;  use Sem_Ch7;
-with Sem_Dist; use Sem_Dist;
-with Sem_Util; use Sem_Util;
-with Sinfo;    use Sinfo;
-with Stand;    use Stand;
-with Snames;   use Snames;
-with Tbuild;   use Tbuild;
-with Uname;    use Uname;
+with Fname.UF;       use Fname.UF;
+with Ghost;          use Ghost;
+with Lib;            use Lib;
+with Lib.Load;       use Lib.Load;
+with Namet;          use Namet;
+with Nlists;         use Nlists;
+with Nmake;          use Nmake;
+with Output;         use Output;
+with Opt;            use Opt;
+with Restrict;       use Restrict;
+with Sem;            use Sem;
+with Sem_Aux;        use Sem_Aux;
+with Sem_Ch7;        use Sem_Ch7;
+with Sem_Ch12;       use Sem_Ch12;
+with Sem_Dist;       use Sem_Dist;
+with Sem_Util;       use Sem_Util;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Stand;          use Stand;
+with Snames;         use Snames;
+with Tbuild;         use Tbuild;
+with Uname;          use Uname;
 
 package body Rtsfind is
 
@@ -148,7 +150,7 @@ package body Rtsfind is
 
    --    packed component size of 43 is not supported
 
-   type CString_Ptr is access constant String;
+   type CString_Ptr is not null access constant String;
 
    type PRE_Id_Entry is record
       Str : CString_Ptr;
@@ -451,7 +453,7 @@ package body Rtsfind is
       end if;
 
    exception
-         --  Generate error message if run-time unit not available
+      --  Generate error message if run-time unit not available
 
       when RE_Not_Available =>
          Error_Msg_N ("& not available", Nam);
@@ -560,8 +562,12 @@ package body Rtsfind is
      Ada_Interrupts_Names .. Ada_Interrupts_Names;
 
    subtype Ada_Numerics_Descendant is Ada_Descendant
-     range Ada_Numerics_Generic_Elementary_Functions ..
-           Ada_Numerics_Generic_Elementary_Functions;
+     range Ada_Numerics_Big_Numbers ..
+           Ada_Numerics_Big_Numbers_Big_Integers;
+
+   subtype Ada_Numerics_Big_Numbers_Descendant is Ada_Descendant
+     range Ada_Numerics_Big_Numbers_Big_Integers ..
+           Ada_Numerics_Big_Numbers_Big_Integers;
 
    subtype Ada_Real_Time_Descendant is Ada_Descendant
      range Ada_Real_Time_Delays .. Ada_Real_Time_Timing_Events;
@@ -570,10 +576,11 @@ package body Rtsfind is
      range Ada_Streams_Stream_IO .. Ada_Streams_Stream_IO;
 
    subtype Ada_Strings_Descendant is Ada_Descendant
-     range Ada_Strings_Superbounded .. Ada_Strings_Text_Output_Buffers;
+     range Ada_Strings_Superbounded .. Ada_Strings_Text_Buffers_Unbounded;
 
-   subtype Ada_Strings_Text_Output_Descendant is Ada_Strings_Descendant
-     range Ada_Strings_Text_Output_Utils .. Ada_Strings_Text_Output_Buffers;
+   subtype Ada_Strings_Text_Buffers_Descendant is Ada_Strings_Descendant
+     range Ada_Strings_Text_Buffers_Unbounded ..
+           Ada_Strings_Text_Buffers_Unbounded;
 
    subtype Ada_Text_IO_Descendant is Ada_Descendant
      range Ada_Text_IO_Decimal_IO .. Ada_Text_IO_Modular_IO;
@@ -594,8 +601,15 @@ package body Rtsfind is
    subtype Interfaces_C_Descendant is Interfaces_Descendant
      range Interfaces_C_Strings .. Interfaces_C_Strings;
 
+   subtype SPARK_Descendant is RTU_Id
+     range SPARK_Big_Integers .. SPARK_Big_Integers;
+
    subtype System_Descendant is RTU_Id
-     range System_Address_Image .. System_Tasking_Stages;
+     range System_Address_To_Access_Conversions .. System_Tasking_Stages;
+
+   subtype System_Atomic_Operations_Descendant is System_Descendant
+     range System_Atomic_Operations_Test_And_Set ..
+           System_Atomic_Operations_Test_And_Set;
 
    subtype System_Dim_Descendant is System_Descendant
      range System_Dim_Float_IO .. System_Dim_Integer_IO;
@@ -648,6 +662,10 @@ package body Rtsfind is
          elsif U_Id in Ada_Numerics_Descendant then
             Name_Buffer (13) := '.';
 
+            if U_Id in Ada_Numerics_Big_Numbers_Descendant then
+               Name_Buffer (25) := '.';
+            end if;
+
          elsif U_Id in Ada_Real_Time_Descendant then
             Name_Buffer (14) := '.';
 
@@ -657,8 +675,8 @@ package body Rtsfind is
          elsif U_Id in Ada_Strings_Descendant then
             Name_Buffer (12) := '.';
 
-            if U_Id in Ada_Strings_Text_Output_Descendant then
-               Name_Buffer (24) := '.';
+            if U_Id in Ada_Strings_Text_Buffers_Descendant then
+               Name_Buffer (25) := '.';
             end if;
 
          elsif U_Id in Ada_Text_IO_Descendant then
@@ -681,8 +699,15 @@ package body Rtsfind is
             Name_Buffer (13) := '.';
          end if;
 
+      elsif U_Id in SPARK_Descendant then
+         Name_Buffer (6) := '.';
+
       elsif U_Id in System_Descendant then
          Name_Buffer (7) := '.';
+
+         if U_Id in System_Atomic_Operations_Descendant then
+            Name_Buffer (25) := '.';
+         end if;
 
          if U_Id in System_Dim_Descendant then
             Name_Buffer (11) := '.';
@@ -1002,6 +1027,12 @@ package body Rtsfind is
       U        : RT_Unit_Table_Record renames RT_Unit_Table (U_Id);
       Priv_Par : constant Elist_Id := New_Elmt_List;
       Lib_Unit : Node_Id;
+      Saved_Ghost_Config : constant Ghost_Config_Type := Ghost_Config;
+      Saved_ISMP : constant Boolean        :=
+                     Ignore_SPARK_Mode_Pragmas_In_Instance;
+      Saved_SM  : constant SPARK_Mode_Type := SPARK_Mode;
+      Saved_SMP : constant Node_Id         := SPARK_Mode_Pragma;
+      --  Save Ghost and SPARK mode-related data to restore on exit
 
       procedure Save_Private_Visibility;
       --  If the current unit is the body of child unit or the spec of a
@@ -1012,6 +1043,9 @@ package body Rtsfind is
 
       procedure Restore_Private_Visibility;
       --  Restore the visibility of ancestors after compiling RTU
+
+      procedure Restore_SPARK_Context;
+      --  Restore Ghost and SPARK mode-related data saved on procedure entry
 
       --------------------------------
       -- Restore_Private_Visibility --
@@ -1054,15 +1088,16 @@ package body Rtsfind is
          end loop;
       end Save_Private_Visibility;
 
-      --  Local variables
+      ---------------------------
+      -- Restore_SPARK_Context --
+      ---------------------------
 
-      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
-      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
-      Saved_ISMP : constant Boolean        :=
-                     Ignore_SPARK_Mode_Pragmas_In_Instance;
-      Saved_SM  : constant SPARK_Mode_Type := SPARK_Mode;
-      Saved_SMP : constant Node_Id         := SPARK_Mode_Pragma;
-      --  Save Ghost and SPARK mode-related data to restore on exit
+      procedure Restore_SPARK_Context is
+      begin
+         Ignore_SPARK_Mode_Pragmas_In_Instance := Saved_ISMP;
+         Restore_Ghost_Region (Saved_Ghost_Config);
+         Restore_SPARK_Mode   (Saved_SM, Saved_SMP);
+      end Restore_SPARK_Context;
 
    --  Start of processing for Load_RTU
 
@@ -1076,7 +1111,7 @@ package body Rtsfind is
       --  Provide a clean environment for the unit
 
       Ignore_SPARK_Mode_Pragmas_In_Instance := False;
-      Install_Ghost_Region (None, Empty);
+      Install_Ghost_Region (None, Empty, Empty);
       Install_SPARK_Mode   (None, Empty);
 
       --  Otherwise we need to load the unit, First build unit name from the
@@ -1153,7 +1188,13 @@ package body Rtsfind is
 
             else
                Save_Private_Visibility;
-               Semantics (Cunit (U.Unum));
+               declare
+                  Saved_Instance_Context : constant Instance_Context.Context :=
+                    Instance_Context.Save_And_Reset;
+               begin
+                  Semantics (Cunit (U.Unum));
+                  Instance_Context.Restore (Saved_Instance_Context);
+               end;
                Restore_Private_Visibility;
 
                if Fatal_Error (U.Unum) = Error_Detected then
@@ -1174,9 +1215,17 @@ package body Rtsfind is
          Set_Is_Potentially_Use_Visible (U.Entity, True);
       end if;
 
-      Ignore_SPARK_Mode_Pragmas_In_Instance := Saved_ISMP;
-      Restore_Ghost_Region (Saved_GM, Saved_IGR);
-      Restore_SPARK_Mode   (Saved_SM, Saved_SMP);
+      Restore_SPARK_Context;
+
+   exception
+      --  The Load_Fail procedure that is called when the result of Load_Unit
+      --  is not satisfactory raises an exception. As the compiler is able to
+      --  recover in some cases (i.e. when RE_Not_Available is raised), we need
+      --  to restore the SPARK/Ghost context correctly.
+
+      when others =>
+         Restore_SPARK_Context;
+         raise;
    end Load_RTU;
 
    --------------------
@@ -1235,9 +1284,10 @@ package body Rtsfind is
       --  for this unit to the current compilation unit.
 
       declare
-         LibUnit : constant Node_Id := Unit (Cunit (U.Unum));
-         Clause  : Node_Id;
-         Withn   : Node_Id;
+         LibUnit  : constant Node_Id         := Unit (Cunit (U.Unum));
+         Saved_GM : constant Ghost_Mode_Type := Ghost_Config.Ghost_Mode;
+         Clause   : Node_Id;
+         Withn    : Node_Id;
 
       begin
          Clause := U.First_Implicit_With;
@@ -1249,16 +1299,23 @@ package body Rtsfind is
             Clause := Next_Implicit_With (Clause);
          end loop;
 
+         --  We want to make sure that the "with" we create below isn't
+         --  marked as ignored ghost code because this list may be walked
+         --  later, after ignored ghost code is converted to a null
+         --  statement.
+
+         Ghost_Config.Ghost_Mode := None;
          Withn :=
            Make_With_Clause (Standard_Location,
              Name =>
                Make_Unit_Name
                  (U, Defining_Unit_Name (Specification (LibUnit))));
+         Ghost_Config.Ghost_Mode := Saved_GM;
 
          Set_Corresponding_Spec  (Withn, U.Entity);
          Set_First_Name          (Withn);
-         Set_Implicit_With       (Withn);
-         Set_Library_Unit        (Withn, Cunit (U.Unum));
+         Set_Is_Implicit_With    (Withn);
+         Set_Withed_Lib_Unit     (Withn, Cunit (U.Unum));
          Set_Next_Implicit_With  (Withn, U.First_Implicit_With);
 
          U.First_Implicit_With := Withn;
@@ -1566,7 +1623,9 @@ package body Rtsfind is
       --  is pulled within an ignored Ghost context because all this code will
       --  disappear.
 
-      if U_Id = System_Secondary_Stack and then Ghost_Mode /= Ignore then
+      if U_Id = System_Secondary_Stack
+        and then Ghost_Config.Ghost_Mode /= Ignore
+      then
          Sec_Stack_Used := True;
       end if;
 
@@ -1639,7 +1698,7 @@ package body Rtsfind is
 
       --  Load unit if unit not previously loaded
 
-      if not Present (U.Entity) then
+      if No (U.Entity) then
          Load_RTU (U_Id, Id => E);
       end if;
 
@@ -1658,7 +1717,7 @@ package body Rtsfind is
             E1 := First_Entity (Pkg_Ent);
             while Present (E1) loop
                if Ename = Chars (E1) then
-                  pragma Assert (not Present (Found_E));
+                  pragma Assert (No (Found_E));
                   Found_E := E1;
                end if;
 
@@ -1795,14 +1854,12 @@ package body Rtsfind is
    -------------------------
 
    procedure SPARK_Implicit_Load (E : RE_Id) is
-      Unused : Entity_Id;
-
    begin
       pragma Assert (GNATprove_Mode);
 
       --  Force loading of a predefined unit
 
-      Unused := RTE (E);
+      Discard_Node (RTE (E));
    end SPARK_Implicit_Load;
 
 end Rtsfind;

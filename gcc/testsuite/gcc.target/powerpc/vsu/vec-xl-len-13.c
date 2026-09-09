@@ -1,7 +1,7 @@
 /* { dg-do compile { target { powerpc*-*-* } } } */
+/* { dg-options "-mdejagnu-cpu=power9 -mvsx" } */
 /* { dg-require-effective-target ilp32 } */
-/* { dg-require-effective-target powerpc_p9vector_ok } */
-/* { dg-options "-mdejagnu-cpu=power9" } */
+/* { dg-require-effective-target powerpc_vsx } */
 
 #include <stddef.h>
 #include <altivec.h>
@@ -13,5 +13,5 @@
 int
 fetch_data (float *address, size_t length)
 {
-  return __builtin_vec_lxvl (address, length);	/* { dg-warning "'__builtin_vec_lxvl'" } */
+  return __builtin_vec_lxvl (address, length);	/* { dg-error "'__builtin_vsx_lxvl' requires the" } */
 }

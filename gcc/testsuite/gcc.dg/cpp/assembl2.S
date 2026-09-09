@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2021 Free Software Foundation, Inc.  */
+/* Copyright (C) 2000-2026 Free Software Foundation, Inc.  */
 
 /* { dg-do preprocess } */
 

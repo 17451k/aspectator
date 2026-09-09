@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -37,12 +37,19 @@
 with System.Exponu;
 with System.Unsigned_Types;
 
-package System.Exp_LLLU is
-
+package System.Exp_LLLU
+  with SPARK_Mode
+is
    subtype Long_Long_Long_Unsigned is Unsigned_Types.Long_Long_Long_Unsigned;
 
    function Exp_Long_Long_Long_Unsigned is
      new Exponu (Long_Long_Long_Unsigned);
    pragma Pure_Function (Exp_Long_Long_Long_Unsigned);
+   --  Return the power of ``Left`` by ``Right`` where ``Left`` is a
+   --  Long_Long_Long_Unsigned.
+   --
+   --  This function is implemented using the standard logarithmic approach:
+   --  ``Right`` gets shifted right testing successive low order bits, and
+   --  ``Left`` is raised to the next power of 2.
 
 end System.Exp_LLLU;

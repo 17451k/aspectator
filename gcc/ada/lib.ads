@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -39,14 +39,14 @@ package Lib is
    --  Type to hold list of indirect references to unit number table
 
    type Compiler_State_Type is (Parsing, Analyzing);
-   Compiler_State : Compiler_State_Type;
+   Compiler_State : Compiler_State_Type := Parsing;
    --  Indicates current state of compilation. This is used to implement the
    --  function In_Extended_Main_Source_Unit.
 
    Parsing_Main_Extended_Source : Boolean := False;
    --  Set True if we are currently parsing a file that is part of the main
    --  extended source (the main unit, its spec, or one of its subunits). This
-   --  flag to implement In_Extended_Main_Source_Unit.
+   --  is used to implement In_Extended_Main_Source_Unit.
 
    Analysing_Subunit_Of_Main : Boolean := False;
    --  Set to True when analyzing a subunit of the main source. When True, if
@@ -463,8 +463,8 @@ package Lib is
    function No_Elab_Code_All (U : Unit_Number_Type) return Boolean;
    function OA_Setting       (U : Unit_Number_Type) return Character;
    function Primary_Stack_Count
-                             (U : Unit_Number_Type) return Int;
-   function Sec_Stack_Count  (U : Unit_Number_Type) return Int;
+                             (U : Unit_Number_Type) return Nat;
+   function Sec_Stack_Count  (U : Unit_Number_Type) return Nat;
    function Source_Index     (U : Unit_Number_Type) return Source_File_Index;
    function Unit_File_Name   (U : Unit_Number_Type) return File_Name_Type;
    function Unit_Name        (U : Unit_Number_Type) return Unit_Name_Type;
@@ -616,8 +616,7 @@ package Lib is
    --  WARNING: There is a matching C declaration of this subprogram in fe.h
 
    function In_Extended_Main_Code_Unit (Loc : Source_Ptr) return Boolean;
-   --  Same function as above, but argument is a source pointer rather
-   --  than a node.
+   --  Same as above, but for Source_Ptr
 
    function In_Extended_Main_Source_Unit
      (N : Node_Or_Entity_Id) return Boolean;
@@ -631,7 +630,11 @@ package Lib is
    --  and the parent unit spec if it is separate.
 
    function In_Extended_Main_Source_Unit (Loc : Source_Ptr) return Boolean;
-   --  Same function as above, but argument is a source pointer
+   --  Same as above, but for Source_Ptr
+
+   function ipu (N : Node_Or_Entity_Id) return Boolean;
+   --  Same as In_Predefined_Unit, but renamed to this unambiguous name for use
+   --  in the debugger.
 
    function In_Predefined_Unit (N : Node_Or_Entity_Id) return Boolean;
    --  Returns True if the given node or entity appears within the source text
@@ -640,7 +643,7 @@ package Lib is
 
    function In_Predefined_Unit (S : Source_Ptr) return Boolean;
    pragma Inline (In_Predefined_Unit);
-   --  Same function as above but argument is a source pointer
+   --  Same as above, but for Source_Ptr
 
    function In_Internal_Unit (N : Node_Or_Entity_Id) return Boolean;
    function In_Internal_Unit (S : Source_Ptr) return Boolean;
@@ -681,11 +684,11 @@ package Lib is
    --  source unit, the criterion being that Get_Source_Unit yields the
    --  same value for each argument.
 
-   procedure Increment_Primary_Stack_Count (Increment : Int);
+   procedure Increment_Primary_Stack_Count (Increment : Nat);
    --  Increment the Primary_Stack_Count field for the current unit by
    --  Increment.
 
-   procedure Increment_Sec_Stack_Count (Increment : Int);
+   procedure Increment_Sec_Stack_Count (Increment : Nat);
    --  Increment the Sec_Stack_Count field for the current unit by Increment
 
    function Increment_Serial_Number return Nat;
@@ -715,12 +718,9 @@ package Lib is
    procedure Lock;
    --  Lock internal tables before calling back end
 
-   function Num_Units return Nat;
-   --  Number of units currently in unit table
-
    procedure Remove_Unit (U : Unit_Number_Type);
-   --  Remove unit U from unit table. Currently this is effective only if U is
-   --  the last unit currently stored in the unit table.
+   --  Remove unit U from unit table. U must be the last unit currently stored
+   --  in the unit table.
 
    procedure Replace_Linker_Option_String
      (S            : String_Id;
@@ -741,13 +741,13 @@ package Lib is
    --  This procedure is called to register a pragma N for which a notes
    --  entry is required.
 
-   procedure Synchronize_Serial_Number;
+   procedure Synchronize_Serial_Number (SN : Nat);
    --  This function increments the Serial_Number field for the current unit
-   --  but does not return the incremented value. This is used when there
-   --  is a situation where one path of control increments a serial number
-   --  (using Increment_Serial_Number), and the other path does not and it is
-   --  important to keep the serial numbers synchronized in the two cases (e.g.
-   --  when the references in a package and a client must be kept consistent).
+   --  up to SN if it is initially lower and does nothing otherwise. This is
+   --  used in situations where one path of control increments serial numbers
+   --  and the other path does not and it is important to keep serial numbers
+   --  synchronized in the two cases (e.g. when the references in a package
+   --  and a client must be kept consistent).
 
    procedure Unlock;
    --  Unlock internal tables, in cases where the back end needs to modify them
@@ -852,12 +852,12 @@ private
       Source_Index           : Source_File_Index;
       Cunit                  : Node_Id;
       Cunit_Entity           : Entity_Id;
-      Dependency_Num         : Int;
+      Dependency_Num         : Nat;
       Ident_String           : Node_Id;
       Main_Priority          : Int;
       Main_CPU               : Int;
-      Primary_Stack_Count    : Int;
-      Sec_Stack_Count        : Int;
+      Primary_Stack_Count    : Nat;
+      Sec_Stack_Count        : Nat;
       Serial_Number          : Nat;
       Version                : Word;
       Error_Location         : Source_Ptr;
@@ -866,54 +866,13 @@ private
       Has_RACW               : Boolean;
       Dynamic_Elab           : Boolean;
       No_Elab_Code_All       : Boolean;
-      Filler                 : Boolean;
       Loading                : Boolean;
       OA_Setting             : Character;
 
       Is_Predefined_Renaming : Boolean;
       Is_Internal_Unit       : Boolean;
       Is_Predefined_Unit     : Boolean;
-      Filler2                : Boolean;
    end record;
-
-   --  The following representation clause ensures that the above record
-   --  has no holes. We do this so that when instances of this record are
-   --  written by Tree_Gen, we do not write uninitialized values to the file.
-
-   for Unit_Record use record
-      Unit_File_Name         at  0 range 0 .. 31;
-      Unit_Name              at  4 range 0 .. 31;
-      Munit_Index            at  8 range 0 .. 31;
-      Expected_Unit          at 12 range 0 .. 31;
-      Source_Index           at 16 range 0 .. 31;
-      Cunit                  at 20 range 0 .. 31;
-      Cunit_Entity           at 24 range 0 .. 31;
-      Dependency_Num         at 28 range 0 .. 31;
-      Ident_String           at 32 range 0 .. 31;
-      Main_Priority          at 36 range 0 .. 31;
-      Main_CPU               at 40 range 0 .. 31;
-      Primary_Stack_Count    at 44 range 0 .. 31;
-      Sec_Stack_Count        at 48 range 0 .. 31;
-      Serial_Number          at 52 range 0 .. 31;
-      Version                at 56 range 0 .. 31;
-      Error_Location         at 60 range 0 .. 31;
-      Fatal_Error            at 64 range 0 ..  7;
-      Generate_Code          at 65 range 0 ..  7;
-      Has_RACW               at 66 range 0 ..  7;
-      Dynamic_Elab           at 67 range 0 ..  7;
-      No_Elab_Code_All       at 68 range 0 ..  7;
-      Filler                 at 69 range 0 ..  7;
-      OA_Setting             at 70 range 0 ..  7;
-      Loading                at 71 range 0 ..  7;
-
-      Is_Predefined_Renaming at 72 range 0 .. 7;
-      Is_Internal_Unit       at 73 range 0 .. 7;
-      Is_Predefined_Unit     at 74 range 0 .. 7;
-      Filler2                at 75 range 0 .. 7;
-   end record;
-
-   for Unit_Record'Size use 76 * 8;
-   --  This ensures that we did not leave out any fields
 
    package Units is new Table.Table (
      Table_Component_Type => Unit_Record,
@@ -926,7 +885,9 @@ private
    --  The following table records a mapping between a name and the entry in
    --  the units table whose Unit_Name is this name. It is used to speed up
    --  the Is_Loaded function, whose original implementation (linear search)
-   --  could account for 2% of the time spent in the front end. Note that, in
+   --  could account for 2% of the time spent in the front end. When the unit
+   --  is an instance of a generic, the unit might get duplicated in the unit
+   --  table - see Make_Instance_Unit for more information. Note that, in
    --  the case of source files containing multiple units, the units table may
    --  temporarily contain two entries with the same Unit_Name during parsing,
    --  which means that the mapping must be to the first entry in the table.
@@ -940,7 +901,7 @@ private
    function Unit_Name_Hash (Id : Unit_Name_Type) return Unit_Name_Header_Num;
    --  Simple hash function for Unit_Name_Types
 
-   package Unit_Names is new GNAT.Htable.Simple_HTable
+   package Unit_Names is new GNAT.HTable.Simple_HTable
      (Header_Num => Unit_Name_Header_Num,
       Element    => Unit_Number_Type,
       No_Element => No_Unit,

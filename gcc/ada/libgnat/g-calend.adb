@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 1999-2020, AdaCore                     --
+--                     Copyright (C) 1999-2026, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,11 +29,8 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Interfaces.C.Extensions;
-
 package body GNAT.Calendar is
    use Ada.Calendar;
-   use Interfaces;
 
    -----------------
    -- Day_In_Year --
@@ -44,7 +41,6 @@ package body GNAT.Calendar is
       Month    : Month_Number;
       Day      : Day_Number;
       Day_Secs : Day_Duration;
-      pragma Unreferenced (Day_Secs);
    begin
       Split (Date, Year, Month, Day, Day_Secs);
       return Julian_Day (Year, Month, Day) - Julian_Day (Year, 1, 1) + 1;
@@ -59,7 +55,6 @@ package body GNAT.Calendar is
       Month    : Month_Number;
       Day      : Day_Number;
       Day_Secs : Day_Duration;
-      pragma Unreferenced (Day_Secs);
    begin
       Split (Date, Year, Month, Day, Day_Secs);
       return Day_Name'Val ((Julian_Day (Year, Month, Day)) mod 7);
@@ -77,7 +72,6 @@ package body GNAT.Calendar is
       Minute     : Minute_Number;
       Second     : Second_Number;
       Sub_Second : Second_Duration;
-      pragma Unreferenced (Year, Month, Day, Minute, Second, Sub_Second);
    begin
       Split (Date, Year, Month, Day, Hour, Minute, Second, Sub_Second);
       return Hour;
@@ -137,7 +131,6 @@ package body GNAT.Calendar is
       Minute     : Minute_Number;
       Second     : Second_Number;
       Sub_Second : Second_Duration;
-      pragma Unreferenced (Year, Month, Day, Hour, Second, Sub_Second);
    begin
       Split (Date, Year, Month, Day, Hour, Minute, Second, Sub_Second);
       return Minute;
@@ -155,7 +148,6 @@ package body GNAT.Calendar is
       Minute     : Minute_Number;
       Second     : Second_Number;
       Sub_Second : Second_Duration;
-      pragma Unreferenced (Year, Month, Day, Hour, Minute, Sub_Second);
    begin
       Split (Date, Year, Month, Day, Hour, Minute, Second, Sub_Second);
       return Second;
@@ -222,8 +214,6 @@ package body GNAT.Calendar is
       Ds : Day_Duration;
       Le : Boolean;
 
-      pragma Unreferenced (Ds, Le);
-
    begin
       --  Even though the input time zone is UTC (0), the flag Use_TZ will
       --  ensure that Split picks up the local time zone. ???But Use_TZ is
@@ -257,7 +247,6 @@ package body GNAT.Calendar is
       Minute     : Minute_Number;
       Second     : Second_Number;
       Sub_Second : Second_Duration;
-      pragma Unreferenced (Year, Month, Day, Hour, Minute, Second);
    begin
       Split (Date, Year, Month, Day, Hour, Minute, Second, Sub_Second);
       return Sub_Second;
@@ -341,23 +330,8 @@ package body GNAT.Calendar is
    -----------------
 
    function To_Duration (T : not null access timeval) return Duration is
-
-      procedure timeval_to_duration
-        (T    : not null access timeval;
-         sec  : not null access C.Extensions.long_long;
-         usec : not null access C.long);
-      pragma Import (C, timeval_to_duration, "__gnat_timeval_to_duration");
-
-      Micro : constant := 10**6;
-      sec   : aliased C.Extensions.long_long;
-      usec  : aliased C.long;
-
    begin
-      timeval_to_duration (T, sec'Access, usec'Access);
-      pragma Annotate (CodePeer, Modified, sec);
-      pragma Annotate (CodePeer, Modified, usec);
-
-      return Duration (sec) + Duration (usec) / Micro;
+      return System.C_Time.To_Duration (T.all);
    end To_Duration;
 
    ----------------
@@ -365,30 +339,8 @@ package body GNAT.Calendar is
    ----------------
 
    function To_Timeval (D : Duration) return timeval is
-
-      procedure duration_to_timeval
-        (Sec  : C.Extensions.long_long;
-         Usec : C.long;
-         T : not null access timeval);
-      pragma Import (C, duration_to_timeval, "__gnat_duration_to_timeval");
-
-      Micro  : constant := 10**6;
-      Result : aliased timeval;
-      sec    : C.Extensions.long_long;
-      usec   : C.long;
-
    begin
-      if D = 0.0 then
-         sec  := 0;
-         usec := 0;
-      else
-         sec  := C.Extensions.long_long (D - 0.5);
-         usec := C.long ((D - Duration (sec)) * Micro - 0.5);
-      end if;
-
-      duration_to_timeval (sec, usec, Result'Access);
-
-      return Result;
+      return System.C_Time.To_Timeval (D);
    end To_Timeval;
 
    ------------------
@@ -398,7 +350,6 @@ package body GNAT.Calendar is
    function Week_In_Year (Date : Time) return Week_In_Year_Number is
       Year : Year_Number;
       Week : Week_In_Year_Number;
-      pragma Unreferenced (Year);
    begin
       Year_Week_In_Year (Date, Year, Week);
       return Week;
@@ -422,8 +373,6 @@ package body GNAT.Calendar is
       Jan_1      : Day_Name;
       Shift      : Week_In_Year_Number;
       Start_Week : Week_In_Year_Number;
-
-      pragma Unreferenced (Hour, Minute, Second, Sub_Second);
 
       function Is_Leap (Year : Year_Number) return Boolean;
       --  Return True if Year denotes a leap year. Leap centennial years are

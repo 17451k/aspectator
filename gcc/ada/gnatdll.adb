@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1997-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1997-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -134,10 +134,8 @@ procedure Gnatdll is
       P ("   -l file       File contains a list-of-files to be added to "
          & "the library");
       P ("   -e file       Definition file containing exports");
-      P ("   -d file       Put objects in the relocatable dynamic "
+      P ("   -d file       Put objects in the dynamic "
          & "library <file>");
-      P ("   -b addr       Set base address for the relocatable DLL");
-      P ("                 default address is " & Default_DLL_Address);
       P ("   -a[addr]      Build non-relocatable DLL at address <addr>");
       P ("                 if <addr> is not specified use "
          & Default_DLL_Address);
@@ -172,11 +170,8 @@ procedure Gnatdll is
       --  Add the files listed in List_Filename (one by line) to the list
       --  of file to handle
 
-      Max_Files   : constant := 5_000;
-      Max_Options : constant :=   100;
-      --  These are arbitrary limits, a better way will be to use linked list.
-      --  No, a better choice would be to use tables ???
-      --  Limits on what???
+      Max_Files   : constant := 50_000;
+      Max_Options : constant :=  1_000;
 
       Ofiles : Argument_List (1 .. Max_Files);
       O      : Positive := Ofiles'First;
@@ -317,10 +312,6 @@ procedure Gnatdll is
                end if;
 
                Must_Build_Relocatable := False;
-
-            when 'b' =>
-               DLL_Address := To_Unbounded_String (Parameter);
-               Must_Build_Relocatable := True;
 
             when 'e' =>
                Def_Filename := To_Unbounded_String (Parameter);

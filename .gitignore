@@ -9,6 +9,7 @@ gcc/ldv-aspect-parser.output
 *~
 .#*
 *#
+.*.swp
 
 *.flt
 *.gmo
@@ -24,7 +25,8 @@ gcc/ldv-aspect-parser.output
 
 autom4te.cache
 config.cache
-config.h
+# GCC does not support in-tree builds, do not conceal a stray config.h:
+# config.h
 config.intl
 config.log
 config.status
@@ -34,9 +36,11 @@ POTFILES
 
 TAGS
 TAGS.sub
+cscope.out
 
 .local.vimrc
 .lvimrc
+.vscode
 
 .clang-format
 
@@ -65,3 +69,4 @@ REVISION
 
 # macOS
 .DS_Store
+/gettext*

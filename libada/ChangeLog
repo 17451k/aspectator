@@ -1,10 +1,23 @@
-2021-07-28  Release Manager
+2026-08-07  Release Manager
 
-	* GCC 11.2.0 released.
+	* GCC 16.2.0 released.
 
-2021-04-27  Release Manager
+2026-04-30  Release Manager
 
-	* GCC 11.1.0 released.
+	* GCC 16.1.0 released.
+
+2023-08-07  John Ericson  <git@JohnEricson.me>
+
+	* configure: Regenerate.
+
+2022-08-25  Martin Liska  <mliska@suse.cz>
+
+	* configure: Regenerate.
+
+2021-10-22  Eric Gallager  <egallager@gcc.gnu.org>
+
+	PR other/102663
+	* Makefile.in: Add dummy install-dvi target.
 
 2020-01-24  Maciej W. Rozycki  <macro@wdc.com>
 
@@ -457,7 +470,7 @@
 
 	* New directory, new ChangeLog.
 
-Copyright (C) 2003-2021 Free Software Foundation, Inc.
+Copyright (C) 2003-2026 Free Software Foundation, Inc.
 
 This ChangeLog is free software; the Free Software Foundation gives
 unlimited permission to copy, distribute, and modify it.

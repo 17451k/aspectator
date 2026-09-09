@@ -64,7 +64,7 @@ TEST_UNIFORM_Z (mulx_1_f16_m_tied1, svfloat16_t,
 		z0 = svmulx_m (p0, z0, 1))
 
 /*
-** mulx_1_f16_m_untied: { xfail *-*-* }
+** mulx_1_f16_m_untied:
 **	fmov	(z[0-9]+\.h), #1\.0(?:e\+0)?
 **	movprfx	z0, z1
 **	fmulx	z0\.h, p0/m, z0\.h, \1
@@ -85,7 +85,7 @@ TEST_UNIFORM_Z (mulx_0p5_f16_m_tied1, svfloat16_t,
 		z0 = svmulx_m (p0, z0, 0.5))
 
 /*
-** mulx_0p5_f16_m_untied: { xfail *-*-* }
+** mulx_0p5_f16_m_untied:
 **	fmov	(z[0-9]+\.h), #(?:0\.5|5\.0e-1)
 **	movprfx	z0, z1
 **	fmulx	z0\.h, p0/m, z0\.h, \1
@@ -106,7 +106,7 @@ TEST_UNIFORM_Z (mulx_2_f16_m_tied1, svfloat16_t,
 		z0 = svmulx_m (p0, z0, 2))
 
 /*
-** mulx_2_f16_m_untied: { xfail *-*-* }
+** mulx_2_f16_m_untied:
 **	fmov	(z[0-9]+\.h), #2\.0(?:e\+0)?
 **	movprfx	z0, z1
 **	fmulx	z0\.h, p0/m, z0\.h, \1
@@ -303,7 +303,7 @@ TEST_UNIFORM_ZD (mulx_h4_f16_x_tied1, svfloat16_t, __fp16,
 		 z0 = svmulx_x (p0, z0, d4))
 
 /*
-** mulx_h4_f16_x_untied: { xfail *-*-* }
+** mulx_h4_f16_x_untied:
 **	mov	z0\.h, h4
 **	fmulx	z0\.h, p0/m, z0\.h, z1\.h
 **	ret

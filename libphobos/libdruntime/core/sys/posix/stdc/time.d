@@ -1,5 +1,5 @@
 /**
- * D header file for C99.
+ * D header file for C99/C11.
  *
  * $(C_HEADER_DESCRIPTION pubs.opengroup.org/onlinepubs/009695399/basedefs/_time.h.html, _time.h)
  *
@@ -9,7 +9,7 @@
  *    (See accompanying file LICENSE)
  * Authors:   Sean Kelly,
  *            Alex Rønne Petersen
- * Source:    $(DRUNTIMESRC core/stdc/_time.d)
+ * Source:    $(DRUNTIMESRC core/sys/posix/stdc/_time.d)
  * Standards: ISO/IEC 9899:1999 (E)
  */
 
@@ -50,9 +50,36 @@ struct tm
 }
 
 public import core.sys.posix.sys.types : time_t, clock_t;
+public import core.sys.posix.time : timespec;
+
+/// timespec_get introduced in C11
+@system int timespec_get(timespec* ts, int base);
+
+/// Base Value used for timespec_get
+enum TIME_UTC = 1;
 
 ///
-version (OSX)
+version (CRuntime_Glibc)
+{
+    enum clock_t CLOCKS_PER_SEC = 1_000_000;
+    clock_t clock();
+}
+else version (CRuntime_Musl)
+{
+    enum clock_t CLOCKS_PER_SEC = 1_000_000;
+    clock_t clock();
+}
+else version (CRuntime_Bionic)
+{
+    enum clock_t CLOCKS_PER_SEC = 1_000_000;
+    clock_t clock();
+}
+else version (CRuntime_UClibc)
+{
+    enum clock_t CLOCKS_PER_SEC = 1_000_000;
+    clock_t clock();
+}
+else version (OSX)
 {
     enum clock_t CLOCKS_PER_SEC = 1_000_000; // was 100 until OSX 10.4/10.5
     version (X86)
@@ -90,26 +117,6 @@ else version (Solaris)
     enum clock_t CLOCKS_PER_SEC = 1_000_000;
     clock_t clock();
 }
-else version (CRuntime_Glibc)
-{
-    enum clock_t CLOCKS_PER_SEC = 1_000_000;
-    clock_t clock();
-}
-else version (CRuntime_Musl)
-{
-    enum clock_t CLOCKS_PER_SEC = 1_000_000;
-    clock_t clock();
-}
-else version (CRuntime_Bionic)
-{
-    enum clock_t CLOCKS_PER_SEC = 1_000_000;
-    clock_t clock();
-}
-else version (CRuntime_UClibc)
-{
-    enum clock_t CLOCKS_PER_SEC = 1_000_000;
-    clock_t clock();
-}
 else
 {
     static assert(0, "unsupported system");
@@ -139,6 +146,7 @@ else version (FreeBSD)
 else version (NetBSD)
 {
     ///
+    pragma(mangle, "__tzset50")
     void tzset();                            // non-standard
     ///
     extern __gshared const(char)*[2] tzname; // non-standard

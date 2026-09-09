@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---                     Copyright (C) 2008-2020, AdaCore                     --
+--                     Copyright (C) 2008-2026, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,7 +33,10 @@
 --  This package should not be directly with'ed by an applications program.
 
 with Ada.Unchecked_Conversion;
+
 with Interfaces.C.Strings;
+
+with System.C_Time;
 
 package GNAT.Sockets.Thin_Common is
 
@@ -43,47 +46,39 @@ package GNAT.Sockets.Thin_Common is
    Success : constant C.int :=  0;
    Failure : constant C.int := -1;
 
-   type time_t is
-     range -2 ** (8 * SOSC.SIZEOF_tv_sec - 1)
-         .. 2 ** (8 * SOSC.SIZEOF_tv_sec - 1) - 1;
-   for time_t'Size use 8 * SOSC.SIZEOF_tv_sec;
-   pragma Convention (C, time_t);
+   subtype time_t is System.C_Time.time_t;
+   pragma Obsolescent (time_t, "use type from GNAT.C_Time instead");
 
-   type suseconds_t is
-     range -2 ** (8 * SOSC.SIZEOF_tv_usec - 1)
-         .. 2 ** (8 * SOSC.SIZEOF_tv_usec - 1) - 1;
-   for suseconds_t'Size use 8 * SOSC.SIZEOF_tv_usec;
-   pragma Convention (C, suseconds_t);
+   subtype suseconds_t is System.C_Time.usec_t;
+   pragma Obsolescent (suseconds_t, "use type from GNAT.C_Time instead");
 
-   type Timeval is record
-      Tv_Sec  : time_t;
-      Tv_Usec : suseconds_t;
-   end record;
-   pragma Convention (C, Timeval);
+   subtype timeval is System.C_Time.timeval;
+   pragma Obsolescent (timeval, "use type from GNAT.C_Time instead");
 
-   type Timeval_Access is access all Timeval;
+   type Timeval_Access is access all System.C_Time.timeval;
    pragma Convention (C, Timeval_Access);
 
    type socklen_t is mod 2 ** (8 * SOSC.SIZEOF_socklen_t);
    for socklen_t'Size use (8 * SOSC.SIZEOF_socklen_t);
 
-   Immediat : constant Timeval := (0, 0);
+   Immediat : constant System.C_Time.timeval
+     := System.C_Time.Milliseconds_To_Timeval (0);
 
    -------------------------------------------
    -- Mapping tables to low level constants --
    -------------------------------------------
 
    Families : constant array (Family_Type) of C.int :=
-                (Family_Unspec => SOSC.AF_UNSPEC,
+                [Family_Unspec => SOSC.AF_UNSPEC,
                  Family_Unix   => SOSC.AF_UNIX,
                  Family_Inet   => SOSC.AF_INET,
-                 Family_Inet6  => SOSC.AF_INET6);
+                 Family_Inet6  => SOSC.AF_INET6];
 
    Lengths  : constant array (Family_Type) of C.unsigned_char :=
-                (Family_Unspec => 0,
+                [Family_Unspec => 0,
                  Family_Unix   => SOSC.SIZEOF_sockaddr_un,
                  Family_Inet   => SOSC.SIZEOF_sockaddr_in,
-                 Family_Inet6  => SOSC.SIZEOF_sockaddr_in6);
+                 Family_Inet6  => SOSC.SIZEOF_sockaddr_in6];
 
    ----------------------------
    -- Generic socket address --
@@ -122,10 +117,13 @@ package GNAT.Sockets.Thin_Common is
 
    type In_Addr is record
       S_B1, S_B2, S_B3, S_B4 : C.unsigned_char;
-   end record with Convention => C, Alignment => C.int'Alignment;
+   end record
+     with Convention => C, Alignment  => C.int'Alignment, Universal_Aliasing;
    --  IPv4 address, represented as a network-order C.int. Note that the
    --  underlying operating system may assume that values of this type have
-   --  C.int alignment, so we need to provide a suitable alignment clause here.
+   --  C.int's alignment, so we need to provide a suitable alignment clause.
+   --  We also need to inhibit strict type-based aliasing optimizations in
+   --  order to implement the following unchecked conversions efficiently.
 
    function To_In_Addr is new Ada.Unchecked_Conversion (C.int, In_Addr);
    function To_Int     is new Ada.Unchecked_Conversion (In_Addr, C.int);
@@ -159,7 +157,7 @@ package GNAT.Sockets.Thin_Common is
          Sin_Addr : In_Addr := (others => 0);
          --  IPv4 address
 
-         Sin_Zero : C.char_array (1 .. 8) := (others => C.nul);
+         Sin_Zero : C.char_array (1 .. 8) := [others => C.nul];
          --  Padding
          --
          --  Note that some platforms require that all unused (reserved) bytes
@@ -173,7 +171,7 @@ package GNAT.Sockets.Thin_Common is
          --  Port in network byte order
 
          Sin6_FlowInfo : Interfaces.Unsigned_32 := 0;
-         Sin6_Addr     : In6_Addr := (others => 0);
+         Sin6_Addr     : In6_Addr := [others => 0];
          Sin6_Scope_Id : Interfaces.Unsigned_32 := 0;
 
       when Family_Unix =>

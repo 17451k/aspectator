@@ -1,6 +1,6 @@
 // REQUIRED_ARGS: -o-
-// PERMUTE_ARGS:
 // EXTRA_FILES: imports/imp12242a1.d imports/imp12242a2.d
+// PERMUTE_ARGS:
 /*
 TEST_OUTPUT:
 ---
@@ -117,8 +117,8 @@ foo2
 T2
 TestStaticForeach2
 issue22007
-1 2 '3'
-2 3 '4'
+1 2 3
+2 3 4
 0 1
 1 2
 2 3

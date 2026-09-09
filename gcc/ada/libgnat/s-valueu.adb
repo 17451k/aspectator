@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,7 +29,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System.Val_Util; use System.Val_Util;
+with System.Val_Util;             use System.Val_Util;
 
 package body System.Value_U is
 
@@ -37,10 +37,11 @@ package body System.Value_U is
    -- Scan_Raw_Unsigned --
    -----------------------
 
-   function Scan_Raw_Unsigned
+   procedure Scan_Raw_Unsigned
      (Str : String;
       Ptr : not null access Integer;
-      Max : Integer) return Uns
+      Max : Integer;
+      Res : out Uns)
    is
       P : Integer;
       --  Local copy of the pointer
@@ -72,7 +73,17 @@ package body System.Value_U is
       end if;
 
       P := Ptr.all;
+
+      --  Exit when the initial string to parse is empty
+
+      if Max < P then
+         raise Program_Error with
+            "Scan end Max=" & Max'Img &
+            " is smaller than scan end Ptr=" & P'Img;
+      end if;
+
       Uval := Character'Pos (Str (P)) - Character'Pos ('0');
+      pragma Assert (Str (P) in '0' .. '9');
       P := P + 1;
 
       --  Scan out digits of what is either the number or the base.
@@ -106,10 +117,8 @@ package body System.Value_U is
             else
                if Uval <= Umax then
                   Uval := 10 * Uval + Digit;
-
                elsif Uval > Umax10 then
                   Overflow := True;
-
                else
                   Uval := 10 * Uval + Digit;
 
@@ -177,6 +186,7 @@ package body System.Value_U is
 
                else
                   Uval := Base;
+                  Base := 10;
                   exit;
                end if;
 
@@ -191,10 +201,8 @@ package body System.Value_U is
 
                elsif Uval <= Umax then
                   Uval := Base * Uval + Digit;
-
                elsif Uval > UmaxB then
                   Overflow := True;
-
                else
                   Uval := Base * Uval + Digit;
 
@@ -226,7 +234,6 @@ package body System.Value_U is
                elsif Str (P) = '_' then
                   Scan_Underscore (Str, P, Ptr, Max, True);
                end if;
-
             end loop;
          end;
       end if;
@@ -234,7 +241,7 @@ package body System.Value_U is
       --  Come here with scanned unsigned value in Uval. The only remaining
       --  required step is to deal with exponent if one is present.
 
-      Expon := Scan_Exponent (Str, Ptr, Max);
+      Scan_Exponent (Str, Ptr, Max, Expon);
 
       if Expon /= 0 and then Uval /= 0 then
 
@@ -245,7 +252,6 @@ package body System.Value_U is
          declare
             UmaxB : constant Uns := Uns'Last / Base;
             --  Numbers bigger than UmaxB overflow if multiplied by base
-
          begin
             for J in 1 .. Expon loop
                if Uval > UmaxB then
@@ -258,12 +264,12 @@ package body System.Value_U is
          end;
       end if;
 
-      --  Return result, dealing with sign and overflow
+      --  Return result, dealing with overflow
 
       if Overflow then
          Bad_Value (Str);
       else
-         return Uval;
+         Res := Uval;
       end if;
    end Scan_Raw_Unsigned;
 
@@ -271,23 +277,30 @@ package body System.Value_U is
    -- Scan_Unsigned --
    -------------------
 
-   function Scan_Unsigned
+   procedure Scan_Unsigned
      (Str : String;
       Ptr : not null access Integer;
-      Max : Integer) return Uns
+      Max : Integer;
+      Res : out Uns)
    is
       Start : Positive;
       --  Save location of first non-blank character
 
    begin
+      pragma Warnings
+        (Off,
+         """Start"" is set by ""Scan_Plus_Sign"" but not used after the call");
       Scan_Plus_Sign (Str, Ptr, Max, Start);
+      pragma Warnings
+        (On,
+         """Start"" is set by ""Scan_Plus_Sign"" but not used after the call");
 
       if Str (Ptr.all) not in '0' .. '9' then
          Ptr.all := Start;
          Bad_Value (Str);
       end if;
 
-      return Scan_Raw_Unsigned (Str, Ptr, Max);
+      Scan_Raw_Unsigned (Str, Ptr, Max, Res);
    end Scan_Unsigned;
 
    --------------------
@@ -314,7 +327,12 @@ package body System.Value_U is
             V : Uns;
             P : aliased Integer := Str'First;
          begin
-            V := Scan_Unsigned (Str, P'Access, Str'Last);
+            declare
+               P_Acc : constant not null access Integer := P'Access;
+            begin
+               Scan_Unsigned (Str, P_Acc, Str'Last, V);
+            end;
+
             Scan_Trailing_Blanks (Str, P);
             return V;
          end;

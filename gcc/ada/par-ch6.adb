@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,7 +27,7 @@ pragma Style_Checks (All_Checks);
 --  Turn off subprogram body ordering check. Subprograms are in order
 --  by RM section rather than alphabetical
 
-with Sinfo.CN; use Sinfo.CN;
+with Sinfo.CN;       use Sinfo.CN;
 
 separate (Par)
 package body Ch6 is
@@ -128,7 +128,8 @@ package body Ch6 is
 
    --  This routine scans out a subprogram declaration, subprogram body,
    --  subprogram renaming declaration or subprogram generic instantiation.
-   --  It also handles the new Ada 2012 expression function form
+   --  It also handles the new Ada 2012 expression function form, and the GNAT
+   --  extension for direct attribute definition.
 
    --  SUBPROGRAM_DECLARATION ::=
    --    SUBPROGRAM_SPECIFICATION
@@ -141,6 +142,9 @@ package body Ch6 is
    --  SUBPROGRAM_SPECIFICATION ::=
    --      procedure DEFINING_PROGRAM_UNIT_NAME PARAMETER_PROFILE
    --    | function DEFINING_DESIGNATOR PARAMETER_AND_RESULT_PROFILE
+   --    | procedure LOCAL_NAME'ATTRIBUTE_DESIGNATOR PARAMETER_PROFILE
+   --    | function LOCAL_NAME'ATTRIBUTE_DESIGNATOR
+   --        PARAMETER_AND_RESULT_PROFILE
 
    --  PARAMETER_PROFILE ::= [FORMAL_PART]
 
@@ -180,27 +184,73 @@ package body Ch6 is
    --    FUNCTION SPECIFICATION IS (EXPRESSION)
    --      [ASPECT_SPECIFICATIONS];
 
-   --  The value in Pf_Flags indicates which of these possible declarations
-   --  is acceptable to the caller:
-
-   --    Pf_Flags.Decl                 Set if declaration OK
-   --    Pf_Flags.Gins                 Set if generic instantiation OK
-   --    Pf_Flags.Pbod                 Set if proper body OK
-   --    Pf_Flags.Rnam                 Set if renaming declaration OK
-   --    Pf_Flags.Stub                 Set if body stub OK
-   --    Pf_Flags.Pexp                 Set if expression function OK
-
-   --  If an inappropriate form is encountered, it is scanned out but an
-   --  error message indicating that it is appearing in an inappropriate
-   --  context is issued. The only possible values for Pf_Flags are those
-   --  defined as constants in the Par package.
-
    --  The caller has checked that the initial token is FUNCTION, PROCEDURE,
    --  NOT or OVERRIDING.
 
    --  Error recovery: cannot raise Error_Resync
 
    function P_Subprogram (Pf_Flags : Pf_Rec) return Node_Id is
+
+      function Contains_Import_Aspect (Aspects : List_Id) return Boolean;
+      --  Return True if Aspects contains an Import aspect.
+
+      procedure Rewrite_Entity_If_Direct_Attribute_Def
+        (Name : Node_Id; Spec : Node_Id);
+      --  In case of direct attribute definitions this procedure rewrites the
+      --  defining unit name of the specification node with a new entity. It is
+      --  essential to maintain the information that the original node comes
+      --  from a direct attribute definition.
+
+      ----------------------------
+      -- Contains_Import_Aspect --
+      ----------------------------
+
+      function Contains_Import_Aspect (Aspects : List_Id) return Boolean is
+         Aspect : Node_Id := First (Aspects);
+      begin
+         while Present (Aspect) loop
+            if Chars (Identifier (Aspect)) = Name_Import then
+               return True;
+            end if;
+
+            Next (Aspect);
+         end loop;
+
+         return False;
+      end Contains_Import_Aspect;
+
+      --------------------------------------------
+      -- Rewrite_Entity_If_Direct_Attribute_Def --
+      --------------------------------------------
+
+      procedure Rewrite_Entity_If_Direct_Attribute_Def
+        (Name : Node_Id; Spec : Node_Id)
+      is
+         New_Entity, Copy_Spec : Node_Id;
+      begin
+         if Nkind (Name) = N_Attribute_Reference
+           and then Is_Direct_Attribute_Definition_Name (Attribute_Name (Name))
+         then
+            --  Note that, this workaround is needed to retain the info that
+            --  the current subprogram comes from a direct attribute
+            --  definition. Otherwise, we would need to add an entity flag like
+            --  Is_Direct_Attribute_Definition ???
+
+            Copy_Spec := New_Copy (Spec);
+
+            New_Entity := Make_Defining_Identifier (Sloc (Name),
+              Direct_Attribute_Definition_Name
+                (Prefix (Name), Attribute_Name (Name)));
+            Set_Comes_From_Source (New_Entity);
+            Set_Parent (New_Entity, Copy_Spec);
+
+            Set_Defining_Unit_Name (Copy_Spec, New_Entity);
+            Rewrite (Spec, Copy_Spec);
+         end if;
+      end Rewrite_Entity_If_Direct_Attribute_Def;
+
+      --  Local variables
+
       Specification_Node : Node_Id;
       Name_Node          : Node_Id;
       Aspects            : List_Id;
@@ -224,6 +274,8 @@ package body Ch6 is
 
       Is_Overriding  : Boolean := False;
       Not_Overriding : Boolean := False;
+
+   --  Start of processing for P_Subprogram
 
    begin
       --  Set up scope stack entry. Note that the Labl field will be set later
@@ -294,7 +346,7 @@ package body Ch6 is
          then
             Error_Msg_SC ("overriding indicator not allowed here!");
 
-         elsif Token /= Tok_Function and then Token /= Tok_Procedure then
+         elsif Token not in Tok_Function | Tok_Procedure then
             Error_Msg_SC -- CODEFIX
               ("FUNCTION or PROCEDURE expected!");
          end if;
@@ -336,12 +388,19 @@ package body Ch6 is
          Name_Node := P_Defining_Program_Unit_Name;
       end if;
 
+      --  Deal with direct attribute definition in subprogram specification
+
+      if Token = Tok_Apostrophe then
+         Error_Msg_GNAT_Extension ("direct attribute definition", Token_Ptr);
+
+         Name_Node := P_Attribute_Designators (Name_Node);
+      end if;
+
       Scopes (Scope.Last).Labl := Name_Node;
-      Current_Node := Name_Node;
       Ignore (Tok_Colon);
 
       --  Deal with generic instantiation, the one case in which we do not
-      --  have a subprogram specification as part of whatever we are parsing
+      --  have a subprogram specification as part of whatever we are parsing.
 
       if Token = Tok_Is then
          Save_Scan_State (Scan_State); -- at the IS
@@ -356,15 +415,14 @@ package body Ch6 is
 
             if Func then
                Inst_Node := New_Node (N_Function_Instantiation, Fproc_Sloc);
-               Set_Name (Inst_Node, P_Function_Name);
             else
                Inst_Node := New_Node (N_Procedure_Instantiation, Fproc_Sloc);
-               Set_Name (Inst_Node, P_Qualified_Simple_Name);
             end if;
 
             Set_Defining_Unit_Name (Inst_Node, Name_Node);
+            Set_Name (Inst_Node, P_Generic_Unit_Name);
             Set_Generic_Associations (Inst_Node, P_Generic_Actual_Part_Opt);
-            P_Aspect_Specifications (Inst_Node);
+            P_Aspect_Specifications (Inst_Node, Semicolon => True);
             Pop_Scope_Stack; -- Don't need scope stack entry in this case
 
             if Is_Overriding then
@@ -558,7 +616,7 @@ package body Ch6 is
             Scan; -- past RENAMES
             Set_Name (Rename_Node, P_Name);
             Set_Specification (Rename_Node, Specification_Node);
-            P_Aspect_Specifications (Rename_Node);
+            P_Aspect_Specifications (Rename_Node, Semicolon => True);
             TF_Semicolon;
             Pop_Scope_Stack;
             return Rename_Node;
@@ -588,7 +646,7 @@ package body Ch6 is
                Set_Specification (Absdec_Node, Specification_Node);
                Pop_Scope_Stack; -- discard unneeded entry
                Scan; -- past ABSTRACT
-               P_Aspect_Specifications (Absdec_Node);
+               P_Aspect_Specifications (Absdec_Node, Semicolon => True);
                return Absdec_Node;
 
             --  Ada 2005 (AI-248): Parse a null procedure declaration
@@ -715,22 +773,15 @@ package body Ch6 is
                   --  or a pragma, then we definitely have a subprogram body.
                   --  This is a common case, so worth testing first.
 
-                  if Token = Tok_Begin
-                    or else Token in Token_Class_Declk
-                    or else Token = Tok_Pragma
-                  then
+                  if Token in Tok_Begin | Token_Class_Declk | Tok_Pragma then
                      return False;
 
                   --  Test for tokens which could only start an expression and
                   --  thus signal the case of a expression function.
 
-                  elsif Token     in Token_Class_Literal
-                    or else Token in Token_Class_Unary_Addop
-                    or else Token =  Tok_Left_Paren
-                    or else Token =  Tok_Abs
-                    or else Token =  Tok_Null
-                    or else Token =  Tok_New
-                    or else Token =  Tok_Not
+                  elsif Token in
+                    Token_Class_Literal | Token_Class_Unary_Addop |
+                    Tok_Left_Paren | Tok_Abs | Tok_Null | Tok_New | Tok_Not
                   then
                      null;
 
@@ -819,7 +870,14 @@ package body Ch6 is
             begin
                --  Expression_Function case
 
-               if Token = Tok_Left_Paren
+               --  If likely an aggregate, check we are in Ada 2022 mode
+
+               if Token = Tok_Left_Bracket then
+                  Error_Msg_Ada_2022_Feature
+                    ("!aggregates as expression function", Token_Ptr);
+               end if;
+
+               if Token in Tok_Left_Paren | Tok_Left_Bracket
                  or else Likely_Expression_Function
                then
                   --  Check expression function allowed here
@@ -877,6 +935,7 @@ package body Ch6 is
 
                      if not (Paren_Count (Expr) /= 0
                               or else Nkind (Expr) in N_Aggregate
+                                                    | N_Delta_Aggregate
                                                     | N_Extension_Aggregate
                                                     | N_Quantified_Expression)
                      then
@@ -888,7 +947,7 @@ package body Ch6 is
 
                   --  Expression functions can carry pre/postconditions
 
-                  P_Aspect_Specifications (Body_Node);
+                  P_Aspect_Specifications (Body_Node, Semicolon => True);
                   Pop_Scope_Stack;
 
                --  Subprogram body case
@@ -928,12 +987,14 @@ package body Ch6 is
                   --  the body.
 
                   if Is_Non_Empty_List (Aspects) then
-                     Set_Parent (Aspects, Body_Node);
                      Set_Aspect_Specifications (Body_Node, Aspects);
                   end if;
 
                   Parse_Decls_Begin_End (Body_Node);
                end if;
+
+               Rewrite_Entity_If_Direct_Attribute_Def
+                 (Name_Node, Specification_Node);
 
                return Body_Node;
             end Scan_Body_Or_Expression_Function;
@@ -946,6 +1007,9 @@ package body Ch6 is
            New_Node (N_Subprogram_Declaration, Sloc (Specification_Node));
          Set_Specification (Decl_Node, Specification_Node);
          Aspects := Get_Aspect_Specifications (Semicolon => False);
+
+         Rewrite_Entity_If_Direct_Attribute_Def
+           (Name_Node, Specification_Node);
 
          --  Aspects may be present on a subprogram body. The source parsed
          --  so far is that of its specification. Go parse the body and attach
@@ -967,7 +1031,6 @@ package body Ch6 is
 
          else
             if Is_Non_Empty_List (Aspects) then
-               Set_Parent (Aspects, Decl_Node);
                Set_Aspect_Specifications (Decl_Node, Aspects);
             end if;
 
@@ -982,10 +1045,12 @@ package body Ch6 is
          if Pf_Flags.Pbod
 
            --  Disconnect this processing if we have scanned a null procedure
-           --  because in this case the spec is complete anyway with no body.
+           --  or an Import aspect because in this case the spec is complete
+           --  anyway with no body.
 
            and then (Nkind (Specification_Node) /= N_Procedure_Specification
                       or else not Null_Present (Specification_Node))
+           and then not Contains_Import_Aspect (Aspects)
          then
             SIS_Labl := Scopes (Scope.Last).Labl;
             SIS_Sloc := Scopes (Scope.Last).Sloc;
@@ -1120,7 +1185,7 @@ package body Ch6 is
       --------------
 
       function Real_Dot return Boolean is
-         Scan_State  : Saved_Scan_State;
+         Scan_State : Saved_Scan_State;
 
       begin
          if Token /= Tok_Dot then
@@ -1130,9 +1195,8 @@ package body Ch6 is
             Save_Scan_State (Scan_State);
             Scan; -- past dot
 
-            if Token = Tok_Identifier
-              or else Token = Tok_Operator_Symbol
-              or else Token = Tok_String_Literal
+            if Token in
+              Tok_Identifier | Tok_Operator_Symbol | Tok_String_Literal
             then
                return True;
 
@@ -1149,8 +1213,7 @@ package body Ch6 is
       Ident_Node := Token_Node;
       Scan; -- past initial token
 
-      if Prev_Token = Tok_Operator_Symbol
-        or else Prev_Token = Tok_String_Literal
+      if Prev_Token in Tok_Operator_Symbol | Tok_String_Literal
         or else not Real_Dot
       then
          return Ident_Node;
@@ -1185,7 +1248,7 @@ package body Ch6 is
 
    exception
       when Error_Resync =>
-         while Token = Tok_Dot or else Token = Tok_Identifier loop
+         while Token in Tok_Dot | Tok_Identifier loop
             Scan;
          end loop;
 
@@ -1296,7 +1359,7 @@ package body Ch6 is
 
    exception
       when Error_Resync =>
-         while Token = Tok_Dot or else Token = Tok_Identifier loop
+         while Token in Tok_Dot | Tok_Identifier loop
             Scan;
          end loop;
 
@@ -1380,20 +1443,16 @@ package body Ch6 is
       Specification_List : List_Id;
       Specification_Node : Node_Id;
       Scan_State         : Saved_Scan_State;
-      Num_Idents         : Nat;
-      Ident              : Nat;
       Ident_Sloc         : Source_Ptr;
       Not_Null_Present   : Boolean := False;
       Not_Null_Sloc      : Source_Ptr;
 
-      Idents : array (Int range 1 .. 4096) of Entity_Id;
-      --  This array holds the list of defining identifiers. The upper bound
-      --  of 4096 is intended to be essentially infinite, and we do not even
-      --  bother to check for it being exceeded.
-
    begin
       Specification_List := New_List;
       Specification_Loop : loop
+         declare
+            Def_Ids : Defining_Identifiers;
+            Ident   : Pos;
          begin
             if Token = Tok_Pragma then
                Error_Msg_SC ("pragma not allowed in formal part");
@@ -1402,8 +1461,7 @@ package body Ch6 is
 
             Ignore (Tok_Left_Paren);
             Ident_Sloc := Token_Ptr;
-            Idents (1) := P_Defining_Identifier (C_Comma_Colon);
-            Num_Idents := 1;
+            Append (Def_Ids, P_Defining_Identifier (C_Comma_Colon));
 
             Ident_Loop : loop
                exit Ident_Loop when Token = Tok_Colon;
@@ -1431,10 +1489,8 @@ package body Ch6 is
                      --  and on a right paren, e.g. Parms (X Y), and also
                      --  on an assignment symbol, e.g. Parms (X Y := ..)
 
-                     if Token = Tok_Semicolon
-                       or else Token = Tok_Right_Paren
-                       or else Token = Tok_EOF
-                       or else Token = Tok_Colon_Equal
+                     if Token in Tok_Semicolon | Tok_Right_Paren |
+                       Tok_EOF | Tok_Colon_Equal
                      then
                         Restore_Scan_State (Scan_State);
                         exit Ident_Loop;
@@ -1443,9 +1499,7 @@ package body Ch6 is
                      --  comma, e.g. Parms (A B : ...). Also assume a missing
                      --  comma if we hit another comma, e.g. Parms (A B, C ..)
 
-                     elsif Token = Tok_Colon
-                       or else Token = Tok_Comma
-                     then
+                     elsif Token in Tok_Colon | Tok_Comma then
                         Restore_Scan_State (Scan_State);
                         exit Look_Ahead;
                      end if;
@@ -1457,21 +1511,15 @@ package body Ch6 is
                --  Here if a comma is present, or to be assumed
 
                T_Comma;
-               Num_Idents := Num_Idents + 1;
-               Idents (Num_Idents) := P_Defining_Identifier (C_Comma_Colon);
+               Append (Def_Ids, P_Defining_Identifier (C_Comma_Colon));
             end loop Ident_Loop;
 
-            --  Fall through the loop on encountering a colon, or deciding
-            --  that there is a missing colon.
+            --  We exited from the above loop upon encountering a colon or
+            --  deciding that there is a missing colon.
 
             T_Colon;
 
-            --  If there are multiple identifiers, we repeatedly scan the
-            --  type and initialization expression information by resetting
-            --  the scan pointer (so that we get completely separate trees
-            --  for each occurrence).
-
-            if Num_Idents > 1 then
+            if Def_Ids.Num_Idents > 1 then
                Save_Scan_State (Scan_State);
             end if;
 
@@ -1482,7 +1530,8 @@ package body Ch6 is
             Ident_List_Loop : loop
                Specification_Node :=
                  New_Node (N_Parameter_Specification, Ident_Sloc);
-               Set_Defining_Identifier (Specification_Node, Idents (Ident));
+               Set_Defining_Identifier
+                 (Specification_Node, Def_Ids.Idents (Ident));
 
                --  Scan possible ALIASED for Ada 2012 (AI-142)
 
@@ -1520,7 +1569,7 @@ package body Ch6 is
                --  Case of IN or OUT present
 
                else
-                  if Token = Tok_In or else Token = Tok_Out then
+                  if Token in Tok_In | Tok_Out then
                      if Not_Null_Present then
                         Error_Msg
                           ("`NOT NULL` can only be used with `ACCESS`",
@@ -1574,12 +1623,12 @@ package body Ch6 is
                   Set_Prev_Ids (Specification_Node, True);
                end if;
 
-               if Ident < Num_Idents then
+               if Ident < Def_Ids.Num_Idents then
                   Set_More_Ids (Specification_Node, True);
                end if;
 
                Append (Specification_Node, Specification_List);
-               exit Ident_List_Loop when Ident = Num_Idents;
+               exit Ident_List_Loop when Ident = Def_Ids.Num_Idents;
                Ident := Ident + 1;
                Restore_Scan_State (Scan_State);
             end loop Ident_List_Loop;
@@ -1596,7 +1645,7 @@ package body Ch6 is
             --  If we have RETURN or IS after the semicolon, then assume
             --  that semicolon should have been a right parenthesis and exit
 
-            if Token = Tok_Is or else Token = Tok_Return then
+            if Token in Tok_Is | Tok_Return then
                Error_Msg_SP -- CODEFIX
                  ("|"";"" should be "")""");
                exit Specification_Loop;
@@ -1620,10 +1669,32 @@ package body Ch6 is
          --  the time being.
 
          elsif Token = Tok_With then
-            Error_Msg_Ada_2020_Feature
+            Error_Msg_Ada_2022_Feature
               ("aspect on formal parameter", Token_Ptr);
 
-            P_Aspect_Specifications (Specification_Node, False);
+            P_Aspect_Specifications (Specification_Node, Semicolon => False);
+
+            --  Set the aspect specifications for previous Ids
+
+            if Has_Aspects (Specification_Node)
+              and then Prev_Ids (Specification_Node)
+            then
+               --  Loop through each previous id
+
+               declare
+                  Prev_Id : Node_Id := Prev (Specification_Node);
+               begin
+                  loop
+                     Set_Aspect_Specifications
+                       (Prev_Id, Aspect_Specifications (Specification_Node));
+
+                     --  Exit when we reach the first parameter in the list
+
+                     exit when not Prev_Ids (Prev_Id);
+                     Prev_Id := Prev (Prev_Id);
+                  end loop;
+               end;
+            end if;
 
             if Token = Tok_Right_Paren then
                Scan;  -- past right paren
@@ -1688,7 +1759,7 @@ package body Ch6 is
 
          if Style.Mode_In_Check and then Token /= Tok_Out then
             Error_Msg_SP -- CODEFIX
-              ("(style) IN should be omitted");
+              ("(style) IN should be omitted?I?");
          end if;
 
          --  Since Ada 2005, formal objects can have an anonymous access type,
@@ -1874,18 +1945,18 @@ package body Ch6 is
    function P_Return_Statement return Node_Id is
       --  The caller has checked that the initial token is RETURN
 
-      function Is_Simple return Boolean;
+      function Is_Extended return Boolean;
       --  Scan state is just after RETURN (and is left that way). Determine
       --  whether this is a simple or extended return statement by looking
       --  ahead for "identifier :", which implies extended.
 
-      ---------------
-      -- Is_Simple --
-      ---------------
+      -----------------
+      -- Is_Extended --
+      -----------------
 
-      function Is_Simple return Boolean is
-         Scan_State : Saved_Scan_State;
-         Result     : Boolean := True;
+      function Is_Extended return Boolean is
+         Scan_State  : Saved_Scan_State;
+         Is_Extended : Boolean := False;
 
       begin
          if Token = Tok_Identifier then
@@ -1893,14 +1964,14 @@ package body Ch6 is
             Scan; -- past identifier
 
             if Token = Tok_Colon then
-               Result := False; -- It's an extended_return_statement.
+               Is_Extended := True;
             end if;
 
             Restore_Scan_State (Scan_State); -- to identifier
          end if;
 
-         return Result;
-      end Is_Simple;
+         return Is_Extended;
+      end Is_Extended;
 
       Ret_Sloc : constant Source_Ptr := Token_Ptr;
       Ret_Strt : constant Column_Number := Start_Column;
@@ -1922,22 +1993,9 @@ package body Ch6 is
       --  Nontrivial case
 
       else
-         --  Simple_return_statement with expression
-
-         --  We avoid trying to scan an expression if we are at an
-         --  expression terminator since in that case the best error
-         --  message is probably that we have a missing semicolon.
-
-         if Is_Simple then
-            Ret_Node := New_Node (N_Simple_Return_Statement, Ret_Sloc);
-
-            if Token not in Token_Class_Eterm then
-               Set_Expression (Ret_Node, P_Expression_No_Right_Paren);
-            end if;
-
          --  Extended_return_statement (Ada 2005 only -- AI-318):
 
-         else
+         if Is_Extended then
             Error_Msg_Ada_2005_Extension ("extended return statement");
 
             Ret_Node := New_Node (N_Extended_Return_Statement, Ret_Sloc);
@@ -1945,7 +2003,7 @@ package body Ch6 is
             Set_Return_Object_Declarations (Ret_Node, New_List (Decl));
 
             if Token = Tok_With then
-               P_Aspect_Specifications (Decl, False);
+               P_Aspect_Specifications (Decl, Semicolon => False);
             end if;
 
             if Token = Tok_Do then
@@ -1954,13 +2012,47 @@ package body Ch6 is
                Scopes (Scope.Last).Etyp := E_Return;
                Scopes (Scope.Last).Labl := Error;
                Scopes (Scope.Last).Sloc := Ret_Sloc;
-
                Scan; -- past DO
                Set_Handled_Statement_Sequence
                  (Ret_Node, P_Handled_Sequence_Of_Statements);
                End_Statements;
 
                --  Do we need to handle Error_Resync here???
+            end if;
+
+         --  Simple_return_statement or Return_when_Statement
+         --  with expression.
+
+         --  We avoid trying to scan an expression if we are at an
+         --  expression terminator since in that case the best error
+         --  message is probably that we have a missing semicolon.
+
+         else
+            Ret_Node := New_Node (N_Simple_Return_Statement, Ret_Sloc);
+
+            if Token not in Token_Class_Eterm then
+               Set_Expression (Ret_Node, P_Expression_No_Right_Paren);
+            end if;
+
+            --  When the next token is WHEN or IF we know that we are looking
+            --  at a Return_when_statement
+
+            if Token = Tok_When and then not Missing_Semicolon_On_When then
+               Error_Msg_GNAT_Extension ("return when statement", Token_Ptr);
+               Mutate_Nkind (Ret_Node, N_Return_When_Statement);
+
+               Scan; -- past WHEN
+               Set_Condition (Ret_Node, P_Condition);
+
+            --  Allow IF instead of WHEN, giving error message
+
+            elsif Token = Tok_If then
+               Error_Msg_GNAT_Extension ("return when statement", Token_Ptr);
+               Mutate_Nkind (Ret_Node, N_Return_When_Statement);
+
+               T_When;
+               Scan; -- past IF used in place of WHEN
+               Set_Condition (Ret_Node, P_Condition);
             end if;
          end if;
 

@@ -1,6 +1,6 @@
 // class template regex -*- C++ -*-
 
-// Copyright (C) 2013-2021 Free Software Foundation, Inc.
+// Copyright (C) 2013-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -41,26 +41,25 @@ namespace __detail
    * @{
    */
 
+  template<typename _BiIter, bool _Trivial = is_trivially_copyable<_BiIter>::value>
+    struct _ExecutorFrame;
+
   /**
    * @brief Takes a regex and an input string and does the matching.
    *
    * The %_Executor class has two modes: DFS mode and BFS mode, controlled
-   * by the template parameter %__dfs_mode.
+   * by the function parameter %__search_mode.
    */
-  template<typename _BiIter, typename _Alloc, typename _TraitsT,
-	   bool __dfs_mode>
+  template<typename _BiIter, typename _Alloc, typename _TraitsT>
     class _Executor
     {
-      using __search_mode = integral_constant<bool, __dfs_mode>;
-      using __dfs = true_type;
-      using __bfs = false_type;
-
+      enum class _Search_mode : unsigned char { _BFS = 0, _DFS = 1 };
       enum class _Match_mode : unsigned char { _Exact, _Prefix };
 
     public:
       typedef typename iterator_traits<_BiIter>::value_type _CharT;
       typedef basic_regex<_CharT, _TraitsT>                 _RegexT;
-      typedef std::vector<sub_match<_BiIter>, _Alloc>       _ResultsVec;
+      typedef _GLIBCXX_STD_C::vector<sub_match<_BiIter>, _Alloc> _ResultsVec;
       typedef regex_constants::match_flag_type              _FlagT;
       typedef typename _TraitsT::char_class_type            _ClassT;
       typedef _NFA<_TraitsT>                                _NFAT;
@@ -70,20 +69,29 @@ namespace __detail
 		_BiIter         __end,
 		_ResultsVec&    __results,
 		const _RegexT&  __re,
-		_FlagT          __flags)
-      : _M_begin(__begin),
-      _M_end(__end),
-      _M_re(__re),
-      _M_nfa(*__re._M_automaton),
-      _M_results(__results),
-      _M_rep_count(_M_nfa.size()),
-      _M_states(_M_nfa._M_start(), _M_nfa.size()),
-      _M_flags((__flags & regex_constants::match_prev_avail)
-	       ? (__flags
-		  & ~regex_constants::match_not_bol
-		  & ~regex_constants::match_not_bow)
-	       : __flags)
-      { }
+		_FlagT          __flags,
+		bool            __use_dfs)
+      : _M_cur_results(__results.get_allocator()),
+	_M_begin(__begin),
+	_M_end(__end),
+	_M_re(__re),
+	_M_nfa(*__re._M_automaton),
+	_M_results(__results),
+	_M_rep_count(_M_nfa.size()),
+	_M_start(_M_nfa._M_start()),
+	_M_visited_states(nullptr),
+	_M_flags(__flags),
+	_M_search_mode(__use_dfs ? _Search_mode::_DFS : _Search_mode::_BFS)
+      {
+	using namespace regex_constants;
+	if (__flags & match_prev_avail) // ignore not_bol and not_bow
+	  _M_flags &= ~(match_not_bol | match_not_bow);
+	if (_M_search_mode == _Search_mode::_BFS)
+	  _M_visited_states = new bool[_M_nfa.size()];
+      }
+
+      ~_Executor()
+      { delete[] _M_visited_states; }
 
       // Set matched when string exactly matches the pattern.
       bool
@@ -142,17 +150,25 @@ namespace __detail
       _M_handle_alternative(_Match_mode, _StateIdT);
 
       void
+      _M_node(_Match_mode, _StateIdT);
+
+      void
       _M_dfs(_Match_mode __match_mode, _StateIdT __start);
 
       bool
       _M_main(_Match_mode __match_mode)
-      { return _M_main_dispatch(__match_mode, __search_mode{}); }
+      {
+	if (_M_search_mode == _Search_mode::_DFS)
+	  return _M_main_dfs(__match_mode);
+	else
+	  return _M_main_bfs(__match_mode);
+      }
 
       bool
-      _M_main_dispatch(_Match_mode __match_mode, __dfs);
+      _M_main_dfs(_Match_mode __match_mode);
 
       bool
-      _M_main_dispatch(_Match_mode __match_mode, __bfs);
+      _M_main_bfs(_Match_mode __match_mode);
 
       bool
       _M_is_word(_CharT __ch) const
@@ -165,16 +181,39 @@ namespace __detail
       bool
       _M_at_begin() const
       {
-	return _M_current == _M_begin
-	  && !(_M_flags & (regex_constants::match_not_bol
-			   | regex_constants::match_prev_avail));
+	if (_M_current == _M_begin)
+	  {
+	    // match_not_bol means ^ does not match [_M_begin,_M_begin)
+	    if (_M_flags & regex_constants::match_not_bol)
+	      return false;
+	    // match_prev_avail means _M_begin is not the start of the input.
+	    if (_M_flags & regex_constants::match_prev_avail)
+	      {
+		// For ECMAScript multiline matches, check if the previous
+		// character is a line terminator.
+		if (_M_match_multiline())
+		  return _M_is_line_terminator(*std::prev(_M_current));
+		else
+		  return false;
+	      }
+	    else // ^ matches at _M_begin
+	      return true;
+	  }
+	else if (_M_match_multiline())
+	  return _M_is_line_terminator(*std::prev(_M_current));
+	else
+	  return false;
       }
 
       bool
       _M_at_end() const
       {
-	return _M_current == _M_end
-	  && !(_M_flags & regex_constants::match_not_eol);
+	if (_M_current == _M_end)
+	  return !(_M_flags & regex_constants::match_not_eol);
+	else if (_M_match_multiline())
+	  return _M_is_line_terminator(*_M_current);
+	else
+	  return false;
       }
 
       bool
@@ -183,59 +222,47 @@ namespace __detail
       bool
       _M_lookahead(_StateIdT __next);
 
-       // Holds additional information used in BFS-mode.
-      template<typename _SearchMode, typename _ResultsVec>
-	struct _State_info;
+      bool
+      _M_is_line_terminator(_CharT __c) const
+      {
+	const auto& __traits = _M_re._M_automaton->_M_traits;
+	const auto& __ct = use_facet<ctype<_CharT>>(__traits.getloc());
+	const char __n{ __ct.narrow(__c, ' ') };
+	if (__n == '\n')
+	  return true;
+	if (_M_re._M_automaton->_M_options() & regex_constants::ECMAScript)
+	  {
+	    if (__n == '\r')
+	      return true;
+	    // FIXME: U+2028 (line separator) and U+2029 (paragraph separator)
+	  }
+	return false;
+      }
 
-      template<typename _ResultsVec>
-	struct _State_info<__bfs, _ResultsVec>
-	{
-	  explicit
-	  _State_info(_StateIdT __start, size_t __n)
-	  : _M_visited_states(new bool[__n]()), _M_start(__start)
-	  { }
+      bool
+      _M_match_multiline() const noexcept
+      {
+	constexpr auto __m
+	  = regex_constants::ECMAScript | regex_constants::__multiline;
+	return (_M_re._M_automaton->_M_options() & __m) == __m;
+      }
 
-	  bool _M_visited(_StateIdT __i)
+      bool
+      _M_visited(_StateIdT __i)
+      {
+	if (_M_visited_states)
 	  {
 	    if (_M_visited_states[__i])
 	      return true;
 	    _M_visited_states[__i] = true;
-	    return false;
 	  }
+	return false;
+      }
 
-	  void _M_queue(_StateIdT __i, const _ResultsVec& __res)
-	  { _M_match_queue.emplace_back(__i, __res); }
-
-	  // Dummy implementations for BFS mode.
-	  _BiIter* _M_get_sol_pos() { return nullptr; }
-
-	  // Saves states that need to be considered for the next character.
-	  vector<pair<_StateIdT, _ResultsVec>>	_M_match_queue;
-	  // Indicates which states are already visited.
-	  unique_ptr<bool[]>			_M_visited_states;
-	  // To record current solution.
-	  _StateIdT _M_start;
-	};
-
-      template<typename _ResultsVec>
-	struct _State_info<__dfs, _ResultsVec>
-	{
-	  explicit
-	  _State_info(_StateIdT __start, size_t) : _M_start(__start)
-	  { }
-
-	  // Dummy implementations for DFS mode.
-	  bool _M_visited(_StateIdT) const { return false; }
-	  void _M_queue(_StateIdT, const _ResultsVec&) { }
-
-	  _BiIter* _M_get_sol_pos() { return &_M_sol_pos; }
-
-	  // To record current solution.
-	  _StateIdT _M_start;
-	  _BiIter   _M_sol_pos;
-	};
+      _BiIter* _M_get_sol_pos() { return &_M_sol_pos; }
 
     public:
+      _GLIBCXX_STD_C::vector<_ExecutorFrame<_BiIter>>       _M_frames;
       _ResultsVec                                           _M_cur_results;
       _BiIter                                               _M_current;
       _BiIter                                               _M_begin;
@@ -243,9 +270,16 @@ namespace __detail
       const _RegexT&                                        _M_re;
       const _NFAT&                                          _M_nfa;
       _ResultsVec&                                          _M_results;
-      vector<pair<_BiIter, int>>                            _M_rep_count;
-      _State_info<__search_mode, _ResultsVec>		    _M_states;
+      _GLIBCXX_STD_C::vector<pair<_BiIter, int>>            _M_rep_count;
+      // To record current solution.
+      _StateIdT                                             _M_start;
+      _BiIter                                               _M_sol_pos;
+      // (BFS only) Saves states that need to be considered for the next character.
+      _GLIBCXX_STD_C::vector<pair<_StateIdT, _ResultsVec>>  _M_match_queue;
+      // (BFS only) Indicates which states are already visited.
+      bool*                                                 _M_visited_states;
       _FlagT                                                _M_flags;
+      const _Search_mode                                    _M_search_mode;
       // Do we have a solution so far?
       bool                                                  _M_has_sol;
     };

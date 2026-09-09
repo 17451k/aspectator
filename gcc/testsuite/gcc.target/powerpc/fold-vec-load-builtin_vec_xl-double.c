@@ -1,8 +1,8 @@
 /* Verify that overloaded built-ins for __builtin_vec_xl with double
    inputs produce the right code.  */
 
-/* { dg-require-effective-target powerpc_vsx_ok } */
 /* { dg-options "-mvsx -O2" } */
+/* { dg-require-effective-target powerpc_vsx } */
 
 #include <altivec.h>
 
@@ -28,4 +28,4 @@ BUILD_VAR_TEST( test4, vector double, signed long long, vector double);
 BUILD_VAR_TEST( test5, vector double, signed int, vector double);
 BUILD_CST_TEST( test6, vector double, 12, vector double);
 
-/* { dg-final { scan-assembler-times {\mlxvd2x\M|\mlxvx\M|\mlvx\M} 6 } } */
+/* { dg-final { scan-assembler-times {\mlxvd2x\M|\mlxvx\M|\mp?lxv\M|\mlvx\M} 6 } } */

@@ -1,5 +1,5 @@
 ;; microblaze.md -- Machine description for Xilinx MicroBlaze processors.
-;; Copyright (C) 2009-2021 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2026 Free Software Foundation, Inc.
 
 ;; Contributed by Michael Eager <eager@eagercon.com>.
 
@@ -21,6 +21,7 @@
 
 (include "constraints.md")
 (include "predicates.md")
+(include "iterators.md")
 
 ;;----------------------------------------------------
 ;; Constants
@@ -43,6 +44,10 @@
   (UNSPEC_TLS           106)    ;; jump table
   (UNSPEC_SET_TEXT      107)    ;; set text start
   (UNSPEC_TEXT          108)    ;; data text relative
+  (UNSPECV_CAS_BOOL     201)    ;; compare and swap (bool)
+  (UNSPECV_CAS_VAL      202)    ;; compare and swap (val)
+  (UNSPECV_CAS_MEM      203)    ;; compare and swap (mem)
+  (UNSPECV_ATOMIC_FETCH_OP     204)    ;; atomic fetch op
 ])
 
 (define_c_enum "unspec" [
@@ -79,7 +84,7 @@
 ;; bshift 	Shift operations
 
 (define_attr "type"
-  "unknown,branch,jump,call,load,store,move,arith,darith,imul,idiv,icmp,multi,nop,no_delay_arith,no_delay_load,no_delay_store,no_delay_imul,no_delay_move,bshift,fadd,frsub,fmul,fdiv,fcmp,fsl,fsqrt,fcvt,trap"
+  "unknown,branch,jump,call,load,store,move,arith,darith,imul,idiv,icmp,multi,nop,no_delay_arith,no_delay_load,no_delay_store,no_delay_imul,no_delay_move,bshift,fadd,frsub,fmul,fdiv,fcmp,fsl,fsqrt,fcvt,trap,atomic"
   (const_string "unknown"))
 
 ;; Main data type used by the insn
@@ -364,6 +369,9 @@
         (bswap:SI (match_operand:SI 1 "register_operand" "r")))]
   "TARGET_REORDER"
   "swapb %0, %1"
+  [(set_attr "type"	"no_delay_arith")
+   (set_attr "mode"	"SI")
+   (set_attr "length"	"4")]
 )
 
 (define_insn "bswaphi2"
@@ -372,6 +380,9 @@
   "TARGET_REORDER"
   "swapb %0, %1
    swaph %0, %0"
+  [(set_attr "type"	"no_delay_arith")
+   (set_attr "mode"	"SI")
+   (set_attr "length"	"8")]
 )
 
 ;;----------------------------------------------------------------
@@ -1089,8 +1100,8 @@
   "@
    addik\t%0,r0,%1\t# %X1
    addk\t%0,%1,r0
-   lhui\t%0,%1
-   lhui\t%0,%1
+   lhu%i1\t%0,%1
+   lhu%i1\t%0,%1
    sh%i0\t%z1,%0
    sh%i0\t%z1,%0"
   [(set_attr "type"	"arith,move,load,no_delay_load,store,no_delay_store")
@@ -1138,7 +1149,7 @@
   (set_attr "mode"	"QI")
   (set_attr "length"	"4,4,8,4,8,4,8")])
 
-;; Block moves, see microblaze.c for more details.
+;; Block moves, see microblaze.cc for more details.
 ;; Argument 0 is the destination
 ;; Argument 1 is the source
 ;; Argument 2 is the length
@@ -2107,8 +2118,8 @@
   (use (reg:SI R_GOT))]
   "flag_pic"
   {
-    register rtx target2 = gen_rtx_REG (Pmode, 
-			      GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
+    rtx target2
+      = gen_rtx_REG (Pmode, GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
     gen_rtx_CLOBBER (VOIDmode, target2);
     return "brlid\tr15,%0\;%#";
   }
@@ -2122,9 +2133,9 @@
   (clobber (reg:SI R_SR))]
   ""
   {
-    register rtx target = operands[0];
-    register rtx target2 = gen_rtx_REG (Pmode,
-			      GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
+    rtx target = operands[0];
+    rtx target2
+      = gen_rtx_REG (Pmode, GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
     if (GET_CODE (target) == SYMBOL_REF) {
         if (microblaze_break_function_p (SYMBOL_REF_DECL (target))) {
             gen_rtx_CLOBBER (VOIDmode, target2);
@@ -2147,7 +2158,7 @@
   (set_attr "mode"	"none")
   (set_attr "length"	"4")])
 
-;; calls.c now passes a fourth argument, make saber happy
+;; calls.cc now passes a fourth argument, make saber happy
 
 (define_expand "call_value"
   [(parallel [(set (match_operand 0 "register_operand" "=d")
@@ -2216,7 +2227,8 @@
    (use (match_operand:SI 4 "register_operand"))]
   "flag_pic"
   { 
-    register rtx target2=gen_rtx_REG (Pmode,GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
+    rtx target2
+      = gen_rtx_REG (Pmode,GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
 
     gen_rtx_CLOBBER (VOIDmode,target2);
     return "brlid\tr15,%1\;%#";
@@ -2232,8 +2244,9 @@
    (clobber (match_operand:SI 3 "register_operand" "=d"))]
   ""
   { 
-    register rtx target = operands[1];
-    register rtx target2=gen_rtx_REG (Pmode,GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
+    rtx target = operands[1];
+    rtx target2
+      = gen_rtx_REG (Pmode,GP_REG_FIRST + MB_ABI_SUB_RETURN_ADDR_REGNUM);
 
     if (GET_CODE (target) == SYMBOL_REF)
     {

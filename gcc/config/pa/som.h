@@ -1,5 +1,5 @@
 /* Definitions for SOM assembler support.
-   Copyright (C) 1999-2021 Free Software Foundation, Inc.
+   Copyright (C) 1999-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -17,26 +17,15 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-/* So we can conditionalize small amounts of code in pa.c or pa.md.  */
+/* So we can conditionalize small amounts of code in pa.cc or pa.md.  */
 #undef TARGET_SOM
 #define TARGET_SOM 1
-
-/* We do not use BINCL stabs in SOM.
-   ??? If it does not hurt, we probably should to avoid useless divergence
-   from other embedded stabs implementations.  */
-#undef DBX_USE_BINCL
-
-#define DBX_LINES_FUNCTION_RELATIVE 1
-
-/* gdb needs a null N_SO at the end of each file for scattered loading.  */
-
-#define DBX_OUTPUT_NULL_N_SO_AT_MAIN_SOURCE_FILE_END
 
 /* HPUX has a program 'chatr' to list the dependencies of dynamically
    linked executables and shared libraries.  */
 #define LDD_SUFFIX "chatr"
 /* Look for lines like "dynamic   /usr/lib/X11R5/libX11.sl"
-   or "static    /usr/lib/X11R5/libX11.sl". 
+   or "static    /usr/lib/X11R5/libX11.sl".
 
    HPUX 10.20 also has lines like "static branch prediction ..."
    so we filter that out explicitly.
@@ -47,32 +36,29 @@ along with GCC; see the file COPYING3.  If not see
 do {								\
   static int in_shlib_list = 0;					\
   while (*PTR == ' ') PTR++;					\
-  if (strncmp (PTR, "shared library list:",			\
-	       sizeof ("shared library list:") - 1) == 0)	\
+  if (startswith (PTR, "shared library list:"))			\
     {								\
       PTR = 0;							\
       in_shlib_list = 1;					\
     }								\
-  else if (strncmp (PTR, "shared library binding:",		\
-		    sizeof ("shared library binding:") - 1) == 0)\
+  else if (startswith (PTR, "shared library binding:"))		\
     {								\
       PTR = 0;							\
       in_shlib_list = 0;					\
     }								\
-  else if (strncmp (PTR, "static branch prediction disabled",	\
-		    sizeof ("static branch prediction disabled") - 1) == 0)\
+  else if (startswith (PTR, "static branch prediction disabled")) \
     {								\
       PTR = 0;							\
       in_shlib_list = 0;					\
     }								\
   else if (in_shlib_list					\
-	   &&  strncmp (PTR, "dynamic", sizeof ("dynamic") - 1) == 0) \
+	   && startswith (PTR, "dynamic"))			\
     {								\
       PTR += sizeof ("dynamic") - 1;				\
       while (*p == ' ') PTR++;					\
     }								\
   else if (in_shlib_list					\
-	   && strncmp (PTR, "static", sizeof ("static") - 1) == 0) \
+	   && startswith (PTR, "static"))			\
     {								\
       PTR += sizeof ("static") - 1;				\
       while (*p == ' ') PTR++;					\
@@ -301,7 +287,7 @@ do {						\
    initialized variables and functions.  */
 #define MAKE_DECL_ONE_ONLY(DECL) \
   do {									\
-    if (TREE_CODE (DECL) == VAR_DECL					\
+    if (VAR_P (DECL)					\
         && (DECL_INITIAL (DECL) == 0					\
             || DECL_INITIAL (DECL) == error_mark_node))			\
       DECL_COMMON (DECL) = 1;						\
@@ -371,7 +357,7 @@ do {						\
 #define GTHREAD_USE_WEAK 0
 
 /* Shared library suffix.  Collect2 strips the version string after
-   this suffix when generating constructor/destructor names.  */ 
+   this suffix when generating constructor/destructor names.  */
 #define SHLIB_SUFFIX ".sl"
 
 /* We don't have named sections.  */

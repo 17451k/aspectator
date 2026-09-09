@@ -1,4 +1,4 @@
-// Copyright (C) 2017-2021 Free Software Foundation, Inc.
+// Copyright (C) 2017-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -22,11 +22,7 @@
 void
 test01(const char* first, const char* last)
 {
-#if _GLIBCXX_USE_WCHAR_T
   wchar_t wc;
-#else
-  enum W { } wc;
-#endif
   std::from_chars(first, last, wc); // { dg-error "no matching" }
   std::from_chars(first, last, wc, 10); // { dg-error "no matching" }
 
@@ -40,6 +36,13 @@ test01(const char* first, const char* last)
   enum E { } e;
   std::from_chars(first, last, e); // { dg-error "no matching" }
   std::from_chars(first, last, e, 10); // { dg-error "no matching" }
+
+#ifndef __cpp_char8_t
+  struct char8_t { };
+#endif
+  char8_t c8;
+  std::from_chars(first, last, c8); // { dg-error "no matching" }
+  std::from_chars(first, last, c8, 10); // { dg-error "no matching" }
 }
 
 // { dg-prune-output "enable_if" }

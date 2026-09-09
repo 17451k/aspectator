@@ -1,22 +1,20 @@
-/* Copyright (C) 2011-2021 by The D Language Foundation, All Rights Reserved
+/* Copyright (C) 2011-2026 by The D Language Foundation, All Rights Reserved
  * written by Walter Bright
- * http://www.digitalmars.com
+ * https://www.digitalmars.com
  * Distributed under the Boost Software License, Version 1.0.
- * http://www.boost.org/LICENSE_1_0.txt
+ * https://www.boost.org/LICENSE_1_0.txt
  * https://github.com/dlang/dmd/blob/master/src/dmd/root/array.h
  */
 
 #pragma once
 
 #include "dsystem.h"
-#include "dcompat.h"
-#include "object.h"
 #include "rmem.h"
 
 template <typename TYPE>
 struct Array
 {
-    size_t length;
+    d_size_t length;
 
   private:
     DArray<TYPE> data;
@@ -28,7 +26,7 @@ struct Array
   public:
     Array()
     {
-        data.ptr = NULL;
+        data.ptr = nullptr;
         length = 0;
         data.length = 0;
     }
@@ -42,17 +40,17 @@ struct Array
     char *toChars() const
     {
         const char **buf = (const char **)mem.xmalloc(length * sizeof(const char *));
-        size_t len = 2;
-        for (size_t u = 0; u < length; u++)
+        d_size_t len = 2;
+        for (d_size_t u = 0; u < length; u++)
         {
-            buf[u] = ((RootObject *)data.ptr[u])->toChars();
+            buf[u] = ((TYPE)data.ptr[u])->toChars();
             len += strlen(buf[u]) + 1;
         }
         char *str = (char *)mem.xmalloc(len);
 
         str[0] = '[';
         char *p = str + 1;
-        for (size_t u = 0; u < length; u++)
+        for (d_size_t u = 0; u < length; u++)
         {
             if (u)
                 *p++ = ',';
@@ -77,7 +75,7 @@ struct Array
         insert(length, a);
     }
 
-    void reserve(size_t nentries)
+    void reserve(d_size_t nentries)
     {
         //printf("Array::reserve: length = %d, data.length = %d, nentries = %d\n", (int)length, (int)data.length, (int)nentries);
         if (data.length - length < nentries)
@@ -88,7 +86,7 @@ struct Array
                 if (nentries <= SMALLARRAYCAP)
                 {
                     data.length = SMALLARRAYCAP;
-                    data.ptr = SMALLARRAYCAP ? &smallarray[0] : NULL;
+                    data.ptr = SMALLARRAYCAP ? &smallarray[0] : nullptr;
                 }
                 else
                 {
@@ -106,7 +104,7 @@ struct Array
             {
                 /* Increase size by 1.5x to avoid excessive memory fragmentation
                  */
-                size_t increment = length / 2;
+                d_size_t increment = length / 2;
                 if (nentries > increment)       // if 1.5 is not enough
                     increment = nentries;
                 data.length = length + increment;
@@ -115,18 +113,18 @@ struct Array
         }
     }
 
-    void remove(size_t i)
+    void remove(d_size_t i)
     {
         if (length - i - 1)
             memmove(data.ptr + i, data.ptr + i + 1, (length - i - 1) * sizeof(TYPE));
         length--;
     }
 
-    void insert(size_t index, Array *a)
+    void insert(d_size_t index, Array *a)
     {
         if (a)
         {
-            size_t d = a->length;
+            d_size_t d = a->length;
             reserve(d);
             if (length != index)
                 memmove(data.ptr + index + d, data.ptr + index, (length - index) * sizeof(TYPE));
@@ -135,7 +133,7 @@ struct Array
         }
     }
 
-    void insert(size_t index, TYPE ptr)
+    void insert(d_size_t index, TYPE ptr)
     {
         reserve(1);
         memmove(data.ptr + index + 1, data.ptr + index, (length - index) * sizeof(TYPE));
@@ -143,7 +141,7 @@ struct Array
         length++;
     }
 
-    void setDim(size_t newdim)
+    void setDim(d_size_t newdim)
     {
         if (length < newdim)
         {
@@ -152,9 +150,9 @@ struct Array
         length = newdim;
     }
 
-    size_t find(TYPE ptr) const
+    d_size_t find(TYPE ptr) const
     {
-        for (size_t i = 0; i < length; i++)
+        for (d_size_t i = 0; i < length; i++)
         {
             if (data.ptr[i] == ptr)
                 return i;
@@ -167,7 +165,7 @@ struct Array
         return find(ptr) != SIZE_MAX;
     }
 
-    TYPE& operator[] (size_t index)
+    TYPE& operator[] (d_size_t index)
     {
 #ifdef DEBUG
         assert(index < length);
@@ -205,28 +203,4 @@ struct Array
     {
         return data.ptr[--length];
     }
-
-    void sort()
-    {
-        struct ArraySort
-        {
-            static int
-    #if _WIN32
-              __cdecl
-    #endif
-            Array_sort_compare(const void *x, const void *y)
-            {
-                RootObject *ox = *(RootObject **)const_cast<void *>(x);
-                RootObject *oy = *(RootObject **)const_cast<void *>(y);
-
-                return ox->compare(oy);
-            }
-        };
-
-        if (length)
-        {
-            qsort(data.ptr, length, sizeof(RootObject *), &ArraySort::Array_sort_compare);
-        }
-    }
 };
-

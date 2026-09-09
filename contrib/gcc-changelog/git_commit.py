@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+# Copyright (C) 2020-2026 Free Software Foundation, Inc.
 #
 # This file is part of GCC.
 #
@@ -14,12 +16,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GCC; see the file COPYING3.  If not see
-# <http://www.gnu.org/licenses/>.  */
+# <http://www.gnu.org/licenses/>.
 
 import difflib
 import os
 import re
 import sys
+from collections import defaultdict
 
 default_changelog_locations = {
     'c++tools',
@@ -30,20 +33,24 @@ default_changelog_locations = {
     'contrib/regression',
     'fixincludes',
     'gcc/ada',
+    'gcc/algol68',
     'gcc/analyzer',
     'gcc/brig',
     'gcc/c',
     'gcc/c-family',
     'gcc',
+    'gcc/cobol',
     'gcc/cp',
     'gcc/d',
     'gcc/fortran',
     'gcc/go',
     'gcc/jit',
     'gcc/lto',
+    'gcc/m2',
     'gcc/objc',
     'gcc/objcp',
     'gcc/po',
+    'gcc/rust',
     'gcc/testsuite',
     'gnattools',
     'gotools',
@@ -58,16 +65,19 @@ default_changelog_locations = {
     'libcpp/po',
     'libdecnumber',
     'libffi',
+    'libga68',
     'libgcc',
     'libgcc/config/avr/libf7',
     'libgcc/config/libbid',
+    'libgcobol',
     'libgfortran',
+    'libgm2',
     'libgomp',
+    'libgrust',
     'libhsail-rt',
     'libiberty',
     'libitm',
     'libobjc',
-    'liboffloadmic',
     'libphobos',
     'libquadmath',
     'libsanitizer',
@@ -80,14 +90,17 @@ default_changelog_locations = {
 
 bug_components = {
     'ada',
+    'algol68',
     'analyzer',
     'boehm-gc',
     'bootstrap',
     'c',
     'c++',
+    'cobol',
     'd',
     'debug',
     'demangler',
+    'diagnostics',
     'driver',
     'fastjar',
     'fortran',
@@ -99,11 +112,13 @@ bug_components = {
     'java',
     'jit',
     'libbacktrace',
+    'libcc1',
     'libf2c',
     'libffi',
     'libfortran',
     'libgcc',
     'libgcj',
+    'libgdiagnostics',
     'libgomp',
     'libitm',
     'libobjc',
@@ -121,7 +136,9 @@ bug_components = {
     'preprocessor',
     'regression',
     'rtl-optimization',
+    'rust',
     'sanitizer',
+    'sarif-replay',
     'spam',
     'target',
     'testsuite',
@@ -134,10 +151,14 @@ ignored_prefixes = {
     'gcc/go/gofrontend/',
     'gcc/testsuite/gdc.test/',
     'gcc/testsuite/go.test/test/',
+    'libffi/',
     'libgo/',
+    'libgrust/rustc-lib/core/',
+    'libgrust/rustc-lib/stdarch/',
     'libphobos/libdruntime/',
     'libphobos/src/',
     'libsanitizer/',
+    'zlib/',
     }
 
 wildcard_prefixes = {
@@ -156,13 +177,15 @@ author_line_regex = \
         re.compile(r'^(?P<datetime>\d{4}-\d{2}-\d{2})\ {2}(?P<name>.*  <.*>)')
 additional_author_regex = re.compile(r'^\t(?P<spaces>\ *)?(?P<name>.*  <.*>)')
 changelog_regex = re.compile(r'^(?:[fF]or +)?([a-z0-9+-/]*)ChangeLog:?')
-pr_regex = re.compile(r'\tPR (?P<component>[a-z+-]+\/)?([0-9]+)$')
+subject_pr_regex = re.compile(r'(^|\W)PR\s+(?P<component>[a-zA-Z0-9+-]+)/(?P<pr>\d{4,7})')
+subject_pr2_regex = re.compile(r'[(\[]PR\s*(?P<pr>\d{4,7})[)\]]')
+pr_regex = re.compile(r'\tPR (?P<component>[a-z0-9+-]+\/)?(?P<pr>[0-9]+)$')
 dr_regex = re.compile(r'\tDR ([0-9]+)$')
 star_prefix_regex = re.compile(r'\t\*(?P<spaces>\ *)(?P<content>.*)')
 end_of_location_regex = re.compile(r'[\[<(:]')
 item_empty_regex = re.compile(r'\t(\* \S+ )?\(\S+\):\s*$')
 item_parenthesis_regex = re.compile(r'\t(\*|\(\S+\):)')
-revert_regex = re.compile(r'This reverts commit (?P<hash>\w+).$')
+revert_regex = re.compile(r'This reverts commit (?P<hash>[0-9a-f]+)\.$')
 cherry_pick_regex = re.compile(r'cherry picked from commit (?P<hash>\w+)')
 
 LINE_LIMIT = 100
@@ -194,9 +217,10 @@ def decode_path(path):
 
 
 class Error:
-    def __init__(self, message, line=None):
+    def __init__(self, message, line=None, details=None):
         self.message = message
         self.line = line
+        self.details = details
 
     def __repr__(self):
         s = self.message
@@ -215,7 +239,7 @@ class ChangeLogEntry:
         self.lines = []
         self.files = []
         self.file_patterns = []
-        self.opened_parentheses = 0
+        self.parentheses_stack = []
 
     def parse_file_names(self):
         # Whether the content currently processed is between a star prefix the
@@ -295,9 +319,11 @@ class GitCommit:
         self.changes = None
         self.changelog_entries = []
         self.errors = []
+        self.warnings = []
         self.top_level_authors = []
         self.co_authors = []
         self.top_level_prs = []
+        self.subject_prs = set()
         self.cherry_pick_commit = None
         self.revert_commit = None
         self.commit_to_info_hook = commit_to_info_hook
@@ -307,14 +333,36 @@ class GitCommit:
         if self.info.lines and self.info.lines[0] == 'Update copyright years.':
             return
 
+        if self.info.lines and len(self.info.lines) > 1 and self.info.lines[1]:
+            self.errors.append(Error('Expected empty second line in commit message', info.lines[0]))
+
         # Identify first if the commit is a Revert commit
         for line in self.info.lines:
-            m = revert_regex.match(line)
+            m = revert_regex.fullmatch(line)
             if m:
                 self.revert_commit = m.group('hash')
                 break
         if self.revert_commit:
+            # The following happens for get_email.py:
+            if not self.commit_to_info_hook:
+                self.warnings.append(f"Invoked script can not obtain info about "
+                                     f"reverted commits such as '{self.revert_commit}'")
+                return
             self.info = self.commit_to_info_hook(self.revert_commit)
+            if not self.info:
+                self.errors.append(Error('Cannot find to-be-reverted commit', self.revert_commit))
+                return
+
+        self.check_commit_email()
+
+        # Extract PR numbers form the subject line
+        # Match either [PRnnnn] / (PRnnnn) or PR component/nnnn
+        if self.info.lines and not self.revert_commit:
+            self.subject_prs = {m.group('pr') for m in subject_pr2_regex.finditer(info.lines[0])}
+            for m in subject_pr_regex.finditer(info.lines[0]):
+                if not m.group('component') in bug_components:
+                    self.errors.append(Error('invalid PR component in subject', info.lines[0]))
+                self.subject_prs.add(m.group('pr'))
 
         # Allow complete deletion of ChangeLog files in a commit
         project_files = [f for f in self.info.modified_files
@@ -326,9 +374,11 @@ class GitCommit:
             # All modified files are only MISC files
             return
         elif project_files:
-            self.errors.append(Error('ChangeLog, DATESTAMP, BASE-VER and '
-                                     'DEV-PHASE updates should be done '
-                                     'separately from normal commits'))
+            err = 'ChangeLog, DATESTAMP, BASE-VER and DEV-PHASE updates ' \
+                  'should be done separately from normal commits\n' \
+                  '(note: ChangeLog entries will be automatically ' \
+                  'added by a cron job)'
+            self.errors.append(Error(err))
             return
 
         all_are_ignored = (len(project_files) + len(ignored_files)
@@ -341,9 +391,13 @@ class GitCommit:
             self.check_for_broken_parentheses()
             self.deduce_changelog_locations()
             self.check_file_patterns()
+            self.check_line_start()
             if not self.errors:
                 self.check_mentioned_files()
                 self.check_for_correct_changelog()
+        if self.subject_prs:
+            self.errors.append(Error('PR %s in subject but not in changelog' %
+                                     ', '.join(self.subject_prs), self.info.lines[0]))
 
     @property
     def success(self):
@@ -458,7 +512,9 @@ class GitCommit:
                     else:
                         author_tuple = (m.group('name'), None)
                 elif pr_regex.match(line):
-                    component = pr_regex.match(line).group('component')
+                    m = pr_regex.match(line)
+                    component = m.group('component')
+                    pr = m.group('pr')
                     if not component:
                         self.errors.append(Error('missing PR component', line))
                         continue
@@ -467,6 +523,8 @@ class GitCommit:
                         continue
                     else:
                         pr_line = line.lstrip()
+                    if pr in self.subject_prs:
+                        self.subject_prs.remove(pr)
                 elif dr_regex.match(line):
                     pr_line = line.lstrip()
 
@@ -521,7 +579,7 @@ class GitCommit:
                     m = star_prefix_regex.match(line)
                     if m:
                         if (len(m.group('spaces')) != 1 and
-                                last_entry.opened_parentheses == 0):
+                                not last_entry.parentheses_stack):
                             msg = 'one space should follow asterisk'
                             self.errors.append(Error(msg, line))
                         else:
@@ -546,13 +604,13 @@ class GitCommit:
     def process_parentheses(self, last_entry, line):
         for c in line:
             if c == '(':
-                last_entry.opened_parentheses += 1
+                last_entry.parentheses_stack.append(line)
             elif c == ')':
-                if last_entry.opened_parentheses == 0:
+                if not last_entry.parentheses_stack:
                     msg = 'bad wrapping of parenthesis'
                     self.errors.append(Error(msg, line))
                 else:
-                    last_entry.opened_parentheses -= 1
+                    del last_entry.parentheses_stack[-1]
 
     def parse_file_names(self):
         for entry in self.changelog_entries:
@@ -578,9 +636,16 @@ class GitCommit:
 
     def check_for_broken_parentheses(self):
         for entry in self.changelog_entries:
-            if entry.opened_parentheses != 0:
+            if entry.parentheses_stack:
                 msg = 'bad parentheses wrapping'
-                self.errors.append(Error(msg, entry.lines[0]))
+                self.errors.append(Error(msg, entry.parentheses_stack[-1]))
+
+    def check_line_start(self):
+        for entry in self.changelog_entries:
+            for line in entry.lines:
+                if line.startswith('\t '):
+                    msg = 'extra space after tab'
+                    self.errors.append(Error(msg, line))
 
     def get_file_changelog_location(self, changelog_file):
         for file in self.info.modified_files:
@@ -594,7 +659,7 @@ class GitCommit:
 
     def deduce_changelog_locations(self):
         for entry in self.changelog_entries:
-            if not entry.folder:
+            if entry.folder is None:
                 changelog = None
                 for file in entry.files:
                     location = self.get_file_changelog_location(file)
@@ -656,9 +721,12 @@ class GitCommit:
         for file in sorted(mentioned_files - changed_files):
             msg = 'unchanged file mentioned in a ChangeLog'
             candidates = difflib.get_close_matches(file, changed_files, 1)
+            details = None
             if candidates:
                 msg += f' (did you mean "{candidates[0]}"?)'
-            self.errors.append(Error(msg, file))
+                details = '\n'.join(difflib.Differ().compare([file], [candidates[0]])).rstrip()
+            self.errors.append(Error(msg, file, details))
+        auto_add_warnings = defaultdict(list)
         for file in sorted(changed_files - mentioned_files):
             if not self.in_ignored_location(file):
                 if file in self.new_files:
@@ -673,20 +741,28 @@ class GitCommit:
                         if not prs:
                             # if all ChangeLog entries have identical PRs
                             # then use them
-                            prs = self.changelog_entries[0].prs
-                            for entry in self.changelog_entries:
-                                if entry.prs != prs:
-                                    prs = []
-                                    break
+                            if self.changelog_entries:
+                                prs = self.changelog_entries[0].prs
+                                for entry in self.changelog_entries:
+                                    if entry.prs != prs:
+                                        prs = []
+                                        break
                         entry = ChangeLogEntry(changelog_location,
                                                self.top_level_authors,
                                                prs)
                         self.changelog_entries.append(entry)
                     # strip prefix of the file
                     assert file.startswith(entry.folder)
-                    file = file[len(entry.folder):].lstrip('/')
-                    entry.lines.append('\t* %s: New file.' % file)
-                    entry.files.append(file)
+                    # do not allow auto-addition of New files
+                    # for the top-level folder
+                    if entry.folder:
+                        file = file[len(entry.folder):].lstrip('/')
+                        entry.lines.append('\t* %s: New file.' % file)
+                        entry.files.append(file)
+                        auto_add_warnings[entry.folder].append(file)
+                    else:
+                        msg = 'new file in the top-level folder not mentioned in a ChangeLog'
+                        self.errors.append(Error(msg, file))
                 else:
                     used_pattern = [p for p in mentioned_patterns
                                     if file.startswith(p)]
@@ -701,6 +777,11 @@ class GitCommit:
             if pattern not in used_patterns:
                 error = "pattern doesn't match any changed files"
                 self.errors.append(Error(error, pattern))
+        for entry, val in auto_add_warnings.items():
+            if len(val) == 1:
+                self.warnings.append(f"Auto-added new file '{entry}/{val[0]}'")
+            else:
+                self.warnings.append(f"Auto-added {len(val)} new files in '{entry}'")
 
     def check_for_correct_changelog(self):
         for entry in self.changelog_entries:
@@ -733,12 +814,18 @@ class GitCommit:
                 orig_date = self.original_info.date
                 current_timestamp = orig_date.strftime(DATE_FORMAT)
             elif self.cherry_pick_commit:
-                info = self.commit_to_info_hook(self.cherry_pick_commit)
+                info = (self.commit_to_info_hook
+                        and self.commit_to_info_hook(self.cherry_pick_commit))
                 # it can happen that it is a cherry-pick for a different
                 # repository
                 if info:
                     timestamp = info.date.strftime(DATE_FORMAT)
                 else:
+                    if self.commit_to_info_hook:
+                        self.warnings.append(f"Cherry-picked commit not found: '{self.cherry_pick_commit}'")
+                    else:
+                        self.warnings.append(f"Invoked script can not obtain info about "
+                                             f"cherry-picked commits such as '{self.revert_commit}'")
                     timestamp = current_timestamp
             elif not timestamp or use_commit_ts:
                 timestamp = current_timestamp
@@ -775,3 +862,18 @@ class GitCommit:
         print('Errors:')
         for error in self.errors:
             print(error)
+
+    def print_warnings(self):
+        if self.warnings:
+            print('Warnings:')
+            for warning in self.warnings:
+                print(warning)
+
+    def check_commit_email(self):
+        # Parse 'Martin Liska  <mliska@suse.cz>'
+        email = self.info.author.split(' ')[-1].strip('<>')
+
+        # Verify that all characters are ASCII
+        # TODO: Python 3.7 provides a nicer function: isascii
+        if len(email) != len(email.encode()):
+            self.errors.append(Error(f'non-ASCII characters in git commit email address ({email})'))

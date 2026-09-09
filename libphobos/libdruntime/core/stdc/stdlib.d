@@ -9,7 +9,7 @@
  *    (See accompanying file LICENSE)
  * Authors:   Sean Kelly
  * Standards: ISO/IEC 9899:1999 (E)
- * Source: $(DRUNTIMESRC src/core/stdc/_stdlib.d)
+ * Source: $(DRUNTIMESRC core/stdc/_stdlib.d)
  */
 
 module core.stdc.stdlib;
@@ -26,8 +26,13 @@ else version (TVOS)
 else version (WatchOS)
     version = Darwin;
 
+version (CRuntime_Glibc)
+    version = AlignedAllocSupported;
+else version (CRuntime_Newlib)
+    version = AlignedAllocSupported;
+else {}
+
 extern (C):
-@system:
 
 /* Placed outside `nothrow` and `@nogc` in order to not constrain what the callback does.
  */
@@ -65,8 +70,8 @@ struct div_t
 ///
 struct ldiv_t
 {
-    int quot,
-        rem;
+    c_long quot,
+           rem;
 }
 
 ///
@@ -94,7 +99,9 @@ else version (DragonFlyBSD) enum RAND_MAX = 0x7fffffff;
 else version (Solaris) enum RAND_MAX = 0x7fff;
 else version (CRuntime_Bionic) enum RAND_MAX = 0x7fffffff;
 else version (CRuntime_Musl) enum RAND_MAX = 0x7fffffff;
+else version (CRuntime_Newlib) enum RAND_MAX = 0x7fffffff;
 else version (CRuntime_UClibc) enum RAND_MAX = 0x7fffffff;
+else version (WASI) enum RAND_MAX = 0x7fffffff;
 else static assert( false, "Unsupported platform" );
 
 ///
@@ -126,7 +133,7 @@ version (CRuntime_Microsoft)
         ///
         real __mingw_strtold(scope inout(char)* nptr, scope inout(char)** endptr);
         ///
-        alias __mingw_strtold strtold;
+        alias strtold = __mingw_strtold;
     }
     else
     {
@@ -140,8 +147,16 @@ version (CRuntime_Microsoft)
 }
 else
 {
-    /// Added to Bionic since Lollipop.
-    real strtold(scope inout(char)* nptr, scope inout(char)** endptr);
+    static if (PPCUseIEEE128)
+    {
+        real __strtoieee128(scope inout(char)* nptr, scope inout(char)** endptr);
+        alias strtold = __strtoieee128;
+    }
+    else
+    {
+        /// Added to Bionic since Lollipop.
+        real strtold(scope inout(char)* nptr, scope inout(char)** endptr);
+    }
 }
 
 // No unsafe pointer manipulation.
@@ -165,6 +180,12 @@ void*   calloc(size_t nmemb, size_t size);
 void*   realloc(void* ptr, size_t size);
 ///
 void    free(void* ptr);
+
+/// since C11
+version (AlignedAllocSupported)
+{
+    void* aligned_alloc(size_t alignment, size_t size);
+}
 
 ///
 noreturn abort() @safe;

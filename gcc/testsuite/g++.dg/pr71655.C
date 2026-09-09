@@ -2,9 +2,11 @@
 // { dg-do compile }
 // { dg-options "-O3 -std=c++11" }
 // { dg-additional-options "-msse4" { target i?86-*-* x86_64-*-* } }
+// { dg-skip-if "requires hosted libstdc++ for valarray" { ! hostedlib } }
 
 #include <functional>
 #include <valarray>
+#include <array>
 extern int var_16, le_s5, le_s6, le_s9;
 std::array<std::array<std::array<long, 8>, 4>, 24> v4;
 extern std::array<std::array<int, 48>, 18> v15;

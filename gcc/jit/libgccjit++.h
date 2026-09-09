@@ -1,5 +1,5 @@
 /* A C++ API for libgccjit, purely as inline wrapper functions.
-   Copyright (C) 2014-2021 Free Software Foundation, Inc.
+   Copyright (C) 2014-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -197,6 +197,20 @@ namespace gccjit
     rvalue new_rvalue (type vector_type,
 		       std::vector<rvalue> elements) const;
 
+    rvalue new_struct_ctor (type type_,
+			    std::vector<field> &fields,
+			    std::vector<rvalue> &values,
+			    location loc = location ());
+
+    rvalue new_array_ctor (type type_,
+			   std::vector<rvalue> &values,
+			   location loc = location ());
+
+    rvalue new_union_ctor (type type_,
+			   field field,
+			   rvalue value,
+			   location loc = location ());
+
     /* Generic unary operations...  */
     rvalue new_unary_op (enum gcc_jit_unary_op op,
 			 type result_type,
@@ -346,6 +360,7 @@ namespace gccjit
     type get_volatile ();
     type get_aligned (size_t alignment_in_bytes);
     type get_vector (size_t num_units);
+    type get_restrict ();
 
     // Shortcuts for getting values of numeric types:
     rvalue zero ();
@@ -500,6 +515,7 @@ namespace gccjit
 
     rvalue get_address (location loc = location ());
     lvalue set_initializer (const void *blob, size_t num_bytes);
+    lvalue set_initializer_rvalue (rvalue init_value);
   };
 
   class param : public lvalue
@@ -825,7 +841,7 @@ context::new_struct_type (const std::string &name,
 			  location loc)
 {
   /* Treat std::vector as an array, relying on it not being resized: */
-  field *as_array_of_wrappers = &fields[0];
+  field *as_array_of_wrappers = fields.data ();
 
   /* Treat the array as being of the underlying pointers, relying on
      the wrapper type being such a pointer internally.	*/
@@ -869,7 +885,7 @@ context::new_function (enum gcc_jit_function_kind kind,
 		       location loc)
 {
   /* Treat std::vector as an array, relying on it not being resized: */
-  param *as_array_of_wrappers = &params[0];
+  param *as_array_of_wrappers = params.data ();
 
   /* Treat the array as being of the underlying pointers, relying on
      the wrapper type being such a pointer internally.	*/
@@ -972,7 +988,7 @@ context::new_rvalue (type vector_type,
 		     std::vector<rvalue> elements) const
 {
   /* Treat std::vector as an array, relying on it not being resized: */
-  rvalue *as_array_of_wrappers = &elements[0];
+  rvalue *as_array_of_wrappers = elements.data ();
 
   /* Treat the array as being of the underlying pointers, relying on
      the wrapper type being such a pointer internally.	*/
@@ -1178,7 +1194,7 @@ context::new_call (function func,
 		   location loc)
 {
   /* Treat std::vector as an array, relying on it not being resized: */
-  rvalue *as_array_of_wrappers = &args[0];
+  rvalue *as_array_of_wrappers = args.data ();
 
   /* Treat the array as being of the underlying pointers, relying on
      the wrapper type being such a pointer internally.	*/
@@ -1396,6 +1412,12 @@ type::get_const ()
 }
 
 inline type
+type::get_restrict ()
+{
+  return type (gcc_jit_type_get_restrict (get_inner_type ()));
+}
+
+inline type
 type::get_volatile ()
 {
   return type (gcc_jit_type_get_volatile (get_inner_type ()));
@@ -1593,7 +1615,7 @@ block::end_with_switch (rvalue expr,
 			location loc)
 {
   /* Treat std::vector as an array, relying on it not being resized: */
-  case_ *as_array_of_wrappers = &cases[0];
+  case_ *as_array_of_wrappers = cases.data ();
 
   /* Treat the array as being of the underlying pointers, relying on
      the wrapper type being such a pointer internally.	*/
@@ -1623,7 +1645,7 @@ block::end_with_extended_asm_goto (const std::string &asm_template,
 				   location loc)
 {
   /* Treat std::vector as an array, relying on it not being resized: */
-  block *as_array_of_wrappers = &goto_blocks[0];
+  block *as_array_of_wrappers = goto_blocks.data ();
 
   /* Treat the array as being of the underlying pointers, relying on
      the wrapper type being such a pointer internally.  */
@@ -1830,6 +1852,81 @@ lvalue::set_initializer (const void *blob, size_t num_bytes)
                                   num_bytes);
   return *this;
 }
+
+inline lvalue
+lvalue::set_initializer_rvalue (rvalue init_value)
+{
+  return lvalue (gcc_jit_global_set_initializer_rvalue (
+		   get_inner_lvalue (),
+		   init_value.get_inner_rvalue ()));
+}
+
+inline rvalue
+context::new_struct_ctor (type type_,
+			  std::vector<field> &fields,
+			  std::vector<rvalue> &values,
+			  location loc)
+{
+  field *pfields = nullptr;
+  if (fields.size ())
+    pfields = fields.data ();
+
+  gcc_jit_field **fields_arr =
+    reinterpret_cast<gcc_jit_field **> (pfields);
+
+  rvalue *pvalues = nullptr;
+  if (values.size ())
+    pvalues = values.data ();
+
+  gcc_jit_rvalue **values_arr =
+    reinterpret_cast<gcc_jit_rvalue **> (pvalues);
+
+  return rvalue (
+	   gcc_jit_context_new_struct_constructor (
+	     m_inner_ctxt,
+	     loc.get_inner_location (),
+	     type_.get_inner_type (),
+	     (int)values.size (),
+	     fields_arr,
+	     values_arr));
+}
+
+inline rvalue
+context::new_array_ctor (type type_,
+			 std::vector<rvalue> &values,
+			 location loc)
+{
+  rvalue *pvalues = nullptr;
+  if (values.size ())
+    pvalues = values.data ();
+
+  gcc_jit_rvalue **values_arr =
+    reinterpret_cast<gcc_jit_rvalue **> (pvalues);
+
+  return rvalue (
+	   gcc_jit_context_new_array_constructor (
+	     m_inner_ctxt,
+	     loc.get_inner_location (),
+	     type_.get_inner_type (),
+	     (int)values.size (),
+	     values_arr));
+}
+
+inline rvalue
+context::new_union_ctor (type type_,
+			 field field,
+			 rvalue value,
+			 location loc)
+{
+  return rvalue (
+	   gcc_jit_context_new_union_constructor (
+	     m_inner_ctxt,
+	     loc.get_inner_location (),
+	     type_.get_inner_type (),
+	     field.get_inner_field (),
+	     value.get_inner_rvalue ()));
+}
+
 
 // class param : public lvalue
 inline param::param () : lvalue () {}

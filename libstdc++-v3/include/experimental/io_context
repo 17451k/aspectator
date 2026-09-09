@@ -1,6 +1,6 @@
 // <experimental/io_service> -*- C++ -*-
 
-// Copyright (C) 2015-2021 Free Software Foundation, Inc.
+// Copyright (C) 2015-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -30,12 +30,15 @@
 #ifndef _GLIBCXX_EXPERIMENTAL_IO_SERVICE
 #define _GLIBCXX_EXPERIMENTAL_IO_SERVICE 1
 
+#ifdef _GLIBCXX_SYSHDR
 #pragma GCC system_header
+#endif
+
+#include <bits/requires_hosted.h> // experimental is currently omitted
 
 #if __cplusplus >= 201402L
 
 #include <atomic>
-#include <chrono>
 #include <forward_list>
 #include <functional>
 #include <system_error>
@@ -43,6 +46,7 @@
 #include <vector>
 #include <experimental/netfwd>
 #include <experimental/executor>
+#include <bits/chrono.h>
 #if _GLIBCXX_HAVE_UNISTD_H
 # include <unistd.h>
 #endif
@@ -146,7 +150,7 @@ inline namespace v1
     io_context() : _M_work_count(0) { }
 
     explicit
-    io_context(int __concurrency_hint) : _M_work_count(0) { }
+    io_context(int /* __concurrency_hint */) : _M_work_count(0) { }
 
     io_context(const io_context&) = delete;
     io_context& operator=(const io_context&) = delete;
@@ -475,6 +479,9 @@ inline namespace v1
 	return 0;
       }
 
+    // The caller must know what the wait-type __w will be interpreted.
+    // In the current implementation the reactor is based on <poll.h>
+    // so the parameter must be one of POLLIN, POLLOUT or POLLERR.
     template<typename _Op>
       void
       async_wait(int __fd, int __w, _Op&& __op)
@@ -557,7 +564,11 @@ inline namespace v1
 	}
       };
 
+#ifdef _GLIBCXX_HAS_GTHREADS
     atomic<count_type>		_M_work_count;
+#else
+    count_type			_M_work_count;
+#endif
     mutable execution_context::mutex_type		_M_mtx;
     queue<function<void()>>	_M_op;
     bool			_M_stopped = false;
@@ -713,6 +724,7 @@ inline namespace v1
 
     struct __reactor
     {
+#ifdef _GLIBCXX_HAVE_POLL_H
       __reactor() : _M_fds(1)
       {
 	int __pipe[2];
@@ -736,6 +748,7 @@ inline namespace v1
 	::close(_M_fds.back().fd);
 	::close(_M_notify_wr);
       }
+#endif
 
       // write a notification byte to the pipe (ignoring errors)
       void _M_notify()
@@ -796,8 +809,12 @@ inline namespace v1
 	_M_notify();
       }
 
-# ifdef _GLIBCXX_HAVE_POLL_H
+#ifdef _GLIBCXX_HAVE_POLL_H
       using __fdvec = vector<::pollfd>;
+#else
+      struct dummy_pollfd { int fd = -1; short events = 0, revents = 0; };
+      using __fdvec = vector<dummy_pollfd>;
+#endif
 
       // Find first element p such that !(p.fd < __fd)
       // N.B. always returns a dereferencable iterator.
@@ -813,6 +830,7 @@ inline namespace v1
       __status
       wait(__fdvec& __fds, chrono::milliseconds __timeout)
       {
+#ifdef _GLIBCXX_HAVE_POLL_H
 	// XXX not thread-safe!
 	__fds = _M_fds;  // take snapshot to pass to poll()
 
@@ -842,10 +860,14 @@ inline namespace v1
 	__fds.erase(__part, __fds.end());
 
 	return _S_ok;
+#else
+	(void) __timeout;
+	__fds.clear();
+	return _S_error;
+#endif
       }
 
       __fdvec _M_fds;	// _M_fds.back() is the read end of the self-pipe
-#endif
       int _M_notify_wr;	// write end of the self-pipe
     };
 

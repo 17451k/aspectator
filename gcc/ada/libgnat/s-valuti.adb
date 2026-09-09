@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,9 +29,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System.Case_Util; use System.Case_Util;
+with System.Case_Util_NSS; use System.Case_Util_NSS;
 
-package body System.Val_Util is
+package body System.Val_Util
+  with SPARK_Mode
+is
 
    ---------------
    -- Bad_Value --
@@ -42,6 +44,7 @@ package body System.Val_Util is
       --  Bad_Value might be called with very long strings allocated on the
       --  heap. Limit the size of the message so that we avoid creating a
       --  Storage_Error during error handling.
+
       if S'Length > 127 then
          raise Constraint_Error with "bad input for 'Value: """
          & S (S'First .. S'First + 127) & "...""";
@@ -55,23 +58,31 @@ package body System.Val_Util is
    ----------------------
 
    procedure Normalize_String
-     (S    : in out String;
-      F, L : out Integer)
-   is
+     (S             : in out String;
+      F, L          : out Integer;
+      To_Upper_Case : Boolean) is
    begin
       F := S'First;
       L := S'Last;
 
+      --  Case of empty string
+
+      if F > L then
+         return;
+      end if;
+
       --  Scan for leading spaces
 
-      while F <= L and then S (F) = ' ' loop
+      while F < L and then S (F) = ' ' loop
          F := F + 1;
       end loop;
 
-      --  Check for case when the string contained no characters
+      --  Case of no nonspace characters found. Decrease L to ensure L < F
+      --  without risking an overflow if F is Integer'Last.
 
-      if F > L then
-         Bad_Value (S);
+      if S (F) = ' ' then
+         L := L - 1;
+         return;
       end if;
 
       --  Scan for trailing spaces
@@ -80,9 +91,9 @@ package body System.Val_Util is
          L := L - 1;
       end loop;
 
-      --  Except in the case of a character literal, convert to upper case
+      --  Convert to upper case if requested and not a character literal
 
-      if S (F) /= ''' then
+      if To_Upper_Case and then S (F) /= ''' then
          for J in F .. L loop
             S (J) := To_Upper (S (J));
          end loop;
@@ -93,13 +104,14 @@ package body System.Val_Util is
    -- Scan_Exponent --
    -------------------
 
-   function Scan_Exponent
+   procedure Scan_Exponent
      (Str  : String;
       Ptr  : not null access Integer;
       Max  : Integer;
-      Real : Boolean := False) return Integer
+      Exp  : out Integer;
+      Real : Boolean := False)
    is
-      P : Natural := Ptr.all;
+      P : Integer := Ptr.all;
       M : Boolean;
       X : Integer;
 
@@ -107,8 +119,12 @@ package body System.Val_Util is
       if P >= Max
         or else (Str (P) /= 'E' and then Str (P) /= 'e')
       then
-         return 0;
+         Exp := 0;
+         return;
       end if;
+      pragma Annotate
+        (CodePeer, False_Positive, "test always false",
+         "the slice might be empty or not start with an 'e'");
 
       --  We have an E/e, see if sign follows
 
@@ -118,7 +134,8 @@ package body System.Val_Util is
          P := P + 1;
 
          if P > Max then
-            return 0;
+            Exp := 0;
+            return;
          else
             M := False;
          end if;
@@ -127,7 +144,8 @@ package body System.Val_Util is
          P := P + 1;
 
          if P > Max or else not Real then
-            return 0;
+            Exp := 0;
+            return;
          else
             M := True;
          end if;
@@ -137,7 +155,8 @@ package body System.Val_Util is
       end if;
 
       if Str (P) not in '0' .. '9' then
-         return 0;
+         Exp := 0;
+         return;
       end if;
 
       --  Scan out the exponent value as an unsigned integer. Values larger
@@ -149,6 +168,8 @@ package body System.Val_Util is
       X := 0;
 
       loop
+         pragma Assert (Str (P) in '0' .. '9');
+
          if X < (Integer'Last / 10) then
             X := X * 10 + (Character'Pos (Str (P)) - Character'Pos ('0'));
          end if;
@@ -169,7 +190,7 @@ package body System.Val_Util is
       end if;
 
       Ptr.all := P;
-      return X;
+      Exp := X;
    end Scan_Exponent;
 
    --------------------
@@ -182,7 +203,7 @@ package body System.Val_Util is
       Max   : Integer;
       Start : out Positive)
    is
-      P : Natural := Ptr.all;
+      P : Integer := Ptr.all;
 
    begin
       if P > Max then
@@ -227,8 +248,7 @@ package body System.Val_Util is
       Minus : out Boolean;
       Start : out Positive)
    is
-      P : Natural := Ptr.all;
-
+      P : Integer := Ptr.all;
    begin
       --  Deal with case of null string (all blanks). As per spec, we raise
       --  constraint error, with Ptr unchanged, and thus > Max.
@@ -304,7 +324,6 @@ package body System.Val_Util is
       Ext : Boolean)
    is
       C : Character;
-
    begin
       P := P + 1;
 

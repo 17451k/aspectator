@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_INIT(cpplib, [ ], gcc-bugs@gcc.gnu.org, cpplib)
+AC_INIT(cpplib, [ ], https://gcc.gnu.org/bugs/, cpplib)
 AC_CONFIG_SRCDIR(ucnid.h)
 AC_CONFIG_MACRO_DIR(../config)
 AC_CANONICAL_SYSTEM
@@ -21,6 +21,11 @@ MISSING=`cd $ac_aux_dir && ${PWDCMD-pwd}`/missing
 AC_CHECK_PROGS([ACLOCAL], [aclocal], [$MISSING aclocal])
 AC_CHECK_PROGS([AUTOCONF], [autoconf], [$MISSING autoconf])
 AC_CHECK_PROGS([AUTOHEADER], [autoheader], [$MISSING autoheader])
+
+if test -z "$ETAGS"; then
+  ETAGS=etags
+fi
+AC_SUBST([ETAGS])
 
 # Figure out what compiler warnings we can enable.
 # See config/warnings.m4 for details.
@@ -76,7 +81,7 @@ define(libcpp_UNLOCKED_FUNCS, clearerr_unlocked feof_unlocked dnl
   fileno_unlocked fprintf_unlocked fputc_unlocked fputs_unlocked dnl
   fread_unlocked fwrite_unlocked getchar_unlocked getc_unlocked dnl
   putchar_unlocked putc_unlocked)
-AC_CHECK_FUNCS(libcpp_UNLOCKED_FUNCS)
+AC_CHECK_FUNCS(libcpp_UNLOCKED_FUNCS setlocale)
 AC_CHECK_DECLS([abort, asprintf, basename(char *), errno, getopt, vasprintf])
 AC_CHECK_DECLS(m4_split(m4_normalize(libcpp_UNLOCKED_FUNCS)))
 
@@ -97,6 +102,9 @@ if test $ac_cv_type_uchar = yes; then
   AC_DEFINE(HAVE_UCHAR, 1,
   [Define if <sys/types.h> defines \`uchar'.])
 fi
+
+AC_CHECK_SIZEOF(ino_t)
+AC_CHECK_SIZEOF(dev_t)
 
 # g++ on Solaris 10+ defines _XOPEN_SOURCE=600, which exposes a different
 # iconv() prototype.
@@ -164,7 +172,7 @@ do
 	esac
 done
 IFS="$ac_save_IFS"
-                
+
 if test x$ac_checking != x ; then
   AC_DEFINE(CHECKING_P, 1,
 [Define to 1 if you want more run-time sanity checks.])
@@ -175,12 +183,6 @@ fi
 if test x$ac_assert_checking != x ; then
   AC_DEFINE(ENABLE_ASSERT_CHECKING, 1,
 [Define if you want assertions enabled.  This is a cheap check.])
-fi
-
-if test x$ac_valgrind_checking != x ; then
-  AC_DEFINE(ENABLE_VALGRIND_CHECKING, 1,
-[Define if you want to workaround valgrind (a memory checker) warnings about
- possible memory leaks because of libcpp use of interior pointers.])
 fi
 
 AC_ARG_ENABLE(canonical-system-headers,
@@ -195,16 +197,31 @@ fi
 
 case $target in
   i?86-* | x86_64-*)
-    AC_TRY_COMPILE([], [asm ("pcmpestri %0, %%xmm0, %%xmm1" : : "i"(0))],
-      [AC_DEFINE([HAVE_SSE4], [1],
-		 [Define to 1 if you can assemble SSE4 insns.])])
+    AC_TRY_COMPILE([], [asm ("pshufb %xmm0, %xmm1")],
+      [AC_DEFINE([HAVE_SSSE3], [1],
+		 [Define to 1 if you can assemble SSSE3 insns.])])
 esac
 
 # Enable --enable-host-shared.
 AC_ARG_ENABLE(host-shared,
 [AS_HELP_STRING([--enable-host-shared],
-		[build host code as shared libraries])],
-[PICFLAG=-fPIC], [PICFLAG=])
+		[build host code as shared libraries])])
+AC_SUBST(enable_host_shared)
+
+# Enable --enable-host-pie.
+AC_ARG_ENABLE(host-pie,
+[AS_HELP_STRING([--enable-host-pie],
+		[build host code as PIE])])
+AC_SUBST(enable_host_pie)
+
+if test x$enable_host_shared = xyes; then
+  PICFLAG=-fPIC
+elif test x$enable_host_pie = xyes; then
+  PICFLAG=-fPIE
+else
+  PICFLAG=
+fi
+
 AC_SUBST(PICFLAG)
 
 # Enable Intel CET on Intel CET enabled host if jit is enabled.
@@ -224,13 +241,9 @@ AC_ARG_ENABLE(valgrind-annotations,
 [enable_valgrind_annotations=no])
 if test x$enable_valgrind_annotations != xno \
     || test x$ac_valgrind_checking != x; then
-  if (test $have_valgrind_h = no \
-      && test $gcc_cv_header_memcheck_h = no \
-      && test $gcc_cv_header_valgrind_memcheck_h = no); then
-    AC_MSG_ERROR([*** Can't find valgrind/memcheck.h, memcheck.h or valgrind.h])
-  fi
-  AC_DEFINE(ENABLE_VALGRIND_ANNOTATIONS, 1,
-[Define to get calls to the valgrind runtime enabled.])
+  AC_DEFINE(ENABLE_VALGRIND_WORKAROUNDS, 1,
+[Define if you want to workaround Valgrind warnings about
+ possible memory leaks because of libcpp use of interior pointers.])
 fi
 
 # Output.

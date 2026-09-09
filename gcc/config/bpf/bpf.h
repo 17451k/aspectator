@@ -1,5 +1,5 @@
 /* Definition of the eBPF target for GCC.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2026 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -22,7 +22,10 @@
 
 /**** Controlling the Compilation Driver.  */
 
-#define ASM_SPEC "%{mbig-endian:-EB} %{!mbig-endian:-EL} %{mxbpf:-mxbpf}"
+#define ASM_SPEC "%{mbig-endian:-EB} %{!mbig-endian:-EL} %{mxbpf:-mxbpf} " \
+  "%{masm=normal:-mdialect=normal} " \
+  "%{masm=pseudoc:-mdialect=pseudoc} " \
+  "%{!masm=normal:%{!masm=pseudoc:-mdialect=pseudoc}}"
 #define LINK_SPEC "%{mbig-endian:-EB} %{!mbig-endian:-EL}"
 #define LIB_SPEC ""
 #define STARTFILE_SPEC ""
@@ -87,9 +90,6 @@
 #define LONG_TYPE_SIZE        64
 #define LONG_LONG_TYPE_SIZE   64
 #define CHAR_TYPE_SIZE         8
-#define FLOAT_TYPE_SIZE       32
-#define DOUBLE_TYPE_SIZE      64
-#define LONG_DOUBLE_TYPE_SIZE 64
 
 #define INTPTR_TYPE	"long int"
 #define UINTPTR_TYPE	"long unsigned int"
@@ -98,7 +98,7 @@
 
 #define SIG_ATOMIC_TYPE "char"
 
-#define INT8_TYPE "char"
+#define INT8_TYPE "signed char"
 #define INT16_TYPE "short int"
 #define INT32_TYPE "int"
 #define INT64_TYPE "long int"
@@ -152,30 +152,34 @@
 #define BPF_R7	7
 #define BPF_R8	8
 #define BPF_R9	9
-#define BPF_SP BPF_R9
 #define BPF_R10	10
 #define BPF_FP  BPF_R10
+#define BPF_R11 11
+#define BPF_R12 12
+#define BPF_SP  BPF_R12
+
 /* 11 is not a real eBPF hard register and is eliminated or not used
    in the final assembler.  See below.  */
 
-#define FIRST_PSEUDO_REGISTER 12
+#define FIRST_PSEUDO_REGISTER 13
 
 /* The registers %r0..%r8 are available for general allocation.
-   %r9 is the pseudo-stack pointer.
    %r10 is the stack frame, which is read-only.
-   %r11 (__arg__) is a fake register that always gets eliminated.  */
+   %r11 (__arg__) is a fake register that always gets eliminated.
+   %r12 is the pseudo-stack pointer that always gets eliminated.  */
 #define FIXED_REGISTERS				\
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}
+  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}
 
 /* %r0..%r5 are clobbered by function calls.  */
 #define CALL_USED_REGISTERS				\
-  {1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1}
+  {1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1}
 
 /**** Register Classes.  */
 
 enum reg_class
 {
   NO_REGS,		/* no registers in set.  */
+  R0,		        /* register r0.  */
   ALL_REGS,		/* all registers.  */
   LIM_REG_CLASSES	/* max value + 1.  */
 };
@@ -189,6 +193,7 @@ enum reg_class
 #define REG_CLASS_NAMES				\
 {						\
   "NO_REGS",					\
+  "R0",					\
   "ALL_REGS"					\
 }
 
@@ -202,14 +207,16 @@ enum reg_class
 #define REG_CLASS_CONTENTS			\
 {						\
    0x00000000, /* NO_REGS */			\
-   0x00000fff, /* ALL_REGS */		        \
+   0x00000001, /* R0 */                         \
+   0x00001fff, /* ALL_REGS */		        \
 }
 
 /* A C expression whose value is a register class containing hard
    register REGNO.  In general there is more that one such class;
    choose a class which is "minimal", meaning that no smaller class
    also contains the register.  */
-#define REGNO_REG_CLASS(REGNO) GENERAL_REGS
+#define REGNO_REG_CLASS(REGNO) \
+  ((REGNO) == 0 ? R0 : GENERAL_REGS)
 
 /* A macro whose definition is the name of the class to which a
    valid base register must belong.  A base register is one used in
@@ -235,17 +242,14 @@ enum reg_class
 
 /**** Debugging Info ****/
 
-/* We cannot support DWARF2 because of the limitations of eBPF.  */
+/* Use BTF debug info by default.  */
 
-/* elfos.h insists in using DWARF.  Undo that here.  */
-#ifdef DWARF2_DEBUGGING_INFO
-# undef DWARF2_DEBUGGING_INFO
-#endif
-#ifdef PREFERRED_DEBUGGING_TYPE
-# undef PREFERRED_DEBUGGING_TYPE
-#endif
+#undef  PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE BTF_DEBUG
 
-#define DBX_DEBUGGING_INFO
+/* In eBPF it is not possible to unwind frames. Disable CFA.  */
+
+#define DWARF2_FRAME_INFO 0
 
 /**** Stack Layout and Calling Conventions.  */
 
@@ -263,15 +267,15 @@ enum reg_class
 /*** Registers That Address the Stack Frame.  */
 
 #define FRAME_POINTER_REGNUM 10
-#define STACK_POINTER_REGNUM 9
 #define ARG_POINTER_REGNUM 11
+#define STACK_POINTER_REGNUM 12
 #define STATIC_CHAIN_REGNUM 8
 
 /*** Registers elimination.  */
 
 #define ELIMINABLE_REGS					\
   {{ ARG_POINTER_REGNUM, FRAME_POINTER_REGNUM },	\
-   { ARG_POINTER_REGNUM, STACK_POINTER_REGNUM }}
+   { STACK_POINTER_REGNUM, FRAME_POINTER_REGNUM }}
 
 /* Define the offset between two registers, one to be eliminated, and
    the other its replacement, at the start of a routine.  */
@@ -284,12 +288,9 @@ enum reg_class
 /*** Passing Function Arguments on the Stack.  */
 
 /* The eBPF ABI doesn't support passing arguments on the stack.  Only
-   in the first five registers.  Code in bpf.c assures the stack is
+   in the first five registers.  Code in bpf.cc assures the stack is
    never used when passing arguments.  However, we still have to
    define the constants below.  */
-
-/* If nonzero, push insns will be used to pass outgoing arguments.  */
-#define PUSH_ARGS 0
 
 /* If nonzero, function arguments will be evaluated from last to
    first, rather than from first to last.  */
@@ -364,8 +365,12 @@ enum reg_class
 /* The SPARC port says: Nonzero if access to memory by bytes is slow
    and undesirable.  For RISC chips, it means that access to memory by
    bytes is no better than access by words when possible, so grab a
-   whole word and maybe make use of that.  */
-#define SLOW_BYTE_ACCESS 1
+   whole word and maybe make use of that.
+   BPF programs will be JIT-ed to various architectures, so we cannot
+   say for certain what the access patterns on the final architecture
+   are.  From the BPF verifier perspective, smaller loads are actually
+   preferable so set this to zero.  */
+#define SLOW_BYTE_ACCESS 0
 
 /* Threshold of number of scalar memory-to-memory move instructions,
    _below_ which a sequence of insns should be generated instead of a
@@ -396,7 +401,7 @@ enum reg_class
 
 /*** The Overall Framework of an Assembler File.  */
 
-#define ASM_COMMENT_START ";"
+#define ASM_COMMENT_START "#"
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */
@@ -450,7 +455,7 @@ enum reg_class
 
 #define REGISTER_NAMES						\
   { "%r0", "%r1", "%r2", "%r3", "%r4", "%r5", "%r6", "%r7",	\
-    "%r8", "%r9", "%fp", "__arg__" }
+      "%r8", "%r9", "%fp", "__arg__", "__sp__" }
 
 #define ADDITIONAL_REGISTER_NAMES		\
   { { "%a", 0 }, { "%ctx", 6 }, { "%r10" , 10 } }
@@ -492,6 +497,11 @@ enum reg_class
    locations.  */
 #define MOVE_MAX 8
 
+/* Allow upto 1024 bytes moves to occur using by_pieces
+   infrastructure.  This mimics clang behaviour when using
+   __builtin_memcmp.  */
+#define COMPARE_MAX_PIECES 1024
+
 /* An alias for the machine mode for pointers.  */
 #define Pmode DImode
 
@@ -513,5 +523,12 @@ enum reg_class
   do { } while (0)
 #define DO_GLOBAL_DTORS_BODY			\
   do { } while (0)
+
+#define ASSEMBLER_DIALECT ((int) asm_dialect)
+
+/*** Utilitiy/helpers.  */
+
+#define BPF_IMM32_P(X)				\
+  (CONST_INT_P (X) && (INTVAL (X) == (HOST_WIDE_INT) (int32_t) INTVAL (X)))
 
 #endif /* ! GCC_BPF_H */

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,30 +23,31 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;    use Atree;
-with Checks;   use Checks;
-with Einfo;    use Einfo;
-with Errout;   use Errout;
-with Lib;      use Lib;
-with Lib.Xref; use Lib.Xref;
-with Namet;    use Namet;
-with Nlists;   use Nlists;
-with Nmake;    use Nmake;
-with Opt;      use Opt;
-with Restrict; use Restrict;
-with Rident;   use Rident;
-with Rtsfind;  use Rtsfind;
-with Sem;      use Sem;
-with Sem_Aux;  use Sem_Aux;
-with Sem_Ch5;  use Sem_Ch5;
-with Sem_Ch8;  use Sem_Ch8;
-with Sem_Ch13; use Sem_Ch13;
-with Sem_Res;  use Sem_Res;
-with Sem_Util; use Sem_Util;
-with Sem_Warn; use Sem_Warn;
-with Sinfo;    use Sinfo;
-with Snames;   use Snames;
-with Stand;    use Stand;
+with Atree;          use Atree;
+with Checks;         use Checks;
+with Einfo.Entities; use Einfo.Entities;
+with Einfo.Utils;    use Einfo.Utils;
+with Errout;         use Errout;
+with Lib.Xref;       use Lib.Xref;
+with Namet;          use Namet;
+with Nlists;         use Nlists;
+with Nmake;          use Nmake;
+with Opt;            use Opt;
+with Restrict;       use Restrict;
+with Rident;         use Rident;
+with Rtsfind;        use Rtsfind;
+with Sem;            use Sem;
+with Sem_Aux;        use Sem_Aux;
+with Sem_Ch5;        use Sem_Ch5;
+with Sem_Ch8;        use Sem_Ch8;
+with Sem_Ch13;       use Sem_Ch13;
+with Sem_Res;        use Sem_Res;
+with Sem_Util;       use Sem_Util;
+with Sem_Warn;       use Sem_Warn;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Stand;          use Stand;
+with Warnsw;         use Warnsw;
 
 package body Sem_Ch11 is
 
@@ -61,14 +62,12 @@ package body Sem_Ch11 is
    begin
       Generate_Definition         (Id);
       Enter_Name                  (Id);
-      Set_Ekind                   (Id, E_Exception);
+      Mutate_Ekind                (Id, E_Exception);
       Set_Etype                   (Id, Standard_Exception_Type);
       Set_Is_Statically_Allocated (Id);
       Set_Is_Pure                 (Id, PF);
 
-      if Has_Aspects (N) then
-         Analyze_Aspect_Specifications (N, Id);
-      end if;
+      Analyze_Aspect_Specifications (N, Id);
    end Analyze_Exception_Declaration;
 
    --------------------------------
@@ -116,7 +115,7 @@ package body Sem_Ch11 is
                elsif Nkind (Id1) /= N_Others_Choice
                  and then
                    (Id_Entity = Entity (Id1)
-                     or else (Id_Entity = Renamed_Entity (Entity (Id1))))
+                     or else Id_Entity = Renamed_Entity (Entity (Id1)))
                then
                   if Handler /= Parent (Id) then
                      Error_Msg_Sloc := Sloc (Id1);
@@ -132,10 +131,10 @@ package body Sem_Ch11 is
                   end if;
                end if;
 
-               Next_Non_Pragma (Id1);
+               Next (Id1);
             end loop;
 
-            Next (Handler);
+            Next_Non_Pragma (Handler);
          end loop;
       end Check_Duplication;
 
@@ -147,15 +146,13 @@ package body Sem_Ch11 is
          H : Node_Id;
 
       begin
-         H := First (L);
+         H := First_Non_Pragma (L);
          while Present (H) loop
-            if Nkind (H) /= N_Pragma
-              and then Nkind (First (Exception_Choices (H))) = N_Others_Choice
-            then
+            if Nkind (First (Exception_Choices (H))) = N_Others_Choice then
                return True;
             end if;
 
-            Next (H);
+            Next_Non_Pragma (H);
          end loop;
 
          return False;
@@ -229,7 +226,8 @@ package body Sem_Ch11 is
                Set_Etype (H_Scope, Standard_Void_Type);
 
                Enter_Name (Choice);
-               Set_Ekind (Choice, E_Variable);
+               Mutate_Ekind (Choice, E_Variable);
+               Set_Is_Not_Self_Hidden (Choice);
 
                if RTE_Available (RE_Exception_Occurrence) then
                   Set_Etype (Choice, RTE (RE_Exception_Occurrence));
@@ -427,13 +425,10 @@ package body Sem_Ch11 is
 
       --  If the current scope is a subprogram, entry or task body or declare
       --  block then this is the right place to check for hanging useless
-      --  assignments from the statement sequence. Skip this in the body of a
-      --  postcondition, since in that case there are no source references, and
-      --  we need to preserve deferred references from the enclosing scope.
+      --  assignments from the statement sequence.
 
-      if ((Is_Subprogram (Current_Scope) or else Is_Entry (Current_Scope))
-           and then Chars (Current_Scope) /= Name_uPostconditions)
-         or else Ekind (Current_Scope) in E_Block | E_Task_Type
+      if Is_Subprogram_Or_Entry (Current_Scope)
+        or else Ekind (Current_Scope) in E_Block | E_Task_Type
       then
          Warn_On_Useless_Assignments (Current_Scope);
       end if;
@@ -444,6 +439,10 @@ package body Sem_Ch11 is
          Analyze_Exception_Handlers (Handlers);
       elsif Present (At_End_Proc (N)) then
          Analyze (At_End_Proc (N));
+      end if;
+
+      if Present (Finally_Statements (N)) then
+         Analyze_Statements (Finally_Statements (N));
       end if;
    end Analyze_Handled_Statements;
 
@@ -456,10 +455,6 @@ package body Sem_Ch11 is
       Exception_Name : Entity_Id        := Empty;
 
    begin
-      if Comes_From_Source (N) then
-         Check_Compiler_Unit ("raise expression", N);
-      end if;
-
       --  Check exception restrictions on the original source
 
       if Comes_From_Source (N) then
@@ -547,11 +542,12 @@ package body Sem_Ch11 is
             if Present (P) and then Nkind (P) = N_Assignment_Statement then
                L := Name (P);
 
-               --  Give warning for assignment to scalar formal
+               --  Give warning for assignment to by-copy formal
 
-               if Is_Scalar_Type (Etype (L))
-                 and then Is_Entity_Name (L)
+               if Is_Entity_Name (L)
                  and then Is_Formal (Entity (L))
+                 and then Is_By_Copy_Type (Etype (L))
+                 and then not Is_Aliased (Entity (L))
 
                  --  Do this only for parameters to the current subprogram.
                  --  This avoids some false positives for the nested case.
@@ -611,15 +607,7 @@ package body Sem_Ch11 is
 
          else
             Set_Local_Raise_Not_OK (P);
-
-            --  Do not check the restriction if the reraise statement is part
-            --  of the code generated for an AT-END handler. That's because
-            --  if the restriction is actually active, we never generate this
-            --  raise anyway, so the apparent violation is bogus.
-
-            if not From_At_End (N) then
-               Check_Restriction (No_Exception_Propagation, N);
-            end if;
+            Check_Restriction (No_Exception_Propagation, N);
          end if;
 
       --  Normal case with exception id present
@@ -657,6 +645,18 @@ package body Sem_Ch11 is
 
       Kill_Current_Values (Last_Assignment_Only => True);
    end Analyze_Raise_Statement;
+
+   ----------------------------------
+   -- Analyze_Raise_When_Statement --
+   ----------------------------------
+
+   procedure Analyze_Raise_When_Statement (N : Node_Id) is
+   begin
+      --  Verify the condition is a Boolean expression
+
+      Analyze_And_Resolve (Condition (N), Any_Boolean);
+      Check_Unset_Reference (Condition (N));
+   end Analyze_Raise_When_Statement;
 
    -----------------------------
    -- Analyze_Raise_xxx_Error --

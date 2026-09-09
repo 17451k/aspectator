@@ -1,6 +1,7 @@
 // { dg-do run { target c++17 }  }
+// { dg-add-options no_pch }
 
-// Copyright (C) 2013-2021 Free Software Foundation, Inc.
+// Copyright (C) 2013-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -18,6 +19,19 @@
 // <http://www.gnu.org/licenses/>.
 
 #include <optional>
+
+#ifndef __cpp_lib_optional
+# error "Feature test macro for optional is missing in <optional>"
+#elif __cpp_lib_optional < 201606L
+# error "Feature test macro for optional has wrong value in <optional>"
+#elif __cplusplus == 202002L && __cpp_lib_optional != 202106L
+# error "Feature test macro for optional has wrong value for C++20 in <optional>"
+#elif __cplusplus == 202302L && __cpp_lib_optional != 202110L
+# error "Feature test macro for optional has wrong value for C++23 in <optional>"
+#elif __cplusplus > 202302L && __cpp_lib_optional != 202506L
+# error "Feature test macro for optional has wrong value for C++26 in <optional>"
+#endif
+
 #include <testsuite_hooks.h>
 
 #include <tuple>

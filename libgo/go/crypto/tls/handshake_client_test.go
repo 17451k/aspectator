@@ -6,6 +6,7 @@ package tls
 
 import (
 	"bytes"
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
@@ -20,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -42,7 +44,7 @@ const (
 	// opensslSentinel on the connection.
 	opensslSendSentinel
 
-	// opensslKeyUpdate causes OpenSSL to send send a key update message to the
+	// opensslKeyUpdate causes OpenSSL to send a key update message to the
 	// client and request one back.
 	opensslKeyUpdate
 )
@@ -95,18 +97,18 @@ func (o *opensslOutputSink) Write(data []byte) (n int, err error) {
 	o.all = append(o.all, data...)
 
 	for {
-		i := bytes.IndexByte(o.line, '\n')
-		if i < 0 {
+		line, next, ok := bytes.Cut(o.line, []byte("\n"))
+		if !ok {
 			break
 		}
 
-		if bytes.Equal([]byte(opensslEndOfHandshake), o.line[:i]) {
+		if bytes.Equal([]byte(opensslEndOfHandshake), line) {
 			o.handshakeComplete <- struct{}{}
 		}
-		if bytes.Equal([]byte(opensslReadKeyUpdate), o.line[:i]) {
+		if bytes.Equal([]byte(opensslReadKeyUpdate), line) {
 			o.readKeyUpdate <- struct{}{}
 		}
-		o.line = o.line[i+1:]
+		o.line = next
 	}
 
 	return len(data), nil
@@ -132,7 +134,7 @@ type clientTest struct {
 	cert []byte
 	// key, if not nil, contains either a *rsa.PrivateKey, ed25519.PrivateKey or
 	// *ecdsa.PrivateKey which is the private key for the reference server.
-	key interface{}
+	key any
 	// extensions, if not nil, contains a list of extension data to be returned
 	// from the ServerHello. The data should be in standard TLS format with
 	// a 2-byte uint16 type, 2-byte data length, followed by the extension data.
@@ -169,7 +171,7 @@ func (test *clientTest) connFromCommand() (conn *recordingConn, child *exec.Cmd,
 	certPath := tempFile(string(cert))
 	defer os.Remove(certPath)
 
-	var key interface{} = testRSAPrivateKey
+	var key any = testRSAPrivateKey
 	if test.key != nil {
 		key = test.key
 	}
@@ -879,6 +881,7 @@ func testResumption(t *testing.T, version uint16) {
 		MaxVersion:   version,
 		CipherSuites: []uint16{TLS_RSA_WITH_RC4_128_SHA, TLS_ECDHE_RSA_WITH_RC4_128_SHA},
 		Certificates: testConfig.Certificates,
+		Time:         testTime,
 	}
 
 	issuer, err := x509.ParseCertificate(testRSACertificateIssuer)
@@ -895,6 +898,7 @@ func testResumption(t *testing.T, version uint16) {
 		ClientSessionCache: NewLRUClientSessionCache(32),
 		RootCAs:            rootCAs,
 		ServerName:         "example.golang",
+		Time:               testTime,
 	}
 
 	testResumeState := func(test string, didResume bool) {
@@ -942,20 +946,20 @@ func testResumption(t *testing.T, version uint16) {
 	}
 
 	// An old session ticket can resume, but the server will provide a ticket encrypted with a fresh key.
-	serverConfig.Time = func() time.Time { return time.Now().Add(24*time.Hour + time.Minute) }
+	serverConfig.Time = func() time.Time { return testTime().Add(24*time.Hour + time.Minute) }
 	testResumeState("ResumeWithOldTicket", true)
 	if bytes.Equal(ticket[:ticketKeyNameLen], getTicket()[:ticketKeyNameLen]) {
 		t.Fatal("old first ticket matches the fresh one")
 	}
 
 	// Now the session tickey key is expired, so a full handshake should occur.
-	serverConfig.Time = func() time.Time { return time.Now().Add(24*8*time.Hour + time.Minute) }
+	serverConfig.Time = func() time.Time { return testTime().Add(24*8*time.Hour + time.Minute) }
 	testResumeState("ResumeWithExpiredTicket", false)
 	if bytes.Equal(ticket, getTicket()) {
 		t.Fatal("expired first ticket matches the fresh one")
 	}
 
-	serverConfig.Time = func() time.Time { return time.Now() } // reset the time back
+	serverConfig.Time = func() time.Time { return testTime() } // reset the time back
 	key1 := randomKey()
 	serverConfig.SetSessionTicketKeys([][32]byte{key1})
 
@@ -972,11 +976,11 @@ func testResumption(t *testing.T, version uint16) {
 	testResumeState("KeyChangeFinish", true)
 
 	// Age the session ticket a bit, but not yet expired.
-	serverConfig.Time = func() time.Time { return time.Now().Add(24*time.Hour + time.Minute) }
+	serverConfig.Time = func() time.Time { return testTime().Add(24*time.Hour + time.Minute) }
 	testResumeState("OldSessionTicket", true)
 	ticket = getTicket()
 	// Expire the session ticket, which would force a full handshake.
-	serverConfig.Time = func() time.Time { return time.Now().Add(24*8*time.Hour + time.Minute) }
+	serverConfig.Time = func() time.Time { return testTime().Add(24*8*time.Hour + 2*time.Minute) }
 	testResumeState("ExpiredSessionTicket", false)
 	if bytes.Equal(ticket, getTicket()) {
 		t.Fatal("new ticket wasn't provided after old ticket expired")
@@ -986,7 +990,7 @@ func testResumption(t *testing.T, version uint16) {
 	d := 0 * time.Hour
 	for i := 0; i < 13; i++ {
 		d += 12 * time.Hour
-		serverConfig.Time = func() time.Time { return time.Now().Add(d) }
+		serverConfig.Time = func() time.Time { return testTime().Add(d) }
 		testResumeState("OldSessionTicket", true)
 	}
 	// Expire it (now a little more than 7 days) and make sure a full
@@ -994,7 +998,7 @@ func testResumption(t *testing.T, version uint16) {
 	// TLS 1.3 since the client should be using a fresh ticket sent over
 	// by the server.
 	d += 12 * time.Hour
-	serverConfig.Time = func() time.Time { return time.Now().Add(d) }
+	serverConfig.Time = func() time.Time { return testTime().Add(d) }
 	if version == VersionTLS13 {
 		testResumeState("ExpiredSessionTicket", true)
 	} else {
@@ -1010,6 +1014,7 @@ func testResumption(t *testing.T, version uint16) {
 		MaxVersion:   version,
 		CipherSuites: []uint16{TLS_RSA_WITH_RC4_128_SHA, TLS_ECDHE_RSA_WITH_RC4_128_SHA},
 		Certificates: testConfig.Certificates,
+		Time:         testTime,
 	}
 	serverConfig.SetSessionTicketKeys([][32]byte{key2})
 
@@ -1220,6 +1225,56 @@ func TestHandshakeClientALPNMatch(t *testing.T) {
 	}
 	runClientTestTLS12(t, test)
 	runClientTestTLS13(t, test)
+}
+
+func TestServerSelectingUnconfiguredApplicationProtocol(t *testing.T) {
+	// This checks that the server can't select an application protocol that the
+	// client didn't offer.
+
+	c, s := localPipe(t)
+	errChan := make(chan error, 1)
+
+	go func() {
+		client := Client(c, &Config{
+			ServerName:   "foo",
+			CipherSuites: []uint16{TLS_RSA_WITH_AES_128_GCM_SHA256},
+			NextProtos:   []string{"http", "something-else"},
+		})
+		errChan <- client.Handshake()
+	}()
+
+	var header [5]byte
+	if _, err := io.ReadFull(s, header[:]); err != nil {
+		t.Fatal(err)
+	}
+	recordLen := int(header[3])<<8 | int(header[4])
+
+	record := make([]byte, recordLen)
+	if _, err := io.ReadFull(s, record); err != nil {
+		t.Fatal(err)
+	}
+
+	serverHello := &serverHelloMsg{
+		vers:         VersionTLS12,
+		random:       make([]byte, 32),
+		cipherSuite:  TLS_RSA_WITH_AES_128_GCM_SHA256,
+		alpnProtocol: "how-about-this",
+	}
+	serverHelloBytes := serverHello.marshal()
+
+	s.Write([]byte{
+		byte(recordTypeHandshake),
+		byte(VersionTLS12 >> 8),
+		byte(VersionTLS12 & 0xff),
+		byte(len(serverHelloBytes) >> 8),
+		byte(len(serverHelloBytes)),
+	})
+	s.Write(serverHelloBytes)
+	s.Close()
+
+	if err := <-errChan; !strings.Contains(err.Error(), "server selected unadvertised ALPN protocol") {
+		t.Fatalf("Expected error about unconfigured cipher suite but got %q", err)
+	}
 }
 
 // sctsBase64 contains data from `openssl s_client -serverinfo 18 -connect ritter.vg:443`
@@ -1528,7 +1583,7 @@ func testVerifyConnection(t *testing.T, version uint16) {
 					}
 					if c.DidResume {
 						return nil
-						// The SCTs and OCSP Responce are dropped on resumption.
+						// The SCTs and OCSP Response are dropped on resumption.
 						// See http://golang.org/issue/39075.
 					}
 					if len(c.OCSPResponse) == 0 {
@@ -1569,7 +1624,7 @@ func testVerifyConnection(t *testing.T, version uint16) {
 					}
 					if c.DidResume {
 						return nil
-						// The SCTs and OCSP Responce are dropped on resumption.
+						// The SCTs and OCSP Response are dropped on resumption.
 						// See http://golang.org/issue/39075.
 					}
 					if len(c.OCSPResponse) == 0 {
@@ -1619,7 +1674,7 @@ func testVerifyConnection(t *testing.T, version uint16) {
 					}
 					if c.DidResume {
 						return nil
-						// The SCTs and OCSP Responce are dropped on resumption.
+						// The SCTs and OCSP Response are dropped on resumption.
 						// See http://golang.org/issue/39075.
 					}
 					if len(c.OCSPResponse) == 0 {
@@ -1646,6 +1701,7 @@ func testVerifyConnection(t *testing.T, version uint16) {
 		serverConfig := &Config{
 			MaxVersion:   version,
 			Certificates: []Certificate{testConfig.Certificates[0]},
+			Time:         testTime,
 			ClientCAs:    rootCAs,
 			NextProtos:   []string{"protocol1"},
 		}
@@ -1659,6 +1715,7 @@ func testVerifyConnection(t *testing.T, version uint16) {
 			RootCAs:            rootCAs,
 			ServerName:         "example.golang",
 			Certificates:       []Certificate{testConfig.Certificates[0]},
+			Time:               testTime,
 			NextProtos:         []string{"protocol1"},
 		}
 		test.configureClient(clientConfig, &clientCalled)
@@ -1700,8 +1757,6 @@ func testVerifyPeerCertificate(t *testing.T, version uint16) {
 
 	rootCAs := x509.NewCertPool()
 	rootCAs.AddCert(issuer)
-
-	now := func() time.Time { return time.Unix(1476984729, 0) }
 
 	sentinelErr := errors.New("TestVerifyPeerCertificate")
 
@@ -1948,7 +2003,7 @@ func testVerifyPeerCertificate(t *testing.T, version uint16) {
 			config.ServerName = "example.golang"
 			config.ClientAuth = RequireAndVerifyClientCert
 			config.ClientCAs = rootCAs
-			config.Time = now
+			config.Time = testTime
 			config.MaxVersion = version
 			config.Certificates = make([]Certificate, 1)
 			config.Certificates[0].Certificate = [][]byte{testRSACertificate}
@@ -1965,7 +2020,7 @@ func testVerifyPeerCertificate(t *testing.T, version uint16) {
 		config := testConfig.Clone()
 		config.ServerName = "example.golang"
 		config.RootCAs = rootCAs
-		config.Time = now
+		config.Time = testTime
 		config.MaxVersion = version
 		test.configureClient(config, &clientCalled)
 		clientErr := Client(c, config).Handshake()
@@ -2278,7 +2333,7 @@ func testGetClientCertificate(t *testing.T, version uint16) {
 		serverConfig.RootCAs = x509.NewCertPool()
 		serverConfig.RootCAs.AddCert(issuer)
 		serverConfig.ClientCAs = serverConfig.RootCAs
-		serverConfig.Time = func() time.Time { return time.Unix(1476984729, 0) }
+		serverConfig.Time = testTime
 		serverConfig.MaxVersion = version
 
 		clientConfig := testConfig.Clone()
@@ -2449,6 +2504,7 @@ func testResumptionKeepsOCSPAndSCT(t *testing.T, ver uint16) {
 		ClientSessionCache: NewLRUClientSessionCache(32),
 		ServerName:         "example.golang",
 		RootCAs:            roots,
+		Time:               testTime,
 	}
 	serverConfig := testConfig.Clone()
 	serverConfig.MaxVersion = ver
@@ -2509,5 +2565,37 @@ func testResumptionKeepsOCSPAndSCT(t *testing.T, ver uint16) {
 	if !reflect.DeepEqual(ccs.SignedCertificateTimestamps, serverConfig.Certificates[0].SignedCertificateTimestamps) {
 		t.Errorf("client ConnectionState contained unexpected SignedCertificateTimestamps after resumption: wanted %v, got %v",
 			serverConfig.Certificates[0].SignedCertificateTimestamps, ccs.SignedCertificateTimestamps)
+	}
+}
+
+// TestClientHandshakeContextCancellation tests that cancelling
+// the context given to the client side conn.HandshakeContext
+// interrupts the in-progress handshake.
+func TestClientHandshakeContextCancellation(t *testing.T) {
+	c, s := localPipe(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	unblockServer := make(chan struct{})
+	defer close(unblockServer)
+	go func() {
+		cancel()
+		<-unblockServer
+		_ = s.Close()
+	}()
+	cli := Client(c, testConfig)
+	// Initiates client side handshake, which will block until the client hello is read
+	// by the server, unless the cancellation works.
+	err := cli.HandshakeContext(ctx)
+	if err == nil {
+		t.Fatal("Client handshake did not error when the context was canceled")
+	}
+	if err != context.Canceled {
+		t.Errorf("Unexpected client handshake error: %v", err)
+	}
+	if runtime.GOARCH == "wasm" {
+		t.Skip("conn.Close does not error as expected when called multiple times on WASM")
+	}
+	err = cli.Close()
+	if err == nil {
+		t.Error("Client connection was not closed when the context was canceled")
 	}
 }

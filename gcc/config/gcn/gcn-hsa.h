@@ -1,4 +1,4 @@
-/* Copyright (C) 2016-2021 Free Software Foundation, Inc.
+/* Copyright (C) 2016-2026 Free Software Foundation, Inc.
 
    This file is free software; you can redistribute it and/or modify it under
    the terms of the GNU General Public License as published by the Free
@@ -46,6 +46,10 @@
 #define ASM_OUTPUT_LABEL(FILE,NAME) \
   do { assemble_name (FILE, NAME); fputs (":\n", FILE); } while (0)
 
+/* Used in lieu of '../elfos.h:ASM_WEAKEN_LABEL'.  */
+#define ASM_WEAKEN_DECL(STREAM, DECL, NAME, VALUE) \
+  gcn_asm_weaken_decl ((STREAM), (DECL), (NAME), (VALUE))
+
 #define ASM_OUTPUT_LABELREF(FILE, NAME) \
   asm_fprintf (FILE, "%U%s", default_strip_name_encoding (NAME))
 
@@ -71,13 +75,20 @@ extern unsigned int gcn_local_sym_hash (const char *name);
 #define ASM_APP_ON  ""
 #define ASM_APP_OFF ""
 
-/* Avoid the default in ../../gcc.c, which adds "-pthread", which is not
+/* Avoid the default in ../../gcc.cc, which adds "-pthread", which is not
    supported for gcn.  */
 #define GOMP_SELF_SPECS ""
 
+#include "gcn-device-macros.h"
+
 /* Use LLVM assembler and linker options.  */
 #define ASM_SPEC  "-triple=amdgcn--amdhsa "  \
-		  "%:last_arg(%{march=*:-mcpu=%*}) " \
+		  "%{march=*:-mcpu=%*} " \
+		  ABI_VERSION_OPT \
+		  XNACKOPT \
+		  SRAMOPT \
+		  WAVE64OPT \
+		  CUMODEOPT \
 		  "-filetype=obj"
 #define LINK_SPEC "--pie --export-dynamic"
 #define LIB_SPEC  "-lc"
@@ -86,12 +97,6 @@ extern unsigned int gcn_local_sym_hash (const char *name);
 #define STARTFILE_SPEC "crt0.o%s"
 #define ENDFILE_SPEC   ""
 #define STANDARD_STARTFILE_PREFIX_2 ""
-
-/* The LLVM assembler rejects multiple -mcpu options, so we must drop
-   all but the last.  */
-extern const char *last_arg_spec_function (int argc, const char **argv);
-#define EXTRA_SPEC_FUNCTIONS	\
-    { "last_arg", last_arg_spec_function },
 
 #undef LOCAL_INCLUDE_DIR
 
@@ -103,4 +108,4 @@ extern const char *last_arg_spec_function (int argc, const char **argv);
 #define DWARF2_DEBUGGING_INFO      1
 #define DWARF2_ASM_LINE_DEBUG_INFO 1
 #define EH_FRAME_THROUGH_COLLECT2  1
-#define DBX_REGISTER_NUMBER(REGNO) gcn_dwarf_register_number (REGNO)
+#define DEBUGGER_REGNO(REGNO) gcn_dwarf_register_number (REGNO)

@@ -1,5 +1,5 @@
 /* Fold a constant sub-tree into a single node for C-compiler
-   Copyright (C) 1987-2021 Free Software Foundation, Inc.
+   Copyright (C) 1987-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,15 +20,27 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_FOLD_CONST_H
 #define GCC_FOLD_CONST_H
 
-/* Non-zero if we are folding constants inside an initializer; zero
-   otherwise.  */
+/* Nonzero if we are folding constants inside an initializer or a C++
+   manifestly-constant-evaluated context; zero otherwise.
+   Should be used when folding in initializer enables additional
+   optimizations.  */
 extern int folding_initializer;
+/* Nonzero if we are folding C++ manifestly-constant-evaluated context; zero
+   otherwise.
+   Should be used when certain constructs shouldn't be optimized
+   during folding in that context.  */
+extern bool folding_cxx_constexpr;
 
 /* Convert between trees and native memory representation.  */
 extern int native_encode_expr (const_tree, unsigned char *, int, int off = -1);
 extern int native_encode_initializer (tree, unsigned char *, int,
 				      int off = -1, unsigned char * = nullptr);
+extern int native_encode_wide_int (tree, const wide_int_ref &,
+				   unsigned char *, int, int off = -1);
+extern int native_encode_real (scalar_float_mode, const REAL_VALUE_TYPE *,
+			       unsigned char *, int, int off = -1);
 extern tree native_interpret_expr (tree, const unsigned char *, int);
+extern tree native_interpret_real (tree, const unsigned char *, int);
 extern bool can_native_interpret_type_p (tree);
 extern tree native_interpret_aggregate (tree, const unsigned char *, int, int);
 extern tree find_bitfield_repr_type (int, int);
@@ -44,6 +56,7 @@ extern void shift_bytes_in_array_right (unsigned char *, unsigned int,
    subexpressions are not changed.  */
 
 extern tree fold (tree);
+extern tree fold_init (tree);
 #define fold_unary(CODE,T1,T2)\
    fold_unary_loc (UNKNOWN_LOCATION, CODE, T1, T2)
 extern tree fold_unary_loc (location_t, enum tree_code, tree, tree);
@@ -76,13 +89,13 @@ extern tree fold_build_call_array_loc (location_t, tree, tree, int, tree *);
 #define fold_build_call_array_initializer(T1,T2,N,T4)\
    fold_build_call_array_initializer_loc (UNKNOWN_LOCATION, T1, T2, N, T4)
 extern tree fold_build_call_array_initializer_loc (location_t, tree, tree, int, tree *);
+extern tree fold_binary_initializer_loc (location_t, tree_code, tree, tree, tree);
 extern tree get_array_ctor_element_at_index (tree, offset_int,
 					     unsigned * = NULL);
 extern bool fold_convertible_p (const_tree, const_tree);
 #define fold_convert(T1,T2)\
    fold_convert_loc (UNKNOWN_LOCATION, T1, T2)
 extern tree fold_convert_loc (location_t, tree, tree);
-extern tree fold_single_bit_test (location_t, enum tree_code, tree, tree, tree);
 extern tree fold_ignored_result (tree);
 extern tree fold_abs_const (tree, tree);
 extern tree fold_indirect_ref_1 (location_t, tree, tree);
@@ -94,7 +107,7 @@ extern void fold_overflow_warning (const char*, enum warn_strict_overflow_code);
 extern enum tree_code fold_div_compare (enum tree_code, tree, tree,
 					tree *, tree *, bool *);
 extern bool operand_equal_p (const_tree, const_tree, unsigned int flags = 0);
-extern int multiple_of_p (tree, const_tree, const_tree);
+extern bool multiple_of_p (tree, const_tree, const_tree, bool = true);
 #define omit_one_operand(T1,T2,T3)\
    omit_one_operand_loc (UNKNOWN_LOCATION, T1, T2, T3)
 extern tree omit_one_operand_loc (location_t, tree, tree, tree);
@@ -117,7 +130,11 @@ extern tree fold_vec_perm (tree, tree, tree, const vec_perm_indices &);
 extern bool wide_int_binop (wide_int &res, enum tree_code,
 			    const wide_int &arg1, const wide_int &arg2,
 			    signop, wi::overflow_type *);
+extern bool poly_int_binop (poly_wide_int &res, enum tree_code,
+			    const_tree, const_tree, signop,
+			    wi::overflow_type *);
 extern tree int_const_binop (enum tree_code, const_tree, const_tree, int = 1);
+extern tree int_const_convert (tree, const_tree, int = 1);
 #define build_fold_addr_expr(T)\
         build_fold_addr_expr_loc (UNKNOWN_LOCATION, (T))
 extern tree build_fold_addr_expr_loc (location_t, tree);
@@ -137,12 +154,11 @@ extern tree build_simple_mem_ref_loc (location_t, tree);
 extern poly_offset_int mem_ref_offset (const_tree);
 extern tree build_invariant_address (tree, tree, poly_int64);
 extern tree constant_boolean_node (bool, tree);
-extern tree div_if_zero_remainder (const_tree, const_tree);
 
 extern bool tree_swap_operands_p (const_tree, const_tree);
 extern enum tree_code swap_tree_comparison (enum tree_code);
 
-extern bool ptr_difference_const (tree, tree, poly_int64_pod *);
+extern bool ptr_difference_const (tree, tree, poly_int64 *);
 extern enum tree_code invert_tree_comparison (enum tree_code, bool);
 extern bool inverse_conditions_p (const_tree, const_tree);
 
@@ -164,7 +180,8 @@ extern bool integer_valued_real_call_p (combined_fn, tree, tree, int);
 extern bool integer_valued_real_single_p (tree, int);
 extern bool integer_valued_real_p (tree, int = 0);
 
-extern bool fold_real_zero_addition_p (const_tree, const_tree, int);
+extern bool fold_real_zero_addition_p (const_tree, const_tree, const_tree,
+				       int);
 extern tree combine_comparisons (location_t, enum tree_code, enum tree_code,
 				 enum tree_code, tree, tree, tree);
 extern void debug_fold_checksum (const_tree);
@@ -195,6 +212,7 @@ extern bool tree_expr_signaling_nan_p (const_tree);
 extern bool tree_expr_maybe_signaling_nan_p (const_tree);
 extern bool tree_expr_nan_p (const_tree);
 extern bool tree_expr_maybe_nan_p (const_tree);
+extern bool tree_expr_maybe_real_minus_zero_p (const_tree);
 extern tree make_range (tree, int *, tree *, tree *, bool *);
 extern tree make_range_step (location_t, enum tree_code, tree, tree, tree,
 			     tree *, tree *, int *, bool *);
@@ -203,14 +221,20 @@ extern tree build_range_check (location_t, tree, tree, int, tree, tree);
 extern bool merge_ranges (int *, tree *, tree *, int, tree, tree, int,
 			  tree, tree);
 extern tree sign_bit_p (tree, const_tree);
+extern bool simple_condition_p (tree);
 extern tree exact_inverse (tree, tree);
-extern bool expr_not_equal_to (tree t, const wide_int &);
+extern bool expr_not_equal_to (tree t, const wide_int &, gimple * = NULL);
 extern tree const_unop (enum tree_code, tree, tree);
+extern tree vector_const_binop (enum tree_code, tree, tree,
+				tree (*) (enum tree_code, tree, tree));
 extern tree const_binop (enum tree_code, tree, tree, tree);
 extern bool negate_mathfn_p (combined_fn);
 extern const char *getbyterep (tree, unsigned HOST_WIDE_INT *);
 extern const char *c_getstr (tree);
 extern wide_int tree_nonzero_bits (const_tree);
+extern int address_compare (tree_code, tree, tree, tree, tree &, tree &,
+			    poly_int64 &, poly_int64 &, bool);
+extern tree ctor_single_nonzero_element (const_tree);
 
 /* Return OFF converted to a pointer offset type suitable as offset for
    POINTER_PLUS_EXPR.  Use location LOC for this conversion.  */
@@ -230,6 +254,27 @@ extern tree fold_build_pointer_plus_hwi_loc (location_t loc, tree ptr, HOST_WIDE
 #define fold_build_pointer_plus_hwi(p,o) \
 	fold_build_pointer_plus_hwi_loc (UNKNOWN_LOCATION, p, o)
 
+extern tree_code minmax_from_comparison (tree_code, tree,
+					 const widest_int,
+					 const widest_int);
+extern tree_code minmax_from_comparison (tree_code, tree, tree,
+					 tree, tree);
+
+extern tree make_bit_field_ref (location_t, tree, tree, tree,
+				HOST_WIDE_INT, poly_int64, int, int);
+
+/* In gimple-fold.cc.  */
+extern void clear_type_padding_in_mask (tree, unsigned char *);
+extern bool clear_padding_type_may_have_padding_p (tree);
+extern bool arith_overflowed_p (enum tree_code, const_tree, const_tree,
+				const_tree);
+extern tree fold_truth_andor_for_ifcombine (enum tree_code, tree,
+					    location_t, enum tree_code,
+					    tree, tree,
+					    location_t, enum tree_code,
+					    tree, tree,
+					    tree *);
+
 
 /* Class used to compare gimple operands.  */
 
@@ -237,7 +282,7 @@ class operand_compare
 {
 public:
   /* Return true if two operands are equal.  The flags fields can be used
-     to specify OEP flags described above.  */
+     to specify OEP flags described in tree-core.h.  */
   virtual bool operand_equal_p (const_tree, const_tree, unsigned int flags);
 
   /* Generate a hash value for an expression.  This can be used iteratively
@@ -250,6 +295,12 @@ protected:
      true is returned.  Then RET is set to corresponding comparsion result.  */
   bool verify_hash_value (const_tree arg0, const_tree arg1, unsigned int flags,
 			  bool *ret);
+
+private:
+  /* Return true if two operands are equal.  The flags fields can be used
+     to specify OEP flags described in tree-core.h.  */
+  bool operand_equal_p (tree, const_tree, tree, const_tree,
+			unsigned int flags);
 };
 
 #endif // GCC_FOLD_CONST_H

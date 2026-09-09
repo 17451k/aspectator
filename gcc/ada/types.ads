@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -39,9 +39,9 @@
 --  2s-complement. If there are any machines for which this is not a correct
 --  assumption, a significant number of changes will be required.
 
+with Ada.Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
 with System;
-with Unchecked_Conversion;
-with Unchecked_Deallocation;
 
 package Types is
    pragma Preelaborate;
@@ -58,6 +58,15 @@ package Types is
 
    subtype Pos is Int range 1 .. Int'Last;
    --  Positive Int values
+
+   subtype Nonzero_Int is Int with Predicate => Nonzero_Int /= 0;
+
+   type Int_64 is range -2 ** 63 .. +2 ** 63 - 1;
+   --  Signed 64-bit integer
+
+   subtype Nat_64 is Int_64 range 0 .. Int_64'Last;
+   subtype Pos_64 is Int_64 range 1 .. Int_64'Last;
+   subtype Nonzero_Int_64 is Int_64 with Predicate => Nonzero_Int_64 /= 0;
 
    type Word is mod 2 ** 32;
    --  Unsigned 32-bit integer
@@ -108,7 +117,7 @@ package Types is
    type String_Ptr_Const is access constant String;
    --  Standard character and string pointers
 
-   procedure Free is new Unchecked_Deallocation (String, String_Ptr);
+   procedure Free is new Ada.Unchecked_Deallocation (String, String_Ptr);
    --  Procedure for freeing dynamically allocated String values
 
    subtype Big_String is String (Positive);
@@ -118,7 +127,7 @@ package Types is
    --  size of zero, since there are legitimate deallocations going on.
 
    function To_Big_String_Ptr is
-     new Unchecked_Conversion (System.Address, Big_String_Ptr);
+     new Ada.Unchecked_Conversion (System.Address, Big_String_Ptr);
    --  Used to obtain Big_String_Ptr values from external addresses
 
    subtype Word_Hex_String is String (1 .. 8);
@@ -136,17 +145,17 @@ package Types is
    --  standard 32-bit integer as an index value, since we count on all index
    --  values being the same size.
 
-   type Text_Ptr is new Int;
-   --  Type used for subscripts in text buffer
-
-   type Text_Buffer is array (Text_Ptr range <>) of Character;
+   type Text_Ptr is new Int range -4 .. Int'Last;
+   --  -4 .. -1 are special; see constants below
+   type Text_Buffer is array (Text_Ptr range <>) of aliased Character;
    --  Text buffer used to hold source file or library information file
 
    type Text_Buffer_Ptr is access all Text_Buffer;
    --  Text buffers for input files are allocated dynamically and this type
    --  is used to reference these text buffers.
 
-   procedure Free is new Unchecked_Deallocation (Text_Buffer, Text_Buffer_Ptr);
+   procedure Free is
+     new Ada.Unchecked_Deallocation (Text_Buffer, Text_Buffer_Ptr);
    --  Procedure for freeing dynamically allocated text buffers
 
    ------------------------------------------
@@ -218,6 +227,16 @@ package Types is
    --  which source it refers to. Note that negative numbers are allowed to
    --  accommodate the following special values.
 
+   type Source_Span is record
+      Ptr, First, Last : Source_Ptr;
+   end record;
+   --  Type used to represent a source span, consisting in a main location Ptr,
+   --  with a First and Last location, such that Ptr in First .. Last
+
+   function To_Span (Loc : Source_Ptr) return Source_Span is ((others => Loc));
+   function To_Span (Ptr, First, Last : Source_Ptr) return Source_Span is
+     ((Ptr, First, Last));
+
    No_Location : constant Source_Ptr := -1;
    --  Value used to indicate no source position set in a node. A test for a
    --  Source_Ptr value being > No_Location is the approved way to test for a
@@ -226,6 +245,10 @@ package Types is
    --  generated nodes that we don't want the debugger to see in normal mode
    --  (very often we conditionalize so that we set No_Location in normal mode
    --  and the corresponding source line in -gnatD mode).
+
+   function No (Loc : Source_Ptr) return Boolean is (Loc = No_Location);
+   function Present (Loc : Source_Ptr) return Boolean is (not No (Loc));
+   --  Tests for No_Location / not No_Location
 
    Standard_Location : constant Source_Ptr := -2;
    --  Used for all nodes in the representation of package Standard other than
@@ -241,7 +264,7 @@ package Types is
    --  the location is in System, but we don't know exactly what line.
 
    First_Source_Ptr : constant Source_Ptr := 0;
-   --  Starting source pointer index value for first source program
+   --  Starting source pointer index value for first source file
 
    -------------------------------------
    -- Range Definitions for Tree Data --
@@ -302,8 +325,7 @@ package Types is
    --  The tree Id values start at zero, because we use zero for Empty (to
    --  allow a zero test for Empty).
 
-   Node_High_Bound : constant :=
-     (if Standard'Address_Size = 32 then 299_999_999 else 1_999_999_999);
+   Node_High_Bound : constant := 1_999_999_999;
 
    Elist_Low_Bound : constant := -199_999_999;
    --  The Elist_Id values are subscripts into an array of elist headers which
@@ -377,14 +399,17 @@ package Types is
    --  the special values Empty and Error are subscripts into this table.
    --  See package Atree for further details.
 
-   type Node_Id is range Node_Low_Bound .. Node_High_Bound;
+   type Node_Id is range Node_Low_Bound .. Node_High_Bound with Size => 32;
    --  Type used to identify nodes in the tree
 
    subtype Entity_Id is Node_Id;
    --  A synonym for node types, used in the Einfo package to refer to nodes
-   --  that are entities (i.e. nodes with an Nkind of N_Defining_xxx). All such
-   --  nodes are extended nodes and these are the only extended nodes, so that
-   --  in practice entity and extended nodes are synonymous.
+   --  that are entities (i.e. nodes with an Nkind of N_Defining_xxx).
+   --
+   --  Note that Sinfo.Nodes.N_Entity_Id is the same as Entity_Id, except it
+   --  has a predicate requiring the correct Nkind. Opt_N_Entity_Id is the same
+   --  as N_Entity_Id, except it allows Empty. (Sinfo.Nodes is generated by the
+   --  Gen_IL program.)
 
    subtype Node_Or_Entity_Id is Node_Id;
    --  A synonym for node types, used in cases where a given value may be used
@@ -406,11 +431,6 @@ package Types is
    --  Used to indicate an error in the source program. A node is actually
    --  allocated with this Id value, so that Nkind (Error) = N_Error.
 
-   Empty_Or_Error : constant Node_Id := Error;
-   --  Since Empty and Error are the first two Node_Id values, the test for
-   --  N <= Empty_Or_Error tests to see if N is Empty or Error. This definition
-   --  provides convenient self-documentation for such tests.
-
    First_Node_Id  : constant Node_Id := Node_Low_Bound;
    --  Subscript of first allocated node. Note that Empty and Error are both
    --  allocated nodes, whose Nkind fields can be accessed without error.
@@ -426,7 +446,7 @@ package Types is
    --  attempt to apply list operations to No_List will cause a (detected)
    --  error.
 
-   type List_Id is range List_Low_Bound .. List_High_Bound;
+   type List_Id is range List_Low_Bound .. List_High_Bound with Size => 32;
    --  Type used to identify a node list
 
    No_List : constant List_Id := List_High_Bound;
@@ -451,7 +471,7 @@ package Types is
    --  of the tree, allowing nodes to be members of more than one such list
    --  (see package Elists for further details).
 
-   type Elist_Id is range Elist_Low_Bound .. Elist_High_Bound;
+   type Elist_Id is range Elist_Low_Bound .. Elist_High_Bound with Size => 32;
    --  Type used to identify an element list (Elist header table subscript)
 
    No_Elist : constant Elist_Id := Elist_Low_Bound;
@@ -481,7 +501,8 @@ package Types is
    --  String_Id values are used to identify entries in the strings table. They
    --  are subscripts into the Strings table defined in package Stringt.
 
-   type String_Id is range Strings_Low_Bound .. Strings_High_Bound;
+   type String_Id is range Strings_Low_Bound .. Strings_High_Bound
+     with Size => 32;
    --  Type used to identify entries in the strings table
 
    No_String : constant String_Id := Strings_Low_Bound;
@@ -679,11 +700,11 @@ package Types is
    Container_Checks           : constant := 26;
    Tampering_Check            : constant := 27;
    Tasking_Check              : constant := 28;
+   Raise_Check                : constant := 29;
    --  Values used to represent individual predefined checks (including the
-   --  setting of Atomic_Synchronization, which is implemented internally using
-   --  a "check" whose name is Atomic_Synchronization).
+   --  pseudo-check _Atomic_Synchronization).
 
-   All_Checks : constant := 29;
+   All_Checks : constant := 30;
    --  Value used to represent All_Checks value
 
    subtype Predefined_Check_Id is Check_Id range 1 .. All_Checks;
@@ -763,7 +784,7 @@ package Types is
       Overflow_Mode_Assertions : Overflow_Mode_Type;
       --  This field indicates the mode for handling code generation and
       --  overflow checking (if enabled) for intermediate expression values.
-      --  This applies to any expression occuring inside assertions.
+      --  This applies to any expression occurring inside assertions.
    end record;
 
    -----------------------------------
@@ -806,6 +827,39 @@ package Types is
    --  mechanism to be used. For example if pragma C_Pass_By_Copy (32) is given
    --  then Default_C_Record_Mechanism is set to 32, and the meaning is to use
    --  By_Reference if the size is greater than 32, and By_Copy otherwise.
+
+   ---------------------------------
+   -- Component_Alignment Control --
+   ---------------------------------
+
+   --  There are four types of alignment possible for array and record
+   --  types, and a field in the type entities contains a value of the
+   --  following type indicating which alignment choice applies. For full
+   --  details of the meaning of these alignment types, see description
+   --  of the Component_Alignment pragma.
+
+   type Component_Alignment_Kind is (
+      Calign_Default,          -- default alignment
+      Calign_Component_Size,   -- natural alignment for component size
+      Calign_Component_Size_4, -- natural for size <= 4, 4 for size >= 4
+      Calign_Storage_Unit);    -- all components byte aligned
+
+   -----------------------------------
+   -- Floating Point Representation --
+   -----------------------------------
+
+   type Float_Rep_Kind is (IEEE_Binary);
+   --  The only one supported now is IEEE 754p conforming binary format, but
+   --  other formats were supported in the past, and could conceivably be
+   --  supported in the future, so we keep this singleton enumeration type.
+
+   ----------------------------
+   -- Small_Paren_Count_Type --
+   ----------------------------
+
+   --  See Paren_Count in Atree for documentation
+
+   subtype Small_Paren_Count_Type is Nat range 0 .. 3;
 
    ------------------------------
    -- Run-Time Exception Codes --
@@ -887,7 +941,10 @@ package Types is
       SE_Infinite_Recursion,             -- 34
       SE_Object_Too_Large,               -- 35
       PE_Stream_Operation_Not_Allowed,   -- 36
-      PE_Build_In_Place_Mismatch);       -- 37
+      PE_Build_In_Place_Mismatch,        -- 37
+      PE_Raise_Check_Failed,             -- 38
+      PE_Abstract_Type_Component);       -- 39
+   pragma Convention (C, RT_Exception_Code);
 
    Last_Reason_Code : constant :=
      RT_Exception_Code'Pos (RT_Exception_Code'Last);
@@ -896,7 +953,7 @@ package Types is
    type Reason_Kind is (CE_Reason, PE_Reason, SE_Reason);
    --  Categorization of reason codes by exception raised
 
-   Rkind : constant array (RT_Exception_Code range <>) of Reason_Kind :=
+   Rkind : constant array (RT_Exception_Code) of Reason_Kind :=
              (CE_Access_Check_Failed            => CE_Reason,
               CE_Access_Parameter_Is_Null       => CE_Reason,
               CE_Discriminant_Check_Failed      => CE_Reason,
@@ -912,12 +969,14 @@ package Types is
               CE_Range_Check_Failed             => CE_Reason,
               CE_Tag_Check_Failed               => CE_Reason,
 
+              PE_Abstract_Type_Component        => PE_Reason,
               PE_Access_Before_Elaboration      => PE_Reason,
               PE_Accessibility_Check_Failed     => PE_Reason,
               PE_Address_Of_Intrinsic           => PE_Reason,
               PE_Aliased_Parameters             => PE_Reason,
               PE_All_Guards_Closed              => PE_Reason,
               PE_Bad_Predicated_Generic_Type    => PE_Reason,
+              PE_Build_In_Place_Mismatch        => PE_Reason,
               PE_Current_Task_In_Entry_Body     => PE_Reason,
               PE_Duplicated_Entry_Address       => PE_Reason,
               PE_Explicit_Raise                 => PE_Reason,
@@ -925,17 +984,40 @@ package Types is
               PE_Implicit_Return                => PE_Reason,
               PE_Misaligned_Address_Value       => PE_Reason,
               PE_Missing_Return                 => PE_Reason,
+              PE_Non_Transportable_Actual       => PE_Reason,
               PE_Overlaid_Controlled_Object     => PE_Reason,
               PE_Potentially_Blocking_Operation => PE_Reason,
+              PE_Raise_Check_Failed             => PE_Reason,
+              PE_Stream_Operation_Not_Allowed   => PE_Reason,
               PE_Stubbed_Subprogram_Called      => PE_Reason,
               PE_Unchecked_Union_Restriction    => PE_Reason,
-              PE_Non_Transportable_Actual       => PE_Reason,
-              PE_Stream_Operation_Not_Allowed   => PE_Reason,
-              PE_Build_In_Place_Mismatch        => PE_Reason,
 
               SE_Empty_Storage_Pool             => SE_Reason,
               SE_Explicit_Raise                 => SE_Reason,
               SE_Infinite_Recursion             => SE_Reason,
               SE_Object_Too_Large               => SE_Reason);
+
+   --  Types for field offsets/sizes used in Seinfo, Sinfo.Nodes and
+   --  Einfo.Entities:
+
+   type Field_Offset is new Nat;
+   --  Offset of a node field, in units of the size of the field, which is
+   --  always a power of 2.
+
+   subtype Node_Offset is Field_Offset'Base range 1 .. Field_Offset'Base'Last;
+
+   subtype Slot_Count is Field_Offset;
+   --  Count of number of slots. Same type as Field_Offset to avoid
+   --  proliferation of type conversions.
+
+   subtype Field_Size_In_Bits is Field_Offset with Predicate =>
+     Field_Size_In_Bits in 1 | 2 | 4 | 8 | 32;
+
+   subtype Opt_Field_Offset is Field_Offset'Base range -1 .. Field_Offset'Last;
+   No_Field_Offset : constant Opt_Field_Offset := Opt_Field_Offset'First;
+
+   type Offset_Array_Index is new Nat;
+   type Offset_Array is
+     array (Offset_Array_Index range <>) of Opt_Field_Offset;
 
 end Types;

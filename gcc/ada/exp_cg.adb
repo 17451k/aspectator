@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2010-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2010-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,25 +23,27 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Atree;    use Atree;
-with Einfo;    use Einfo;
-with Elists;   use Elists;
-with Exp_Dbug; use Exp_Dbug;
-with Exp_Tss;  use Exp_Tss;
-with Lib;      use Lib;
-with Namet;    use Namet;
-with Opt;      use Opt;
-with Output;   use Output;
-with Sem_Aux;  use Sem_Aux;
-with Sem_Disp; use Sem_Disp;
-with Sem_Type; use Sem_Type;
-with Sem_Util; use Sem_Util;
-with Sinfo;    use Sinfo;
-with Sinput;   use Sinput;
-with Snames;   use Snames;
-with System;   use System;
+with Atree;          use Atree;
+with Einfo.Entities; use Einfo.Entities;
+with Einfo.Utils;    use Einfo.Utils;
+with Elists;         use Elists;
+with Exp_Dbug;       use Exp_Dbug;
+with Exp_Tss;        use Exp_Tss;
+with Lib;            use Lib;
+with Namet;          use Namet;
+with Opt;            use Opt;
+with Output;         use Output;
+with Sem_Aux;        use Sem_Aux;
+with Sem_Disp;       use Sem_Disp;
+with Sem_Type;       use Sem_Type;
+with Sem_Util;       use Sem_Util;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Sinput;         use Sinput;
+with Snames;         use Snames;
+with System;         use System;
 with Table;
-with Uintp;    use Uintp;
+with Uintp;          use Uintp;
 
 package body Exp_CG is
 
@@ -121,14 +123,7 @@ package body Exp_CG is
       for J in Call_Graph_Nodes.First .. Call_Graph_Nodes.Last loop
          N := Call_Graph_Nodes.Table (J);
 
-         --  No action needed for subprogram calls removed by the expander
-         --  (for example, calls to ignored ghost entities).
-
-         if Nkind (N) = N_Null_Statement then
-            pragma Assert (Nkind (Original_Node (N)) in N_Subprogram_Call);
-            null;
-
-         elsif Nkind (N) in N_Subprogram_Call then
+         if Nkind (N) in N_Subprogram_Call then
             Write_Call_Info (N);
 
          else pragma Assert (Nkind (N) = N_Defining_Identifier);
@@ -354,7 +349,13 @@ package body Exp_CG is
 
    procedure Register_CG_Node (N : Node_Id) is
    begin
-      if Nkind (N) in N_Subprogram_Call then
+      --  Skip ignored ghost calls that will be removed by the expander
+
+      if Is_Ignored_Ghost_Node (N) then
+         null;
+
+      elsif Nkind (N) in N_Subprogram_Call then
+
          if Current_Scope = Main_Unit_Entity
            or else Entity_Is_In_Main_Unit (Current_Scope)
          then
@@ -376,7 +377,14 @@ package body Exp_CG is
                  and then Nkind (Parent (Par)) /= N_Compilation_Unit
                loop
                   Par := Parent (Par);
-                  pragma Assert (Present (Par));
+
+                  --  Par can legitimately be empty inside a class-wide
+                  --  precondition; the "real" call will be found inside the
+                  --  generated pragma.
+
+                  if No (Par) then
+                     return;
+                  end if;
                end loop;
 
                Set_Parent (Copy, Par);
@@ -429,7 +437,7 @@ package body Exp_CG is
    procedure Write_Call_Info (Call : Node_Id) is
       Ctrl_Arg : constant Node_Id   := Controlling_Argument (Call);
       Ctrl_Typ : constant Entity_Id := Base_Type (Etype (Ctrl_Arg));
-      Prim     : constant Entity_Id := Entity (Sinfo.Name (Call));
+      Prim     : constant Entity_Id := Entity (Sinfo.Nodes.Name (Call));
       P        : constant Node_Id   := Parent (Call);
 
    begin
@@ -559,13 +567,13 @@ package body Exp_CG is
          Write_Char ('"');
          Write_Name (Chars (Parent_Typ));
 
-         --  Note: Einfo prefix not needed if this routine is moved to
+         --  Note: Einfo.Entities prefix not needed if this routine is moved to
          --  exp_disp???
 
-         if Present (Einfo.Interfaces (Typ))
-           and then not Is_Empty_Elmt_List (Einfo.Interfaces (Typ))
+         if Present (Einfo.Entities.Interfaces (Typ))
+           and then not Is_Empty_Elmt_List (Einfo.Entities.Interfaces (Typ))
          then
-            Elmt := First_Elmt (Einfo.Interfaces (Typ));
+            Elmt := First_Elmt (Einfo.Entities.Interfaces (Typ));
             while Present (Elmt) loop
                Write_Str  (", ");
                Write_Name (Chars (Node (Elmt)));

@@ -1,10 +1,14 @@
-///
+// Written in the D programming language.
+/**
+Source: $(PHOBOSSRC std/experimental/allocator/building_blocks/allocator_list.d)
+*/
 module std.experimental.allocator.building_blocks.allocator_list;
+
+import core.memory : pageSize;
 
 import std.experimental.allocator.building_blocks.null_allocator;
 import std.experimental.allocator.common;
 import std.experimental.allocator.gc_allocator;
-version (unittest) import std.stdio;
 
 // Turn this on for debugging
 // debug = allocator_list;
@@ -21,7 +25,7 @@ An embedded list builds a most-recently-used strategy: the most recent
 allocators used in calls to either `allocate`, `owns` (successful calls
 only), or `deallocate` are tried for new allocations in order of their most
 recent use. Thus, although core operations take in theory $(BIGOH k) time for
-$(D k) allocators in current use, in many workloads the factor is sublinear.
+`k` allocators in current use, in many workloads the factor is sublinear.
 Details of the actual strategy may change in future releases.
 
 `AllocatorList` is primarily intended for coarse-grained handling of
@@ -36,6 +40,11 @@ longer used. It does so by destroying empty allocators. However, in order to
 avoid thrashing (excessive creation/destruction of allocators under certain use
 patterns), it keeps unused allocators for a while.
 
+The shared version of `AllocatorList` is `SharedAllocatorList`, which has
+identical semantics to its single-threaded version. Both `BookkeepingAllocator`
+and `Allocator` provided by `factoryFunction` must be shared, in order to
+ensure corectness.
+
 Params:
 factoryFunction = A function or template function (including function literals).
 New allocators are created by calling `factoryFunction(n)` with strictly
@@ -45,18 +54,18 @@ needs state, a `Factory` object should be used.
 
 BookkeepingAllocator = Allocator used for storing bookkeeping data. The size of
 bookkeeping data is proportional to the number of allocators. If $(D
-BookkeepingAllocator) is $(D NullAllocator), then $(D AllocatorList) is
+BookkeepingAllocator) is `NullAllocator`, then `AllocatorList` is
 "ouroboros-style", i.e. it keeps the bookkeeping data in memory obtained from
 the allocators themselves. Note that for ouroboros-style management, the size
-$(D n) passed to $(D make) will be occasionally different from the size
+`n` passed to `make` will be occasionally different from the size
 requested by client code.
 
 Factory = Type of a factory object that returns new allocators on a need
-basis. For an object $(D sweatshop) of type $(D Factory), `sweatshop(n)` should
+basis. For an object `sweatshop` of type `Factory`, `sweatshop(n)` should
 return an allocator able to allocate at least `n` bytes (i.e. `Factory` must
 define `opCall(size_t)` to return an allocator object). Usually the capacity of
-allocators created should be much larger than $(D n) such that an allocator can
-be used for many subsequent allocations. $(D n) is passed only to ensure the
+allocators created should be much larger than `n` such that an allocator can
+be used for many subsequent allocations. `n` is passed only to ensure the
 minimum necessary for the next allocation. The factory object is allowed to hold
 state, which will be stored inside `AllocatorList` as a direct `public` member
 called `factory`.
@@ -64,7 +73,7 @@ called `factory`.
 */
 struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
 {
-    import std.conv : emplace;
+    import core.lifetime : emplace;
     import std.experimental.allocator.building_blocks.stats_collector
         : StatsCollector, Options;
     import std.traits : hasMember;
@@ -97,7 +106,7 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
     }
 
     /**
-    If $(D BookkeepingAllocator) is not $(D NullAllocator), $(D bkalloc) is
+    If `BookkeepingAllocator` is not `NullAllocator`, `bkalloc` is
     defined and accessible.
     */
 
@@ -155,11 +164,11 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
     enum uint alignment = Allocator.alignment;
 
     /**
-    Allocate a block of size $(D s). First tries to allocate from the existing
+    Allocate a block of size `s`. First tries to allocate from the existing
     list of already-created allocators. If neither can satisfy the request,
-    creates a new allocator by calling $(D make(s)) and delegates the request
+    creates a new allocator by calling `make(s)` and delegates the request
     to it. However, if the allocation fresh off a newly created allocator
-    fails, subsequent calls to $(D allocate) will not cause more calls to $(D
+    fails, subsequent calls to `allocate` will not cause more calls to $(D
     make).
     */
     void[] allocate(size_t s)
@@ -177,17 +186,85 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
             }
             return result;
         }
-        // Can't allocate from the current pool. Check if we just added a new
-        // allocator, in that case it won't do any good to add yet another.
-        if (root && root.empty == Ternary.yes)
-        {
-            // no can do
-            return null;
-        }
+
         // Add a new allocator
         if (auto a = addAllocator(s))
         {
             auto result = a.allocate(s);
+            assert(owns(result) == Ternary.yes || !result.ptr);
+            return result;
+        }
+        return null;
+    }
+
+    static if (hasMember!(Allocator, "allocateZeroed"))
+    package(std) void[] allocateZeroed()(size_t s)
+    {
+        for (auto p = &root, n = *p; n; p = &n.next, n = *p)
+        {
+            auto result = n.allocateZeroed(s);
+            if (result.length != s) continue;
+            // Bring to front if not already
+            if (root != n)
+            {
+                *p = n.next;
+                n.next = root;
+                root = n;
+            }
+            return result;
+        }
+
+        // Add a new allocator
+        if (auto a = addAllocator(s))
+        {
+            auto result = a.allocateZeroed(s);
+            assert(owns(result) == Ternary.yes || !result.ptr);
+            return result;
+        }
+        return null;
+    }
+
+    /**
+    Allocate a block of size `s` with alignment `a`. First tries to allocate
+    from the existing list of already-created allocators. If neither can
+    satisfy the request, creates a new allocator by calling `make(s + a - 1)`
+    and delegates the request to it. However, if the allocation fresh off a
+    newly created allocator fails, subsequent calls to `alignedAllocate`
+    will not cause more calls to `make`.
+    */
+    static if (hasMember!(Allocator, "alignedAllocate"))
+    void[] alignedAllocate(size_t s, uint theAlignment)
+    {
+        import std.algorithm.comparison : max;
+        import core.checkedint : addu;
+
+        if (theAlignment == 0 || s == 0)
+            return null;
+
+        for (auto p = &root, n = *p; n; p = &n.next, n = *p)
+        {
+            auto result = n.alignedAllocate(s, theAlignment);
+            if (result.length != s) continue;
+            // Bring to front if not already
+            if (root != n)
+            {
+                *p = n.next;
+                n.next = root;
+                root = n;
+            }
+            return result;
+        }
+
+        bool overflow = false;
+        size_t maxSize = addu(s - 1, cast(size_t) theAlignment, overflow);
+        assert(!overflow, "Requested size is too large");
+        if (overflow)
+            return null;
+
+        // Add a new allocator
+        if (auto a = addAllocator(maxSize))
+        {
+            auto result = a.alignedAllocate(s, theAlignment);
             assert(owns(result) == Ternary.yes || !result.ptr);
             return result;
         }
@@ -373,15 +450,15 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
     }
 
     /**
-    Defined only if $(D Allocator.expand) is defined. Finds the owner of $(D b)
-    and calls $(D expand) for it. The owner is not brought to the head of the
+    Defined only if `Allocator.expand` is defined. Finds the owner of `b`
+    and calls `expand` for it. The owner is not brought to the head of the
     list.
     */
     static if (hasMember!(Allocator, "expand")
         && hasMember!(Allocator, "owns"))
     bool expand(ref void[] b, size_t delta)
     {
-        if (!b.ptr) return delta == 0;
+        if (!b) return delta == 0;
         for (auto p = &root, n = *p; n; p = &n.next, n = *p)
         {
             if (n.owns(b) == Ternary.yes) return n.expand(b, delta);
@@ -390,9 +467,9 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
     }
 
     /**
-    Defined only if $(D Allocator.reallocate) is defined. Finds the owner of
-    $(D b) and calls $(D reallocate) for it. If that fails, calls the global
-    $(D reallocate), which allocates a new block and moves memory.
+    Defined only if `Allocator.reallocate` is defined. Finds the owner of
+    `b` and calls `reallocate` for it. If that fails, calls the global
+    `reallocate`, which allocates a new block and moves memory.
     */
     static if (hasMember!(Allocator, "reallocate"))
     bool reallocate(ref void[] b, size_t s)
@@ -412,7 +489,7 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
     }
 
     /**
-     Defined if $(D Allocator.deallocate) and $(D Allocator.owns) are defined.
+     Defined if `Allocator.deallocate` and `Allocator.owns` are defined.
     */
     static if (hasMember!(Allocator, "deallocate")
         && hasMember!(Allocator, "owns"))
@@ -454,7 +531,7 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
     }
 
     /**
-    Defined only if $(D Allocator.owns) and $(D Allocator.deallocateAll) are
+    Defined only if `Allocator.owns` and `Allocator.deallocateAll` are
     defined.
     */
     static if (ouroboros && hasMember!(Allocator, "deallocateAll")
@@ -476,7 +553,19 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
         assert(special || !allocators.ptr);
         if (special)
         {
-            special.deallocate(allocators);
+            static if (stateSize!SAllocator)
+            {
+                import core.stdc.string : memcpy;
+                SAllocator specialCopy;
+                assert(special.a.sizeof == specialCopy.sizeof);
+                memcpy(&specialCopy, &special.a, specialCopy.sizeof);
+                emplace(&special.a);
+                specialCopy.deallocateAll();
+            }
+            else
+            {
+                special.deallocateAll();
+            }
         }
         allocators = null;
         root = null;
@@ -503,6 +592,7 @@ struct AllocatorList(Factory, BookkeepingAllocator = GCAllocator)
      Returns `Ternary.yes` if no allocators are currently active,
     `Ternary.no` otherwise. This methods never returns `Ternary.unknown`.
     */
+    pure nothrow @safe @nogc
     Ternary empty() const
     {
         return Ternary(!allocators.length);
@@ -576,65 +666,704 @@ version (Posix) @system unittest
     assert(b1.length == 1024 * 10);
 }
 
-@system unittest
+/// Ditto
+shared struct SharedAllocatorList(Factory, BookkeepingAllocator = GCAllocator)
 {
-    // Create an allocator based upon 4MB regions, fetched from the GC heap.
-    import std.algorithm.comparison : max;
-    import std.experimental.allocator.building_blocks.region : Region;
-    AllocatorList!((n) => Region!GCAllocator(new ubyte[max(n, 1024 * 4096)]),
-        NullAllocator) a;
-    const b1 = a.allocate(1024 * 8192);
-    assert(b1 !is null); // still works due to overdimensioning
-    const b2 = a.allocate(1024 * 10);
-    assert(b2.length == 1024 * 10);
-    a.deallocateAll();
-}
-
-@system unittest
-{
-    // Create an allocator based upon 4MB regions, fetched from the GC heap.
-    import std.algorithm.comparison : max;
-    import std.experimental.allocator.building_blocks.region : Region;
-    AllocatorList!((n) => Region!()(new ubyte[max(n, 1024 * 4096)])) a;
-    auto b1 = a.allocate(1024 * 8192);
-    assert(b1 !is null); // still works due to overdimensioning
-    b1 = a.allocate(1024 * 10);
-    assert(b1.length == 1024 * 10);
-    a.deallocateAll();
-}
-
-@system unittest
-{
-    import std.algorithm.comparison : max;
-    import std.experimental.allocator.building_blocks.region : Region;
     import std.typecons : Ternary;
-    AllocatorList!((n) => Region!()(new ubyte[max(n, 1024 * 4096)])) a;
+    import std.traits : hasMember;
+    import core.internal.spinlock : SpinLock;
+
+private:
+    // Forward all calls to 'impl' and protect them by the lock below
+    AllocatorList!(Factory, BookkeepingAllocator) impl;
+    SpinLock lock = SpinLock(SpinLock.Contention.brief);
+
+    // This could be potentially removed in the future,
+    // should a successor to <https://github.com/dlang/druntime/pull/2156>
+    // or a solution to <https://github.com/dlang/dmd/issues/17128> get merged.
+    static ref T assumeUnshared(T)(ref shared T val) @trusted @nogc pure nothrow
+    {
+        return *cast(T*) &val;
+    }
+
+    // Debug function used for testing
+    version (unittest)
+    auto allocators()
+    {
+        return impl.allocators;
+    }
+
+// Everything is inherited from the 'AllocatorList' implementation
+public:
+
+    /*
+    Note: This does not work well with rvalues because it copies them once more.
+    Probably not a problem here because all parameters are cheap.
+    <https://github.com/dlang/phobos/pull/6465/files#r189629862>
+    */
+
+    /**
+    The alignment offered.
+    */
+    enum alignment = impl.alignment;
+
+    /**
+    Allocate a block of size `s`. First tries to allocate from the existing
+    list of already-created allocators. If neither can satisfy the request,
+    creates a new allocator by calling `make(s)` and delegates the request
+    to it. However, if the allocation fresh off a newly created allocator
+    fails, subsequent calls to `allocate` will not cause more calls to $(D
+    make).
+    */
+    static if (hasMember!(typeof(impl), "allocate"))
+    void[] allocate(size_t s)
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).allocate(s);
+    }
+
+    /**
+    Allocate a block of size `s` with alignment `a`. First tries to allocate
+    from the existing list of already-created allocators. If neither can
+    satisfy the request, creates a new allocator by calling `make(s + a - 1)`
+    and delegates the request to it. However, if the allocation fresh off a
+    newly created allocator fails, subsequent calls to `alignedAllocate`
+    will not cause more calls to `make`.
+    */
+    static if (hasMember!(typeof(impl), "alignedAllocate"))
+    void[] alignedAllocate(size_t s, uint a)
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).alignedAllocate(s, a);
+    }
+
+    /**
+     Defined if `Allocator.deallocate` and `Allocator.owns` are defined.
+    */
+    static if (hasMember!(typeof(impl), "deallocate"))
+    bool deallocate(void[] b)
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).deallocate(b);
+    }
+
+    /**
+    Defined only if `Allocator` defines `owns`. Tries each allocator in
+    turn, in most-recently-used order. If the owner is found, it is moved to
+    the front of the list as a side effect under the assumption it will be used
+    soon.
+
+    Returns: `Ternary.yes` if one allocator was found to return `Ternary.yes`,
+    `Ternary.no` if all component allocators returned `Ternary.no`, and
+    `Ternary.unknown` if no allocator returned `Ternary.yes` and at least one
+    returned  `Ternary.unknown`.
+    */
+    static if (hasMember!(typeof(impl), "owns"))
+    Ternary owns(void[] b)
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).owns(b);
+    }
+
+    /**
+    Defined only if `Allocator.expand` is defined. Finds the owner of `b`
+    and calls `expand` for it. The owner is not brought to the head of the
+    list.
+    */
+    static if (hasMember!(typeof(impl), "expand"))
+    bool expand(ref void[] b, size_t delta)
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).expand(b, delta);
+    }
+
+    /**
+    Defined only if `Allocator.reallocate` is defined. Finds the owner of
+    `b` and calls `reallocate` for it. If that fails, calls the global
+    `reallocate`, which allocates a new block and moves memory.
+    */
+    static if (hasMember!(typeof(impl), "reallocate"))
+    bool reallocate(ref void[] b, size_t s)
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).reallocate(b, s);
+    }
+
+    /**
+    Defined only if `Allocator.owns` and `Allocator.deallocateAll` are
+    defined.
+    */
+    static if (hasMember!(typeof(impl), "deallocateAll"))
+    bool deallocateAll()
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).deallocateAll();
+    }
+
+    /**
+     Returns `Ternary.yes` if no allocators are currently active,
+    `Ternary.no` otherwise. This methods never returns `Ternary.unknown`.
+    */
+    static if (hasMember!(typeof(impl), "empty"))
+    Ternary empty()
+    {
+        lock.lock();
+        scope(exit) lock.unlock();
+
+        return assumeUnshared(impl).empty();
+    }
+}
+
+/// Ditto
+template SharedAllocatorList(alias factoryFunction,
+    BookkeepingAllocator = GCAllocator)
+{
+    alias A = typeof(factoryFunction(1));
+    static assert(
+        // is a template function (including literals)
+        is(typeof({A function(size_t) @system x = factoryFunction!size_t;}))
+        ||
+        // or a function (including literals)
+        is(typeof({A function(size_t) @system x = factoryFunction;}))
+        ,
+        "Only function names and function literals that take size_t"
+            ~ " and return an allocator are accepted, not "
+            ~ typeof(factoryFunction).stringof
+    );
+    static struct Factory
+    {
+        A opCall(size_t n) { return factoryFunction(n); }
+    }
+    alias SharedAllocatorList = .SharedAllocatorList!(Factory, BookkeepingAllocator);
+}
+
+@system unittest
+{
+    import std.algorithm.comparison : max;
+    import std.experimental.allocator.building_blocks.region : Region, SharedRegion;
+
+    static void testAlloc(Allocator)(ref Allocator a)
+    {
+        const b1 = a.allocate(1024 * 8192);
+        assert(b1 !is null); // still works due to overdimensioning
+        const b2 = a.allocate(1024 * 10);
+        assert(b2.length == 1024 * 10);
+        a.deallocateAll();
+    }
+
+     // Create an allocator based upon 4MB regions, fetched from the GC heap.
+    AllocatorList!((n) => Region!GCAllocator(new ubyte[max(n, 1024 * 4096)]),
+        NullAllocator) reg1;
+
+    SharedAllocatorList!((n) => SharedRegion!GCAllocator(new ubyte[max(n, 1024 * 4096)]),
+        NullAllocator) reg2;
+
+    testAlloc(reg1);
+    testAlloc(reg2);
+}
+
+@system unittest
+{
+    import std.algorithm.comparison : max;
+    import std.experimental.allocator.building_blocks.region : BorrowedRegion, SharedBorrowedRegion;
+
+    static void testAlloc(Allocator)(ref Allocator a)
+    {
+        auto b1 = a.alignedAllocate(1024 * 8192, 1024);
+        assert(b1 !is null); // still works due to overdimensioning
+        assert(b1.length == 1024 * 8192);
+        assert(b1.ptr.alignedAt(1024));
+        assert(a.allocators.length == 1);
+
+        b1 = a.alignedAllocate(0, 1024);
+        assert(b1.length == 0);
+        assert(a.allocators.length == 1);
+
+        b1 = a.allocate(1024 * 10);
+        assert(b1.length == 1024 * 10);
+
+        assert(a.reallocate(b1, 1024));
+        assert(b1.length == 1024);
+
+        a.deallocateAll();
+    }
+
+    // Create an allocator based upon 4MB regions, fetched from the GC heap.
+    AllocatorList!((n) => BorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a1;
+    SharedAllocatorList!((n) => SharedBorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a2;
+
+    testAlloc(a1);
+    testAlloc(a2);
+}
+
+@system unittest
+{
+    import core.exception : AssertError;
+    import std.exception : assertThrown;
+    import std.algorithm.comparison : max;
+    import std.experimental.allocator.building_blocks.region : BorrowedRegion, SharedBorrowedRegion;
+
+    static void testAlloc(Allocator)(ref Allocator a)
+    {
+        auto b1 = a.alignedAllocate(0, 1);
+        assert(b1 is null);
+
+        b1 = a.alignedAllocate(1, 0);
+        assert(b1 is null);
+
+        b1 = a.alignedAllocate(0, 0);
+        assert(b1 is null);
+
+        assertThrown!AssertError(a.alignedAllocate(size_t.max, 1024));
+
+        // FIXME: This special-casing might note be necessary.
+        // At the moment though, this call would take potentially forever
+        // for the `SharedAllocatorList` from below.
+        static if (!is(Allocator == shared))
+        {
+            a.deallocateAll();
+        }
+    }
+
+    // Create an allocator based upon 4MB regions, fetched from the GC heap.
+    AllocatorList!((n) => BorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a1;
+    SharedAllocatorList!((n) => SharedBorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a2;
+
+    testAlloc(a1);
+    testAlloc(a2);
+}
+
+@system unittest
+{
+    import std.typecons : Ternary;
+
+    // Create an allocator based upon 4MB regions, fetched from the GC heap.
+    import std.algorithm.comparison : max;
+    import std.experimental.allocator.building_blocks.region : BorrowedRegion, SharedBorrowedRegion;
+
+    static void testAlloc(Allocator)(ref Allocator a)
+    {
+        auto b0 = a.alignedAllocate(1, 1024);
+        assert(b0.length == 1);
+        assert(b0.ptr.alignedAt(1024));
+        assert(a.allocators.length == 1);
+
+        auto b1 = a.alignedAllocate(1024 * 4096, 1024);
+        assert(b1.length == 1024 * 4096);
+        assert(b1.ptr.alignedAt(1024));
+        assert(a.allocators.length == 2);
+
+        auto b2 = a.alignedAllocate(1024, 128);
+        assert(b2.length == 1024);
+        assert(b2.ptr.alignedAt(128));
+        assert(a.allocators.length == 2);
+
+        auto b3 = a.allocate(1024);
+        assert(b3.length == 1024);
+        assert(a.allocators.length == 2);
+
+        auto b4 = a.allocate(1024 * 4096);
+        assert(b4.length == 1024 * 4096);
+        assert(a.allocators.length == 3);
+
+        static if (!is(Allocator == shared))
+        {
+            assert(a.root.empty == Ternary.no);
+            assert(a.deallocate(b4));
+            assert(a.root.empty == Ternary.yes);
+
+            assert(a.deallocate(b1));
+        }
+
+        a.deallocateAll();
+    }
+
+    AllocatorList!((n) => BorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a1;
+    SharedAllocatorList!((n) => SharedBorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a2;
+
+    testAlloc(a1);
+    testAlloc(a2);
+}
+
+@system unittest
+{
+    import std.algorithm.comparison : max;
+    import std.experimental.allocator.building_blocks.region : BorrowedRegion, SharedBorrowedRegion;
+
+    static void testAlloc(Allocator)(ref Allocator a)
+    {
+        auto b1 = a.allocate(1024 * 8192);
+        assert(b1 !is null); // still works due to overdimensioning
+        b1 = a.allocate(1024 * 10);
+        assert(b1.length == 1024 * 10);
+        assert(a.reallocate(b1, 1024));
+        assert(b1.length == 1024);
+        a.deallocateAll();
+    }
+
+    // Create an allocator based upon 4MB regions, fetched from the GC heap.
+    AllocatorList!((n) => BorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a1;
+    SharedAllocatorList!((n) => SharedBorrowedRegion!()(new ubyte[max(n, 1024 * 4096)])) a2;
+
+    testAlloc(a1);
+    testAlloc(a2);
+}
+
+@system unittest
+{
+    import std.algorithm.comparison : max;
+    import std.experimental.allocator.building_blocks.region : BorrowedRegion;
+    import std.experimental.allocator.mallocator : Mallocator;
+    import std.typecons : Ternary;
+    AllocatorList!((n) => BorrowedRegion!()(new ubyte[max(n, 1024 * 4096)]), Mallocator) a;
     auto b1 = a.allocate(1024 * 8192);
     assert(b1 !is null);
     b1 = a.allocate(1024 * 10);
     assert(b1.length == 1024 * 10);
+    assert((() pure nothrow @safe @nogc => a.expand(b1, 10))());
+    assert(b1.length == 1025 * 10);
     a.allocate(1024 * 4095);
-    a.deallocateAll();
-    assert(a.empty == Ternary.yes);
+    assert((() pure nothrow @safe @nogc => a.empty)() == Ternary.no);
+    // Ensure deallocateAll infers from parent
+    assert((() nothrow @nogc => a.deallocateAll())());
+    assert((() pure nothrow @safe @nogc => a.empty)() == Ternary.yes);
 }
 
 @system unittest
 {
-    import std.experimental.allocator.building_blocks.region : Region;
+    import std.experimental.allocator.building_blocks.region : Region, SharedRegion;
     enum bs = GCAllocator.alignment;
-    AllocatorList!((n) => Region!GCAllocator(256 * bs)) a;
-    auto b1 = a.allocate(192 * bs);
-    assert(b1.length == 192 * bs);
+
+    static void testAlloc(Allocator)(ref Allocator a)
+    {
+        auto b1 = a.allocate(192 * bs);
+        assert(b1.length == 192 * bs);
+        assert(a.allocators.length == 1);
+        auto b2 = a.allocate(64 * bs);
+        assert(b2.length == 64 * bs);
+        assert(a.allocators.length == 1);
+        auto b3 = a.allocate(192 * bs);
+        assert(b3.length == 192 * bs);
+        assert(a.allocators.length == 2);
+        // Ensure deallocate inherits from parent allocators
+        () nothrow @nogc { a.deallocate(b1); }();
+        b1 = a.allocate(64 * bs);
+        assert(b1.length == 64 * bs);
+        assert(a.allocators.length == 2);
+        a.deallocateAll();
+    }
+
+    AllocatorList!((n) => Region!GCAllocator(256 * bs)) a1;
+    SharedAllocatorList!((n) => SharedRegion!GCAllocator(256 * bs)) a2;
+
+    testAlloc(a1);
+    testAlloc(a2);
+}
+
+@system unittest
+{
+    import std.experimental.allocator.building_blocks.ascending_page_allocator : AscendingPageAllocator;
+    import std.experimental.allocator.mallocator : Mallocator;
+    import std.algorithm.comparison : max;
+    import std.typecons : Ternary;
+
+    static void testrw(void[] b)
+    {
+        ubyte* buf = cast(ubyte*) b.ptr;
+        for (int i = 0; i < b.length; i += pageSize)
+        {
+            buf[i] = cast(ubyte) (i % 256);
+            assert(buf[i] == cast(ubyte) (i % 256));
+        }
+    }
+
+    enum numPages = 2;
+    AllocatorList!((n) => AscendingPageAllocator(max(n, numPages * pageSize)), Mallocator) a;
+
+    void[] b1 = a.allocate(1);
+    assert(b1.length == 1);
+    b1 = a.allocate(2);
+    assert(b1.length == 2);
+    testrw(b1);
+    assert(a.root.a.parent.getAvailableSize() == 0);
+
+    void[] b2 = a.allocate((numPages + 1) * pageSize);
+    assert(b2.length == (numPages + 1) * pageSize);
+    testrw(b2);
+
+    void[] b3 = a.allocate(3);
+    assert(b3.length == 3);
+    testrw(b3);
+
+    void[] b4 = a.allocate(0);
+    assert(b4.length == 0);
+
+    assert(a.allocators.length == 3);
+    assert(a.owns(b1) == Ternary.yes);
+    assert(a.owns(b2) == Ternary.yes);
+    assert(a.owns(b3) == Ternary.yes);
+
+    assert(a.expand(b1, pageSize - b1.length));
+    assert(b1.length == pageSize);
+    assert(!a.expand(b1, 1));
+    assert(!a.expand(b2, 1));
+
+    testrw(b1);
+    testrw(b2);
+    testrw(b3);
+
+    assert(a.deallocate(b1));
+    assert(a.deallocate(b2));
+
+    assert(a.deallocateAll());
+}
+
+@system unittest
+{
+    import std.experimental.allocator.building_blocks.ascending_page_allocator :
+        AscendingPageAllocator, SharedAscendingPageAllocator;
+    import std.experimental.allocator.mallocator : Mallocator;
+    import std.algorithm.comparison : max;
+    import std.typecons : Ternary;
+
+    enum numPages = 2;
+
+    static void testrw(void[] b)
+    {
+        ubyte* buf = cast(ubyte*) b.ptr;
+        for (int i = 0; i < b.length; i += pageSize)
+        {
+            buf[i] = cast(ubyte) (i % 256);
+            assert(buf[i] == cast(ubyte) (i % 256));
+        }
+    }
+
+    static void testAlloc(Allocator)(ref Allocator a)
+    {
+        void[] b1 = a.allocate(1);
+        assert(b1.length == 1);
+        b1 = a.allocate(2);
+        assert(b1.length == 2);
+        testrw(b1);
+
+        void[] b2 = a.allocate((numPages + 1) * pageSize);
+        assert(b2.length == (numPages + 1) * pageSize);
+        testrw(b2);
+
+        void[] b3 = a.allocate(3);
+        assert(b3.length == 3);
+        testrw(b3);
+
+        void[] b4 = a.allocate(0);
+        assert(b4.length == 0);
+
+        assert(a.allocators.length == 3);
+        assert(a.owns(b1) == Ternary.yes);
+        assert(a.owns(b2) == Ternary.yes);
+        assert(a.owns(b3) == Ternary.yes);
+
+        assert(a.expand(b1, pageSize - b1.length));
+        assert(b1.length == pageSize);
+        assert(!a.expand(b1, 1));
+        assert(!a.expand(b2, 1));
+
+        testrw(b1);
+        testrw(b2);
+        testrw(b3);
+
+        assert(a.deallocate(b1));
+        assert(a.deallocate(b2));
+
+        const alignment = cast(uint) (70 * pageSize);
+        b3 = a.alignedAllocate(70 * pageSize, alignment);
+        assert(b3.length == 70 * pageSize);
+        assert(b3.ptr.alignedAt(alignment));
+        testrw(b3);
+        assert(a.allocators.length == 4);
+        assert(a.deallocate(b3));
+
+
+        assert(a.deallocateAll());
+    }
+
+    AllocatorList!((n) => AscendingPageAllocator(max(n, numPages * pageSize)), NullAllocator) a1;
+    SharedAllocatorList!((n) => SharedAscendingPageAllocator(max(n, numPages * pageSize)), NullAllocator) a2;
+}
+
+@system unittest
+{
+    import std.experimental.allocator.building_blocks.ascending_page_allocator : AscendingPageAllocator;
+    import std.experimental.allocator.mallocator : Mallocator;
+    import std.algorithm.comparison : max;
+    import std.typecons : Ternary;
+
+    static void testrw(void[] b)
+    {
+        ubyte* buf = cast(ubyte*) b.ptr;
+        for (int i = 0; i < b.length; i += pageSize)
+        {
+            buf[i] = cast(ubyte) (i % 256);
+            assert(buf[i] == cast(ubyte) (i % 256));
+        }
+    }
+
+    enum numPages = 5;
+    AllocatorList!((n) => AscendingPageAllocator(max(n, numPages * pageSize)), NullAllocator) a;
+    const alignment = cast(uint) (2 * pageSize);
+    auto b = a.alignedAllocate(1, alignment);
+    assert(b.length == 1);
+    assert(a.expand(b, pageSize - 1));
+    assert(b.ptr.alignedAt(alignment));
+    assert(b.length == pageSize);
+
+    b = a.allocate(pageSize);
+    assert(b.length == pageSize);
     assert(a.allocators.length == 1);
-    auto b2 = a.allocate(64 * bs);
-    assert(b2.length == 64 * bs);
+
+    assert(a.allocate(pageSize * 5).length == pageSize * 5);
+    assert(a.allocators.length == 2);
+
+    assert(a.deallocateAll());
+}
+
+@system unittest
+{
+    import std.experimental.allocator.building_blocks.ascending_page_allocator : AscendingPageAllocator;
+    import std.algorithm.comparison : max;
+
+    enum maxIter = 100;
+    enum numPages = 10;
+    const chunkSize = pageSize / 8;
+
+    AllocatorList!((n) => AscendingPageAllocator(max(n, numPages * pageSize)), NullAllocator) a;
+    foreach (i; 0 .. maxIter)
+    {
+        auto b1 = a.allocate(chunkSize);
+        assert(b1.length == chunkSize);
+
+        assert(a.deallocate(b1));
+    }
+
+    assert(a.deallocateAll());
+}
+
+@system unittest
+{
+    import std.experimental.allocator.building_blocks.ascending_page_allocator : AscendingPageAllocator;
+    import std.experimental.allocator.mallocator : Mallocator;
+    import std.algorithm.comparison : max;
+    import std.typecons : Ternary;
+
+    static void testrw(void[] b)
+    {
+        ubyte* buf = cast(ubyte*) b.ptr;
+        for (int i = 0; i < b.length; i += pageSize)
+        {
+            buf[i] = cast(ubyte) (i % 256);
+            assert(buf[i] == cast(ubyte) (i % 256));
+        }
+    }
+
+    enum numPages = 5;
+    AllocatorList!((n) => AscendingPageAllocator(max(n, numPages * pageSize)), NullAllocator) a;
+    auto b = a.alignedAllocate(1, cast(uint) (pageSize * 2));
+    assert(b.length == 1);
+    assert(a.expand(b, pageSize - 1));
+    assert(b.ptr.alignedAt(cast(uint) (pageSize * 2)));
+    assert(b.length == pageSize);
+
+    b = a.allocate(pageSize);
+    assert(b.length == pageSize);
     assert(a.allocators.length == 1);
-    auto b3 = a.allocate(192 * bs);
-    assert(b3.length == 192 * bs);
+
+    assert(a.allocate(pageSize * 5).length == pageSize * 5);
     assert(a.allocators.length == 2);
-    a.deallocate(b1);
-    b1 = a.allocate(64 * bs);
-    assert(b1.length == 64 * bs);
-    assert(a.allocators.length == 2);
-    a.deallocateAll();
+
+    assert(a.deallocateAll());
+}
+
+@system unittest
+{
+    import std.experimental.allocator.building_blocks.region : SharedRegion;
+    import core.thread : ThreadGroup;
+    import std.algorithm.comparison : max;
+
+    enum numThreads = 10;
+    SharedAllocatorList!((n) => SharedRegion!(GCAllocator)(new ubyte[max(n, 1024)])) a;
+
+    void fun()
+    {
+        void[] b1 = a.allocate(1024);
+        assert(b1.length == 1024);
+
+        void[] b2 = a.alignedAllocate(1024, 1024);
+        assert(b2.length == 1024);
+        assert(b2.ptr.alignedAt(1024));
+
+        assert(a.deallocate(b1));
+        assert(a.deallocate(b2));
+    }
+
+    auto tg = new ThreadGroup;
+    foreach (i; 0 .. numThreads)
+    {
+        tg.create(&fun);
+    }
+    tg.joinAll();
+
+    assert(a.deallocateAll());
+}
+
+//BUG: this test freezes spuriously on FreeBSD, see also https://github.com/dlang/phobos/issues/10730.
+// The lock in a.allocate() below blocks in all remaining threads causing the join to never complete.
+// This might also hint at problems in the spinlock implementation.
+version (FreeBSD) {} else
+@system unittest
+{
+    import std.experimental.allocator.mallocator : Mallocator;
+    import std.experimental.allocator.building_blocks.ascending_page_allocator : SharedAscendingPageAllocator;
+    import core.thread : ThreadGroup;
+    import std.algorithm.comparison : max;
+
+    enum numThreads = 100;
+    enum numPages = 10;
+    SharedAllocatorList!((n) => SharedAscendingPageAllocator(max(n, pageSize * numPages)), Mallocator) a;
+
+    void fun()
+    {
+        void[] b1 = a.allocate(512);
+        assert(b1.length == 512);
+        assert(a.expand(b1, 512));
+        assert(b1.length == 1024);
+
+        void[] b2 = a.alignedAllocate(1024, 4096);
+        assert(b2.length == 1024);
+        assert(b2.ptr.alignedAt(1024));
+
+        assert(a.deallocate(b1));
+        assert(a.deallocate(b2));
+    }
+
+    auto tg = new ThreadGroup;
+    foreach (i; 0 .. numThreads)
+    {
+        tg.create(&fun);
+    }
+    tg.joinAll();
+
+    assert(a.deallocateAll());
 }

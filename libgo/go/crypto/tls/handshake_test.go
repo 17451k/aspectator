@@ -191,18 +191,17 @@ func parseTestData(r io.Reader) (flows [][]byte, err error) {
 		// Otherwise the line is a line of hex dump that looks like:
 		// 00000170  fc f5 06 bf (...)  |.....X{&?......!|
 		// (Some bytes have been omitted from the middle section.)
-
-		if i := strings.IndexByte(line, ' '); i >= 0 {
-			line = line[i:]
-		} else {
+		_, after, ok := strings.Cut(line, " ")
+		if !ok {
 			return nil, errors.New("invalid test data")
 		}
+		line = after
 
-		if i := strings.IndexByte(line, '|'); i >= 0 {
-			line = line[:i]
-		} else {
+		before, _, ok := strings.Cut(line, "|")
+		if !ok {
 			return nil, errors.New("invalid test data")
 		}
+		line = before
 
 		hexBytes := strings.Fields(line)
 		for _, hexByte := range hexBytes {
@@ -335,15 +334,9 @@ func TestMain(m *testing.M) {
 }
 
 func runMain(m *testing.M) int {
-	// TLS 1.3 cipher suites preferences are not configurable and change based
-	// on the architecture. Force them to the version with AES acceleration for
-	// test consistency.
-	once.Do(initDefaultCipherSuites)
-	varDefaultCipherSuitesTLS13 = []uint16{
-		TLS_AES_128_GCM_SHA256,
-		TLS_CHACHA20_POLY1305_SHA256,
-		TLS_AES_256_GCM_SHA384,
-	}
+	// Cipher suites preferences change based on the architecture. Force them to
+	// the version without AES acceleration for test consistency.
+	hasAESGCMHardwareSupport = false
 
 	// Set up localPipe.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -370,6 +363,8 @@ func runMain(m *testing.M) int {
 		Certificates:       make([]Certificate, 2),
 		InsecureSkipVerify: true,
 		CipherSuites:       allCipherSuites(),
+		MinVersion:         VersionTLS10,
+		MaxVersion:         VersionTLS13,
 	}
 	testConfig.Certificates[0].Certificate = [][]byte{testRSACertificate}
 	testConfig.Certificates[0].PrivateKey = testRSAPrivateKey
@@ -433,6 +428,11 @@ func fromHex(s string) []byte {
 	b, _ := hex.DecodeString(s)
 	return b
 }
+
+// testTime is 2016-10-20T17:32:09.000Z, which is within the validity period of
+// [testRSACertificate], [testRSACertificateIssuer], [testRSA2048Certificate],
+// [testRSA2048CertificateIssuer], and [testECDSACertificate].
+var testTime = func() time.Time { return time.Unix(1476984729, 0) }
 
 var testRSACertificate = fromHex("3082024b308201b4a003020102020900e8f09d3fe25beaa6300d06092a864886f70d01010b0500301f310b3009060355040a1302476f3110300e06035504031307476f20526f6f74301e170d3136303130313030303030305a170d3235303130313030303030305a301a310b3009060355040a1302476f310b300906035504031302476f30819f300d06092a864886f70d010101050003818d0030818902818100db467d932e12270648bc062821ab7ec4b6a25dfe1e5245887a3647a5080d92425bc281c0be97799840fb4f6d14fd2b138bc2a52e67d8d4099ed62238b74a0b74732bc234f1d193e596d9747bf3589f6c613cc0b041d4d92b2b2423775b1c3bbd755dce2054cfa163871d1e24c4f31d1a508baab61443ed97a77562f414c852d70203010001a38193308190300e0603551d0f0101ff0404030205a0301d0603551d250416301406082b0601050507030106082b06010505070302300c0603551d130101ff0402300030190603551d0e041204109f91161f43433e49a6de6db680d79f60301b0603551d230414301280104813494d137e1631bba301d5acab6e7b30190603551d1104123010820e6578616d706c652e676f6c616e67300d06092a864886f70d01010b0500038181009d30cc402b5b50a061cbbae55358e1ed8328a9581aa938a495a1ac315a1a84663d43d32dd90bf297dfd320643892243a00bccf9c7db74020015faad3166109a276fd13c3cce10c5ceeb18782f16c04ed73bbb343778d0c1cf10fa1d8408361c94c722b9daedb4606064df4c1b33ec0d1bd42d4dbfe3d1360845c21d33be9fae7")
 

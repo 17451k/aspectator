@@ -100,10 +100,15 @@ subroutine f3 (c, d)
   use m
   implicit none
   integer i, c(64), d(64)
-  !$omp teams reduction (inscan, +: a)  ! { dg-error "Only DEFAULT permitted as reduction-modifier in REDUCTION clause at" }
+  !$omp teams reduction (inscan, +: a)
     ! { dg-error "'inscan' REDUCTION clause on construct other than DO, SIMD, DO SIMD, PARALLEL DO, PARALLEL DO SIMD" "" { target *-*-* } .-1 }
     ! ...
   !$omp end teams
+
+  !$omp scope reduction (inscan, +: a)
+    ! { dg-error "'inscan' REDUCTION clause on construct other than DO, SIMD, DO SIMD, PARALLEL DO, PARALLEL DO SIMD" "" { target *-*-* } .-1 }
+    ! ...
+  !$omp end scope
 
   !$omp target parallel do reduction (inscan, +: a) map (c, d)
   ! { dg-error "'inscan' REDUCTION clause on construct other than DO, SIMD, DO SIMD, PARALLEL DO, PARALLEL DO SIMD" "" { target *-*-* } .-1 }
@@ -135,7 +140,7 @@ subroutine f4 (c, d)
   use m
   implicit none
   integer i, c(64), d(64)
-  !$omp taskloop reduction (inscan, +: a)  ! { dg-error "Only DEFAULT permitted as reduction-modifier in REDUCTION clause" }
+  !$omp taskloop reduction (inscan, +: a)
   ! { dg-error "'inscan' REDUCTION clause on construct other than DO, SIMD, DO SIMD, PARALLEL DO, PARALLEL DO SIMD" "" { target *-*-* } .-1 }
   do i = 1, 64
     d(i) = a
@@ -171,7 +176,7 @@ subroutine f8 (c, d, e, f)
   use m
   implicit none
   integer i, c(64), d(64), e(64), f(64)
-  !$omp do reduction (inscan, +: a, b)	  ! { dg-error "With INSCAN at .1., expected loop body with ..OMP SCAN between two structured-block-sequences" }
+  !$omp do reduction (inscan, +: a, b)	  ! { dg-error "With INSCAN at .1., expected loop body with ..OMP SCAN between two structured block sequences" }
   do i = 1, 64
     block
       a = a + c(i)
@@ -184,7 +189,7 @@ subroutine f8 (c, d, e, f)
     end block
   end do
 
-  !$omp do reduction (inscan, +: a, b)  ! { dg-error "With INSCAN at .1., expected loop body with ..OMP SCAN between two structured-block-sequences" }
+  !$omp do reduction (inscan, +: a, b)  ! { dg-error "With INSCAN at .1., expected loop body with ..OMP SCAN between two structured block sequences" }
   do i = 1, 64
     block
       a = a + c(i)
@@ -202,12 +207,11 @@ subroutine f9
   use m
   implicit none
   integer i
-! The first error (exit) causes two follow-up errors:
-  !$omp simd reduction (inscan, +: a)  ! { dg-error "With INSCAN at .1., expected loop body with ..OMP SCAN between two structured-block-sequences" }
+  !$omp simd reduction (inscan, +: a)
   do i = 1, 64
     if (i == 23) &
       exit  ! { dg-error "EXIT statement at .1. terminating ..OMP DO loop" } */
-    !$omp scan exclusive (a) ! { dg-error "Unexpected ..OMP SCAN at .1. outside loop construct with 'inscan' REDUCTION clause" }
+    !$omp scan exclusive (a)  ! { dg-warning "!.OMP SCAN at .1. with zero executable statements in preceding structured block sequence" }
     a = a + 1
   end do
 end

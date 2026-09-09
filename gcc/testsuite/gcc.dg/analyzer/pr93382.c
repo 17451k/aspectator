@@ -1,5 +1,3 @@
-/* { dg-additional-options "-fanalyzer-checker=taint" } */
-
 typedef __SIZE_TYPE__ size_t;
 
 int idx;
@@ -23,5 +21,5 @@ int
 pl (void)
 {
   ql ();
-  return arr[idx]; /* { dg-warning "use of tainted value 'idx' in array lookup without bounds checking" "" { xfail *-*-* } } */
+  return arr[idx]; /* { dg-warning "use of attacker-controlled value 'idx' in array lookup without bounds checking" "" { xfail *-*-* } } */
 }

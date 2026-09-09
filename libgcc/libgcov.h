@@ -1,5 +1,5 @@
 /* Header file for libgcov-*.c.
-   Copyright (C) 1996-2021 Free Software Foundation, Inc.
+   Copyright (C) 1996-2026 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -89,17 +89,19 @@ typedef unsigned gcov_type_unsigned __attribute__ ((mode (QI)));
 #define GCOV_LOCKED 0
 #endif
 
-#ifndef GCOV_SUPPORTS_ATOMIC
-/* Detect whether target can support atomic update of profilers.  */
-#if __SIZEOF_LONG_LONG__ == 4 && __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4
-#define GCOV_SUPPORTS_ATOMIC 1
+#if defined (__MSVCRT__)
+#define GCOV_LOCKED_WITH_LOCKING 1
 #else
-#if __SIZEOF_LONG_LONG__ == 8 && __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+#define GCOV_LOCKED_WITH_LOCKING 0
+#endif
+
+/* Detect whether target can support atomic update of profilers.  */
+#if (__SIZEOF_LONG_LONG__ == 4 && __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4) \
+    || (__SIZEOF_LONG_LONG__ == 8 && __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8) \
+    || __LIBGCC_HAVE_LIBATOMIC
 #define GCOV_SUPPORTS_ATOMIC 1
 #else
 #define GCOV_SUPPORTS_ATOMIC 0
-#endif
-#endif
 #endif
 
 /* In libgcov we need these functions to be extern, so prefix them with
@@ -108,14 +110,11 @@ typedef unsigned gcov_type_unsigned __attribute__ ((mode (QI)));
 #define gcov_var __gcov_var
 #define gcov_open __gcov_open
 #define gcov_close __gcov_close
-#define gcov_write_tag_length __gcov_write_tag_length
 #define gcov_position __gcov_position
-#define gcov_seek __gcov_seek
 #define gcov_rewrite __gcov_rewrite
 #define gcov_is_error __gcov_is_error
 #define gcov_write_unsigned __gcov_write_unsigned
-#define gcov_write_counter __gcov_write_counter
-#define gcov_write_summary __gcov_write_summary
+#define gcov_write_object_summary __gcov_write_object_summary
 #define gcov_read_unsigned __gcov_read_unsigned
 #define gcov_read_counter __gcov_read_counter
 #define gcov_read_summary __gcov_read_summary
@@ -133,10 +132,17 @@ typedef unsigned gcov_type_unsigned __attribute__ ((mode (QI)));
 typedef unsigned gcov_unsigned_t;
 typedef unsigned gcov_position_t;
 /* gcov_type is typedef'd elsewhere for the compiler */
+
 #if defined (HOST_HAS_F_SETLKW)
 #define GCOV_LOCKED 1
 #else
 #define GCOV_LOCKED 0
+#endif
+
+#if defined (HOST_HAS_LK_LOCK)
+#define GCOV_LOCKED_WITH_LOCKING 1
+#else
+#define GCOV_LOCKED_WITH_LOCKING 0
 #endif
 
 /* Some Macros specific to gcov-tool.  */
@@ -219,12 +225,13 @@ struct gcov_info
   struct gcov_info *next;	/* link to next, used by libgcov */
 
   gcov_unsigned_t stamp;	/* uniquifying time stamp */
+  gcov_unsigned_t checksum;	/* unique object checksum */
   const char *filename;		/* output file name */
 
   gcov_merge_fn merge[GCOV_COUNTERS];  /* merge functions (null for
 					  unused) */
-  
-  unsigned n_functions;		/* number of functions */
+
+  gcov_unsigned_t n_functions;		/* number of functions */
 
 #ifndef IN_GCOV_TOOL
   const struct gcov_fn_info *const *functions; /* pointer to pointers
@@ -261,7 +268,7 @@ struct indirect_call_tuple
   /* Pointer to counters.  */
   gcov_type *counters;
 };
-  
+
 /* Exactly one of these will be active in the process.  */
 extern struct gcov_master __gcov_master;
 extern struct gcov_kvp *__gcov_kvp_dynamic_pool;
@@ -331,14 +338,8 @@ extern int __gcov_execve (const char *, char  *const [], char *const [])
   ATTRIBUTE_HIDDEN;
 
 /* Functions that only available in libgcov.  */
-GCOV_LINKAGE int gcov_open (const char */*name*/) ATTRIBUTE_HIDDEN;
-GCOV_LINKAGE void gcov_write_counter (gcov_type) ATTRIBUTE_HIDDEN;
-GCOV_LINKAGE void gcov_write_tag_length (gcov_unsigned_t, gcov_unsigned_t)
+GCOV_LINKAGE void gcov_write_object_summary (const struct gcov_summary *)
     ATTRIBUTE_HIDDEN;
-GCOV_LINKAGE void gcov_write_summary (gcov_unsigned_t /*tag*/,
-                                      const struct gcov_summary *)
-    ATTRIBUTE_HIDDEN;
-GCOV_LINKAGE void gcov_seek (gcov_position_t /*position*/) ATTRIBUTE_HIDDEN;
 GCOV_LINKAGE void gcov_rewrite (void) ATTRIBUTE_HIDDEN;
 
 /* "Counts" stored in gcda files can be a real counter value, or

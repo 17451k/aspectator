@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, Synopsys DesignWare ARC cpu.
-   Copyright (C) 1994-2021 Free Software Foundation, Inc.
+   Copyright (C) 1994-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -100,7 +100,11 @@ extern const char *arc_cpu_to_as (int argc, const char **argv);
   "%:cpu_to_as(%{mcpu=*:%*}) %{mspfp*} %{mdpfp*} "                      \
   "%{mfpu=fpuda*:-mfpuda} %{mcode-density}"
 
+/* Support for a compile-time default CPU and FPU.  The rules are:
+   --with-cpu is ignored if -mcpu, mARC*, marc*, mA7, mA6 are specified.
+   --with-fpu is ignored if -mfpu is specified.  */
 #define OPTION_DEFAULT_SPECS						\
+  {"fpu", "%{!mfpu=*:-mfpu=%(VALUE)}"},					\
   {"cpu", "%{!mcpu=*:%{!mARC*:%{!marc*:%{!mA7:%{!mA6:-mcpu=%(VALUE)}}}}}" }
 
 #ifndef DRIVER_ENDIAN_SELF_SPECS
@@ -114,8 +118,6 @@ extern const char *arc_cpu_to_as (int argc, const char **argv);
   "%{mEA: -mea %<mEA}"
 
 /* Run-time compilation parameters selecting different hardware subsets.  */
-
-#define TARGET_MIXED_CODE (TARGET_MIXED_CODE_SET)
 
 #define TARGET_SPFP (TARGET_SPFP_FAST_SET || TARGET_SPFP_COMPACT_SET)
 #define TARGET_DPFP (TARGET_DPFP_FAST_SET || TARGET_DPFP_COMPACT_SET	\
@@ -294,9 +296,6 @@ if (GET_MODE_CLASS (MODE) == MODE_INT		\
 #define INT_TYPE_SIZE		32
 #define LONG_TYPE_SIZE		32
 #define LONG_LONG_TYPE_SIZE	64
-#define FLOAT_TYPE_SIZE		32
-#define DOUBLE_TYPE_SIZE	64
-#define LONG_DOUBLE_TYPE_SIZE	64
 
 /* Define this as 1 if `char' should by default be signed; else as 0.  */
 #define DEFAULT_SIGNED_CHAR 0
@@ -571,7 +570,7 @@ extern enum reg_class arc_regno_reg_class[];
    a scale factor or added to another register (as well as added to a
    displacement).  */
 
-#define INDEX_REG_CLASS (TARGET_MIXED_CODE ? ARCOMPACT16_REGS : GENERAL_REGS)
+#define INDEX_REG_CLASS GENERAL_REGS
 
 /* The class value for valid base registers. A base register is one used in
    an address which is the register value plus a displacement.  */
@@ -609,28 +608,56 @@ extern enum reg_class arc_regno_reg_class[];
    needed to represent mode MODE in a register of class CLASS.  */
 
 #define CLASS_MAX_NREGS(CLASS, MODE) \
-(( GET_MODE_SIZE (MODE) == 16 && CLASS == SIMD_VR_REGS) ? 1: \
-((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD))
+((GET_MODE_SIZE (MODE) == 16 && CLASS == SIMD_VR_REGS) ? 1 \
+ : ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD))
 
 #define SMALL_INT(X) ((unsigned) ((X) + 0x100) < 0x200)
-#define SMALL_INT_RANGE(X, OFFSET, SHIFT) \
-  ((unsigned) (((X) >> (SHIFT)) + 0x100) \
+#define SMALL_INT_RANGE(X, OFFSET, SHIFT)	\
+  ((unsigned) (((X) >> (SHIFT)) + 0x100)	\
    < 0x200 - ((unsigned) (OFFSET) >> (SHIFT)))
-#define SIGNED_INT12(X) ((unsigned) ((X) + 0x800) < 0x1000)
-#define SIGNED_INT16(X) ((unsigned) ((X) + 0x8000) < 0x10000)
-#define LARGE_INT(X) \
-(((X) < 0) \
- ? (X) >= (-(HOST_WIDE_INT) 0x7fffffff - 1) \
- : (unsigned HOST_WIDE_INT) (X) <= (unsigned HOST_WIDE_INT) 0xffffffff)
-#define UNSIGNED_INT3(X) ((unsigned) (X) < 0x8)
-#define UNSIGNED_INT5(X) ((unsigned) (X) < 0x20)
-#define UNSIGNED_INT6(X) ((unsigned) (X) < 0x40)
-#define UNSIGNED_INT7(X) ((unsigned) (X) < 0x80)
-#define UNSIGNED_INT8(X) ((unsigned) (X) < 0x100)
-#define UNSIGNED_INT12(X) ((unsigned) (X) < 0x800)
-#define UNSIGNED_INT16(X) ((unsigned) (X) < 0x10000)
+#define LARGE_INT(X)				\
+  (((X) < 0)					\
+   ? (X) >= (-(HOST_WIDE_INT) 0x7fffffff - 1)				\
+   : (unsigned HOST_WIDE_INT) (X) <= (unsigned HOST_WIDE_INT) 0xffffffff)
+
 #define IS_ONE(X) ((X) == 1)
 #define IS_ZERO(X) ((X) == 0)
+
+#define SIGNED(X,V)							\
+  ((unsigned long long) ((X) + (1ULL << (V - 1))) < (1ULL << V))
+#define UNSIGNED(X,V) ((unsigned long long) (X) < (1ULL << V))
+#define VERIFY_SHIFT(X,S) ((X & ((1 << S) - 1)) == 0)
+
+#define UNSIGNED_INT3(X) (UNSIGNED(X,3))
+#define UNSIGNED_INT5(X) (UNSIGNED(X,5))
+#define UNSIGNED_INT6(X) (UNSIGNED(X,6))
+#define UNSIGNED_INT7(X) (UNSIGNED(X,7))
+#define UNSIGNED_INT8(X) (UNSIGNED(X,8))
+#define UNSIGNED_INT9(X) (UNSIGNED(X,9))
+#define UNSIGNED_INT10(X) (UNSIGNED(X,10))
+#define UNSIGNED_INT12(X) (UNSIGNED(X,12))
+#define UNSIGNED_INT16(X) (UNSIGNED(X,16))
+
+#define SIGNED_INT3(X) (SIGNED(X,3))
+#define SIGNED_INT6(X) (SIGNED(X,6))
+#define SIGNED_INT7(X) (SIGNED(X,7))
+#define SIGNED_INT8(X) (SIGNED(X,8))
+#define SIGNED_INT9(X) (SIGNED(X,9))
+#define SIGNED_INT10(X) (SIGNED(X,10))
+#define SIGNED_INT11(X) (SIGNED(X,11))
+#define SIGNED_INT12(X) (SIGNED(X,12))
+#define SIGNED_INT13(X) (SIGNED(X,13))
+#define SIGNED_INT16(X) (SIGNED(X,16))
+#define SIGNED_INT21(X) (SIGNED(X,21))
+#define SIGNED_INT25(X) (SIGNED(X,25))
+
+#define UNSIGNED_INT7_SHIFTED(X,S) (VERIFY_SHIFT(X,S) && UNSIGNED_INT6(X >> S))
+#define UNSIGNED_INT8_SHIFTED(X,S) (VERIFY_SHIFT(X,S) && UNSIGNED_INT6(X >> S))
+#define UNSIGNED_INT9_SHIFTED(X,S) (VERIFY_SHIFT(X,S) && UNSIGNED_INT6(X >> S))
+
+#define SIGNED_INT13_SHIFTED(X,S) (VERIFY_SHIFT(X,S) && SIGNED_INT12(X >> S))
+#define SIGNED_INT14_SHIFTED(X,S) (VERIFY_SHIFT(X,S) && SIGNED_INT12(X >> S))
+#define SIGNED_INT15_SHIFTED(X,S) (VERIFY_SHIFT(X,S) && SIGNED_INT12(X >> S))
 
 /* Stack layout and stack pointer usage.  */
 
@@ -841,9 +868,9 @@ extern int arc_initial_elimination_offset(int from, int to);
 
 /* Recognize any constant value that is a valid address.  */
 #define CONSTANT_ADDRESS_P(X)					\
-  (flag_pic ? (arc_legitimate_pic_addr_p (X) || LABEL_P (X)):	\
-   (GET_CODE (X) == LABEL_REF || GET_CODE (X) == SYMBOL_REF	\
-    || GET_CODE (X) == CONST_INT || GET_CODE (X) == CONST))
+  (flag_pic ? (arc_legitimate_pic_addr_p (X) || LABEL_P (X))	\
+   : (GET_CODE (X) == LABEL_REF || GET_CODE (X) == SYMBOL_REF	\
+      || GET_CODE (X) == CONST_INT || GET_CODE (X) == CONST))
 
 /* Is the argument a const_int rtx, containing an exact power of 2 */
 #define  IS_POWEROF2_P(X) (! ( (X) & ((X) - 1)) && (X))
@@ -926,10 +953,16 @@ arc_select_cc_mode (OP, X, Y)
 
 /* Costs.  */
 
+/* Analog of COSTS_N_INSNS when optimizing for size.  */
+#ifndef COSTS_N_BYTES
+#define COSTS_N_BYTES(N) (N)
+#endif
+
 /* The cost of a branch insn.  */
 /* ??? What's the right value here?  Branches are certainly more
    expensive than reg->reg moves.  */
-#define BRANCH_COST(speed_p, predictable_p) 2
+#define BRANCH_COST(speed_p, predictable_p) \
+	(speed_p ? COSTS_N_INSNS (2) : COSTS_N_INSNS (1))
 
 /* Scc sets the destination to 1 and then conditionally zeroes it.
    Best case, ORed SCCs can be made into clear - condset - condset.
@@ -941,11 +974,8 @@ arc_select_cc_mode (OP, X, Y)
    beging decisive of p0, we want:
    p0 * (branch_cost - 4) > (1 - p0) * 5
    ??? We don't get to see that probability to evaluate, so we can
-   only wildly guess that it might be 50%.
-   ??? The compiler also lacks the notion of branch predictability.  */
-#define LOGICAL_OP_NON_SHORT_CIRCUIT \
-  (BRANCH_COST (optimize_function_for_speed_p (cfun), \
-		false) > 9)
+   only wildly guess that it might be 50%.  */
+#define LOGICAL_OP_NON_SHORT_CIRCUIT false
 
 /* Nonzero if access to memory by bytes is slow and undesirable.
    For RISC chips, it means that access to memory by bytes is no
@@ -1193,6 +1223,8 @@ extern char rname56[], rname57[], rname58[], rname59[];
 
 #define ADDITIONAL_REGISTER_NAMES		\
 {						\
+  {"r26",    26},				\
+  {"r27",    27},				\
   {"ilink",  29},				\
   {"r29",    29},				\
   {"r30",    30},				\
@@ -1280,20 +1312,6 @@ do {							\
 /* Defined to also emit an .align in elfos.h.  We don't want that.  */
 #undef ASM_OUTPUT_CASE_LABEL
 
-/* ADDR_DIFF_VECs are in the text section and thus can affect the
-   current alignment.  */
-#define ASM_OUTPUT_CASE_END(FILE, NUM, JUMPTABLE)       \
-  do                                                    \
-    {                                                   \
-      if (GET_CODE (PATTERN (JUMPTABLE)) == ADDR_DIFF_VEC \
-	  && ((GET_MODE_SIZE (as_a <scalar_int_mode>	\
-			      (GET_MODE (PATTERN (JUMPTABLE)))) \
-	       * XVECLEN (PATTERN (JUMPTABLE), 1) + 1)	\
-	      & 2))					\
-      arc_toggle_unalign ();				\
-    }                                                   \
-  while (0)
-
 #define JUMP_ALIGN(LABEL) (arc_size_opt_level < 2 ? 2 : 0)
 #define LABEL_ALIGN_AFTER_BARRIER(LABEL) \
   (JUMP_ALIGN(LABEL) \
@@ -1314,8 +1332,6 @@ do {							\
 #define ASM_OUTPUT_ALIGN(FILE,LOG) \
 do { \
   if ((LOG) != 0) fprintf (FILE, "\t.align %d\n", 1 << (LOG)); \
-  if ((LOG)  > 1) \
-    arc_clear_unalign (); \
 } while (0)
 
 /*  ASM_OUTPUT_ALIGNED_DECL_LOCAL (STREAM, DECL, NAME, SIZE, ALIGNMENT)
@@ -1326,12 +1342,7 @@ do { \
 
 /* Debugging information.  */
 
-/* Generate DBX and DWARF debugging information.  */
-#ifdef DBX_DEBUGGING_INFO
-#undef DBX_DEBUGGING_INFO
-#endif
-#define DBX_DEBUGGING_INFO
-
+/* Generate DWARF debugging information.  */
 #ifdef DWARF2_DEBUGGING_INFO
 #undef DWARF2_DEBUGGING_INFO
 #endif
@@ -1341,8 +1352,8 @@ do { \
 #undef PREFERRED_DEBUGGING_TYPE
 #define PREFERRED_DEBUGGING_TYPE DWARF2_DEBUG
 
-/* How to renumber registers for dbx and gdb.  */
-#define DBX_REGISTER_NUMBER(REGNO)				\
+/* How to renumber registers for gdb.  */
+#define DEBUGGER_REGNO(REGNO)				\
   ((TARGET_MULMAC_32BY16_SET && (REGNO) >= 56 && (REGNO) <= 57) \
    ? ((REGNO) ^ !TARGET_BIG_ENDIAN)				\
    : (TARGET_MUL64_SET && (REGNO) >= 57 && (REGNO) <= 58)	\
@@ -1352,7 +1363,7 @@ do { \
    : (REGNO))
 
 /* Use gcc hard register numbering for eh_frame.  */
-#define DWARF_FRAME_REGNUM(REG) (REG)
+#define DWARF_FRAME_REGNUM(REG) ((REG) < 144 ? REG : INVALID_REGNUM)
 
 /* Map register numbers held in the call frame info that gcc has
    collected using DWARF_FRAME_REGNUM to those that should be output
@@ -1366,18 +1377,20 @@ do { \
       : 57 + !!TARGET_MULMAC_32BY16_SET) /* MLO */		\
    : (REGNO))
 
-#define DWARF_FRAME_RETURN_COLUMN 	DWARF_FRAME_REGNUM (31)
+/* The DWARF 2 CFA column which tracks the return address.  */
+#define DWARF_FRAME_RETURN_COLUMN RETURN_ADDR_REGNUM
+#define INCOMING_RETURN_ADDR_RTX gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM)
 
-#define INCOMING_RETURN_ADDR_RTX  gen_rtx_REG (Pmode, 31)
+/* The DWARF 2 CFA column which tracks the return address from a signal handler
+   context.  This value must not correspond to a hard register and must be out
+   of the range of DWARF_FRAME_REGNUM().  */
+#define DWARF_ALT_FRAME_RETURN_COLUMN 144
 
 /* Frame info.  */
 
 #define EH_RETURN_DATA_REGNO(N)  ((N) < 2 ? (N) : INVALID_REGNUM)
 
 #define EH_RETURN_STACKADJ_RTX   gen_rtx_REG (Pmode, 2)
-
-/* Turn off splitting of long stabs.  */
-#define DBX_CONTIN_LENGTH 0
 
 /* Miscellaneous.  */
 
@@ -1442,6 +1455,12 @@ do { \
    low-order few bits.
 */
 #define SHIFT_COUNT_TRUNCATED 1
+
+/* Defines if the CLZ result is undefined or has a useful value.  */
+#define CLZ_DEFINED_VALUE_AT_ZERO(MODE, VALUE)  ((VALUE) = 31, 2)
+
+/* Defines if the CTZ result is undefined or has a useful value.  */
+#define CTZ_DEFINED_VALUE_AT_ZERO(MODE, VALUE)  ((VALUE) = 31, 2)
 
 /* We assume that the store-condition-codes instructions store 0 for false
    and some other value for true.  This is the value stored for true.  */
@@ -1640,9 +1659,5 @@ enum
 
 /* The default option for BI/BIH instructions.  */
 #define DEFAULT_BRANCH_INDEX 0
-
-#ifndef TARGET_LRA
-#define TARGET_LRA arc_lra_p()
-#endif
 
 #endif /* GCC_ARC_H */

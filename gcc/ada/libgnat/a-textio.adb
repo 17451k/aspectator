@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -44,6 +44,7 @@ pragma Elaborate_All (System.File_IO);
 --  Needed because of calls to Chain_File in package body elaboration
 
 package body Ada.Text_IO with
+  SPARK_Mode => Off,
   Refined_State => (File_System => (Standard_In,
                                     Standard_Out,
                                     Standard_Err,
@@ -66,7 +67,7 @@ is
 
    use type System.CRTL.size_t;
 
-   WC_Encoding : Character;
+   WC_Encoding : constant Character;
    pragma Import (C, WC_Encoding, "__gl_wc_encoding");
    --  Default wide character encoding
 
@@ -99,7 +100,7 @@ is
    --  upper half character value from the given File. The first byte has
    --  already been read and is passed in C. The character value is returned as
    --  the result, and the file pointer is bumped past the character.
-   --  Constraint_Error is raised if the encoded value is outside the bounds of
+   --  Data_Error is raised if the encoded value is outside the bounds of
    --  type Character.
 
    function Get_Upper_Half_Char_Immed
@@ -171,15 +172,15 @@ is
       --  is required (RM A.10.3(23)) but it seems reasonable, and besides
       --  ACVC test CE3208A expects this behavior.
 
-      if File_Type (File) = Current_In then
+      if File = Current_In then
          Current_In := null;
-      elsif File_Type (File) = Current_Out then
+      elsif File = Current_Out then
          Current_Out := null;
-      elsif File_Type (File) = Current_Err then
+      elsif File = Current_Err then
          Current_Err := null;
       end if;
 
-      Terminate_Line (File_Type (File));
+      Terminate_Line (File.all'Access);
    end AFCB_Close;
 
    ---------------
@@ -187,10 +188,9 @@ is
    ---------------
 
    procedure AFCB_Free (File : not null access Text_AFCB) is
-      type FCB_Ptr is access all Text_AFCB;
-      FT : FCB_Ptr := FCB_Ptr (File);
+      FT : File_Type := File.all'Access;
 
-      procedure Free is new Ada.Unchecked_Deallocation (Text_AFCB, FCB_Ptr);
+      procedure Free is new Ada.Unchecked_Deallocation (Text_AFCB, File_Type);
 
    begin
       Free (FT);
@@ -403,7 +403,7 @@ is
    -----------------
 
    function End_Of_Page (File : File_Type) return Boolean is
-      ch  : int;
+      ch : int;
 
    begin
       FIO.Check_Read_Status (AP (File));
@@ -598,7 +598,7 @@ is
      (File : File_Type;
       Item : out Character)
    is
-      ch          : int;
+      ch : int;
 
    begin
       FIO.Check_Read_Status (AP (File));
@@ -806,7 +806,7 @@ is
       Result := WC_In (C, File.WC_Method);
 
       if Wide_Character'Pos (Result) > 16#FF# then
-         raise Constraint_Error with
+         raise Data_Error with
            "invalid wide character in Text_'I'O input";
       else
          return Character'Val (Wide_Character'Pos (Result));
@@ -849,7 +849,7 @@ is
       Result := WC_In (C, File.WC_Method);
 
       if Wide_Character'Pos (Result) > 16#FF# then
-         raise Constraint_Error with
+         raise Data_Error with
            "invalid wide character in Text_'I'O input";
       else
          return Character'Val (Wide_Character'Pos (Result));

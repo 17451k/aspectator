@@ -5,16 +5,20 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_ddeml.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_ddeml.d)
  */
 module core.sys.windows.ddeml;
 version (Windows):
-@system:
 
 version (ANSI) {} else version = Unicode;
 pragma(lib, "user32");
 
 import core.sys.windows.basetsd, core.sys.windows.windef, core.sys.windows.winnt;
+
+alias HCONVLIST = HANDLE;
+alias HCONV = HANDLE;
+alias HSZ = HANDLE;
+alias HDDEDATA = HANDLE;
 
 enum : int {
     CP_WINANSI    = 1004,
@@ -76,10 +80,13 @@ enum : UINT {
     XTYP_SHIFT           = 4
 }
 
-/+
-#define TIMEOUT_ASYNC  0xFFFFFFFF
-#define QID_SYNC       0xFFFFFFFF
-+/
+enum : UINT {
+    TIMEOUT_ASYNC = 0xFFFFFFFF
+}
+
+enum : UINT {
+    QID_SYNC      = 0xFFFFFFFF
+}
 
 enum : UINT {
     ST_CONNECTED  =   1,
@@ -93,9 +100,9 @@ enum : UINT {
     ST_ISSELF     = 256
 }
 
-/+
-#define CADV_LATEACK 0xFFFF
-+/
+enum : UINT {
+    CADV_LATEACK  = 0xFFFF
+}
 
 enum : UINT {
     DMLERR_NO_ERROR      = 0,
@@ -121,22 +128,26 @@ enum : UINT {
     DMLERR_LAST          = DMLERR_UNFOUND_QUEUE_ID
 }
 
-/+
-#define DDE_FACK    0x8000
-#define DDE_FBUSY   0x4000
-#define DDE_FDEFERUPD   0x4000
-#define DDE_FACKREQ 0x8000
-#define DDE_FRELEASE    0x2000
-#define DDE_FREQUESTED  0x1000
-#define DDE_FAPPSTATUS  0x00ff
-#define DDE_FNOTPROCESSED   0
-#define DDE_FACKRESERVED    (~(DDE_FACK|DDE_FBUSY|DDE_FAPPSTATUS))
-#define DDE_FADVRESERVED    (~(DDE_FACKREQ|DDE_FDEFERUPD))
-#define DDE_FDATRESERVED    (~(DDE_FACKREQ|DDE_FRELEASE|DDE_FREQUESTED))
-#define DDE_FPOKRESERVED    (~DDE_FRELEASE)
-#define MSGF_DDEMGR 0x8001
-#define CBR_BLOCK   ((HDDEDATA)0xffffffff)
-+/
+enum : UINT {
+    DDE_FACK            = 0x8000,
+    DDE_FBUSY           = 0x4000,
+    DDE_FDEFERUPD       = 0x4000,
+    DDE_FACKREQ         = 0x8000,
+    DDE_FRELEASE        = 0x2000,
+    DDE_FREQUESTED      = 0x1000,
+    DDE_FAPPSTATUS      = 0x00ff,
+    DDE_FNOTPROCESSED   = 0,
+    DDE_FACKRESERVED    = (~(DDE_FACK|DDE_FBUSY|DDE_FAPPSTATUS)),
+    DDE_FADVRESERVED    = (~(DDE_FACKREQ|DDE_FDEFERUPD)),
+    DDE_FDATRESERVED    = (~(DDE_FACKREQ|DDE_FRELEASE|DDE_FREQUESTED)),
+    DDE_FPOKRESERVED    = (~DDE_FRELEASE)
+}
+
+enum : UINT {
+    MSGF_DDEMGR         = 0x8001
+}
+
+enum CBR_BLOCK = cast(HDDEDATA)-1;
 
 enum DWORD
     APPCLASS_STANDARD         = 0,
@@ -180,10 +191,13 @@ enum : UINT {
     DNS_FILTEROFF  = 8
 }
 
-/+
-#define HDATA_APPOWNED  1
-#define MAX_MONITORS    4
-+/
+enum : UINT {
+    HDATA_APPOWNED = 1
+}
+
+enum : UINT {
+    MAX_MONITORS   = 4
+}
 
 enum : int {
     MH_CREATE  = 1,
@@ -192,19 +206,14 @@ enum : int {
     MH_CLEANUP = 4
 }
 
-mixin DECLARE_HANDLE!("HCONVLIST");
-mixin DECLARE_HANDLE!("HCONV");
-mixin DECLARE_HANDLE!("HSZ");
-mixin DECLARE_HANDLE!("HDDEDATA");
-
-extern (Windows) alias HDDEDATA
-  function(UINT, UINT, HCONV, HSZ, HSZ, HDDEDATA, ULONG_PTR, ULONG_PTR) PFNCALLBACK;
+extern (Windows) alias PFNCALLBACK = HDDEDATA
+  function(UINT, UINT, HCONV, HSZ, HSZ, HDDEDATA, ULONG_PTR, ULONG_PTR);
 
 struct HSZPAIR {
     HSZ hszSvc;
     HSZ hszTopic;
 }
-alias HSZPAIR* PHSZPAIR;
+alias PHSZPAIR = HSZPAIR*;
 
 struct CONVCONTEXT {
     UINT                        cb = CONVCONTEXT.sizeof;
@@ -215,7 +224,7 @@ struct CONVCONTEXT {
     DWORD                       dwSecurity;
     SECURITY_QUALITY_OF_SERVICE qos;
 }
-alias CONVCONTEXT* PCONVCONTEXT;
+alias PCONVCONTEXT = CONVCONTEXT*;
 
 struct CONVINFO {
     DWORD       cb = CONVINFO.sizeof;
@@ -235,7 +244,7 @@ struct CONVINFO {
     HWND        hwnd;
     HWND        hwndPartner;
 }
-alias CONVINFO* PCONVINFO;
+alias PCONVINFO = CONVINFO*;
 
 struct DDEML_MSG_HOOK_DATA {
     UINT_PTR uiLo;
@@ -254,7 +263,7 @@ struct MONHSZSTRUCT {
 
     TCHAR* str() return { return _str.ptr; }
 }
-alias MONHSZSTRUCT* PMONHSZSTRUCT;
+alias PMONHSZSTRUCT = MONHSZSTRUCT*;
 
 struct MONLINKSTRUCT {
     UINT   cb = MONLINKSTRUCT.sizeof;
@@ -270,7 +279,7 @@ struct MONLINKSTRUCT {
     HCONV  hConvServer;
     HCONV  hConvClient;
 }
-alias MONLINKSTRUCT* PMONLINKSTRUCT;
+alias PMONLINKSTRUCT = MONLINKSTRUCT*;
 
 struct MONCONVSTRUCT {
     UINT   cb = MONCONVSTRUCT.sizeof;
@@ -282,7 +291,7 @@ struct MONCONVSTRUCT {
     HCONV  hConvClient;
     HCONV  hConvServer;
 }
-alias MONCONVSTRUCT* PMONCONVSTRUCT;
+alias PMONCONVSTRUCT = MONCONVSTRUCT*;
 
 struct MONCBSTRUCT {
     UINT        cb = MONCBSTRUCT.sizeof;
@@ -301,7 +310,7 @@ struct MONCBSTRUCT {
     DWORD       cbData;
     DWORD[8]    Data;
 }
-alias MONCBSTRUCT* PMONCBSTRUCT;
+alias PMONCBSTRUCT = MONCBSTRUCT*;
 
 struct MONERRSTRUCT {
     UINT   cb = MONERRSTRUCT.sizeof;
@@ -309,7 +318,7 @@ struct MONERRSTRUCT {
     DWORD  dwTime;
     HANDLE hTask;
 }
-alias MONERRSTRUCT* PMONERRSTRUCT;
+alias PMONERRSTRUCT = MONERRSTRUCT*;
 
 struct MONMSGSTRUCT {
     UINT   cb = MONMSGSTRUCT.sizeof;
@@ -321,9 +330,9 @@ struct MONMSGSTRUCT {
     LPARAM lParam;
     DDEML_MSG_HOOK_DATA dmhd;
 }
-alias MONMSGSTRUCT* PMONMSGSTRUCT;
+alias PMONMSGSTRUCT = MONMSGSTRUCT*;
 
-extern (Windows) {
+extern (Windows) nothrow @nogc {
     BOOL DdeAbandonTransaction(DWORD, HCONV, DWORD);
     PBYTE DdeAccessData(HDDEDATA, PDWORD);
     HDDEDATA DdeAddData(HDDEDATA, PBYTE, DWORD, DWORD);
@@ -370,11 +379,11 @@ const TCHAR[]
     SZDDE_ITEM_ITEMLIST    = "TopicItemList";
 
 version (Unicode) {
-    alias DdeCreateStringHandleW DdeCreateStringHandle;
-    alias DdeInitializeW DdeInitialize;
-    alias DdeQueryStringW DdeQueryString;
+    alias DdeCreateStringHandle = DdeCreateStringHandleW;
+    alias DdeInitialize = DdeInitializeW;
+    alias DdeQueryString = DdeQueryStringW;
 } else {
-    alias DdeCreateStringHandleA DdeCreateStringHandle;
-    alias DdeInitializeA DdeInitialize;
-    alias DdeQueryStringA DdeQueryString;
+    alias DdeCreateStringHandle = DdeCreateStringHandleA;
+    alias DdeInitialize = DdeInitializeA;
+    alias DdeQueryString = DdeQueryStringA;
 }

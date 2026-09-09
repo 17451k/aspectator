@@ -2,7 +2,7 @@
 // { dg-options "-ltbb" }
 // { dg-do run { target c++17 } }
 // { dg-timeout-factor 3 }
-// { dg-require-effective-target tbb-backend }
+// { dg-require-effective-target tbb_backend }
 
 //===-- uninitialized_construct.pass.cpp ----------------------------------===//
 //
@@ -108,16 +108,16 @@ test_uninit_construct_by_type()
     for (size_t n = 0; n <= N; n = n <= 16 ? n + 1 : size_t(3.1415 * n))
     {
         std::unique_ptr<T[]> p(new T[n]);
-        invoke_on_all_policies(test_uninit_construct(), p.get(), std::next(p.get(), n), n, std::is_trivial<T>());
+        invoke_on_all_policies(test_uninit_construct(), p.get(), std::next(p.get(), n), n, std::conjunction<std::is_trivially_copyable<T>, std::is_trivially_default_constructible<T>>());
     }
 }
 
-int32_t
+int
 main()
 {
 
     // for user-defined types
-#if !_PSTL_ICC_16_VC14_TEST_PAR_TBB_RT_RELEASE_64_BROKEN
+#if !defined(_PSTL_ICC_16_VC14_TEST_PAR_TBB_RT_RELEASE_64_BROKEN)
     test_uninit_construct_by_type<Wrapper<int32_t>>();
     test_uninit_construct_by_type<Wrapper<std::vector<std::string>>>();
 #endif

@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Free Software Foundation, Inc.
+// Copyright (C) 2021-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,8 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do run { target c++2a } }
+// { dg-do run { target c++20 } }
 
 #include <algorithm>
 #include <ranges>
@@ -34,7 +33,7 @@ void
 test01()
 {
   auto split_into_strings = [] (auto p) {
-    return views::split(p) | views::transform([](auto r){
+    return views::lazy_split(p) | views::transform([](auto r){
       return std::string(r.begin(), ranges::next(r.begin(), r.end()));
     });
   };
@@ -60,19 +59,19 @@ struct move_only_range
 template<>
   inline constexpr bool std::ranges::enable_view<move_only_range> = true;
 
-template<auto split = views::split>
+template<auto lazy_split = views::lazy_split>
 void
 test02()
 {
   std::string_view s;
   move_only_range p;
-  static_assert(requires { s | split(std::move(p)); });
-  static_assert(requires { split(std::move(p))(s); });
-  static_assert(requires { split(std::move(p)) | views::all; });
-  static_assert(requires { views::all | split(std::move(p)); });
-  static_assert(!requires { split(p); });
-  static_assert(!requires { split(p) | views::all; });
-  static_assert(!requires { views::all | split(p); });
+  static_assert(requires { s | lazy_split(std::move(p)); });
+  static_assert(requires { lazy_split(std::move(p))(s); });
+  static_assert(requires { lazy_split(std::move(p)) | views::all; });
+  static_assert(requires { views::all | lazy_split(std::move(p)); });
+  static_assert(!requires { lazy_split(p); });
+  static_assert(!requires { lazy_split(p) | views::all; });
+  static_assert(!requires { views::all | lazy_split(p); });
 }
 
 int

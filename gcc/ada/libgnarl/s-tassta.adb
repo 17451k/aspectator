@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2020, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2026, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -35,6 +35,7 @@ pragma Partition_Elaboration_Policy (Concurrent);
 
 with Ada.Exceptions;
 with Ada.Unchecked_Deallocation;
+with Ada.Task_Initialization;
 
 with System.Interrupt_Management;
 with System.Tasking.Debug;
@@ -131,6 +132,11 @@ package body System.Tasking.Stages is
    --
    --  Different code is used at master completion, in Terminate_Dependents,
    --  due to a need for tighter synchronization with the master.
+
+   function Get_Stack_Base (Self_ID : Task_Id) return System.Address;
+   --  Get the stack base of Self.
+   --
+   --  If the stack base cannot be determined, then Null_Address is returned.
 
    ----------------------
    -- Abort_Dependents --
@@ -578,12 +584,13 @@ package body System.Tasking.Stages is
 
          --  ??? Should never get here
 
-         pragma Assert (False);
+         pragma Assert (Standard.False);
          raise Standard'Abort_Signal;
       end if;
 
       Initialize_ATCB (Self_ID, State, Discriminants, P, Elaborated,
-        Base_Priority, Base_CPU, Domain, Task_Info, Stack_Size, T, Success);
+        Base_Priority, Base_CPU, CPU /= Unspecified_CPU, Domain, Task_Info,
+        Stack_Size, T, Success);
 
       if not Success then
          Free (T);
@@ -910,11 +917,11 @@ package body System.Tasking.Stages is
       Self_Id : constant Task_Id := Self;
 
    begin
+      Initialization.Task_Lock (Self_Id);
+
       if T.Common.State = Terminated then
 
          --  It is not safe to call Abort_Defer or Write_Lock at this stage
-
-         Initialization.Task_Lock (Self_Id);
 
          Lock_RTS;
          Initialization.Finalize_Attributes (T);
@@ -930,6 +937,7 @@ package body System.Tasking.Stages is
          --  upon termination.
 
          T.Free_On_Termination := True;
+         Initialization.Task_Unlock (Self_Id);
       end if;
    end Free_Task;
 
@@ -1077,7 +1085,7 @@ package body System.Tasking.Stages is
       Stack_Guard (Self_ID, True);
 
       --  Initialize low-level TCB components, that cannot be initialized by
-      --  the creator. Enter_Task sets Self_ID.LL.Thread.
+      --  the creator.
 
       Enter_Task (Self_ID);
 
@@ -1110,7 +1118,7 @@ package body System.Tasking.Stages is
             --  Address of the base of the stack
 
          begin
-            Stack_Base := Self_ID.Common.Compiler_Data.Pri_Stack_Info.Base;
+            Stack_Base := Get_Stack_Base (Self_ID);
 
             if Stack_Base = Null_Address then
 
@@ -1136,7 +1144,7 @@ package body System.Tasking.Stages is
               (Self_ID.Common.Analyzer,
                Self_ID.Common.Task_Image (1 .. Self_ID.Common.Task_Image_Len),
                Natural (Self_ID.Common.Compiler_Data.Pri_Stack_Info.Size),
-               SSE.To_Integer (Stack_Base),
+               Stack_Base,
                Pattern_Size);
             STPO.Unlock_RTS;
             Fill_Stack (Self_ID.Common.Analyzer);
@@ -1175,6 +1183,14 @@ package body System.Tasking.Stages is
       if Global_Task_Debug_Event_Set then
          Debug.Signal_Debug_Event (Debug.Debug_Event_Run, Self_ID);
       end if;
+
+      declare
+         use Ada.Task_Initialization;
+
+         Global_Initialization_Handler : Initialization_Handler;
+         pragma Atomic (Global_Initialization_Handler);
+         pragma Import (Ada, Global_Initialization_Handler,
+                        "__gnat_global_initialization_handler");
 
       begin
          --  We are separating the following portion of the code in order to
@@ -1297,10 +1313,8 @@ package body System.Tasking.Stages is
       if TH /= null then
          begin
             TH.all (Cause, Self_ID, EO);
-
          exception
-
-            --  RM-C.7.3 requires all exceptions raised here to be ignored
+            --  RM-C.7.3(16) requires all exceptions raised here to be ignored
 
             when others =>
                null;
@@ -1452,7 +1466,7 @@ package body System.Tasking.Stages is
 
       To_Stderr (System.Address_Image (To_Address (Self_Id)));
       To_Stderr (" terminated by unhandled exception");
-      To_Stderr ((1 => ASCII.LF));
+      To_Stderr ([ASCII.LF]);
       To_Stderr (Exception_Information (Excep.all));
       Initialization.Task_Unlock (Self_Id);
    end Trace_Unhandled_Exception_In_Task;
@@ -1607,8 +1621,8 @@ package body System.Tasking.Stages is
 
             --  Usually, C.Common.Activator = Self_ID implies C.Master_Of_Task
             --  = CM. The only case where C is pending activation by this
-            --  task, but the master of C is not CM is in Ada 2005, when C is
-            --  part of a return object of a build-in-place function.
+            --  task, but the master of C is not CM is when C is part of a
+            --  return object of a build-in-place function.
 
             pragma Assert (C.Common.State = Unactivated);
 
@@ -1956,6 +1970,15 @@ package body System.Tasking.Stages is
 
       System.Task_Primitives.Operations.Finalize_TCB (T);
    end Vulnerable_Free_Task;
+
+   --------------------
+   -- Get_Stack_Base --
+   --------------------
+
+   --  Get_Stack_Base is architecture-specific
+
+   function Get_Stack_Base (Self_ID : Task_Id) return System.Address
+   is separate;
 
 --  Package elaboration code
 

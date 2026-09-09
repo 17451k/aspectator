@@ -183,6 +183,7 @@ check (int *p, cmp_fn fn)
 {
   int i;
 
+#pragma GCC novector
   for (i = 0; i < 32; i++)
     {
       int t1 = ((i % 4) > 1) == 0;
@@ -253,4 +254,4 @@ main (int argc, char **argv)
   check (res, ne);
 }
 
-/* { dg-final { scan-tree-dump-times "VECTORIZED" 18 "vect" { target sse4_runtime } } } */
+/* { dg-final { scan-tree-dump-times "LOOP VECTORIZED" 18 "vect" { target sse4_runtime } } } */

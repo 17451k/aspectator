@@ -1,5 +1,5 @@
 /* d-compiler.cc -- D frontend interface to the gcc back-end.
-   Copyright (C) 2020-2021 Free Software Foundation, Inc.
+   Copyright (C) 2020-2026 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 
 #include "dmd/compiler.h"
-#include "dmd/scope.h"
+#include "dmd/errors.h"
 #include "dmd/expression.h"
 #include "dmd/identifier.h"
 #include "dmd/module.h"
@@ -33,40 +33,6 @@ along with GCC; see the file COPYING3.  If not see
 
 
 /* Implements the Compiler interface used by the frontend.  */
-
-/* Generate C main() in response to seeing D main().  This used to be in
-   libdruntime, but contained a reference to _Dmain which didn't work when
-   druntime was made into a shared library and was linked to a program, such
-   as a C++ program, that didn't have a _Dmain.  */
-
-void
-Compiler::genCmain (Scope *sc)
-{
-  static bool initialized = false;
-
-  if (initialized)
-    return;
-
-  /* The D code to be generated is provided by __entrypoint.di, try to load it,
-     but don't fail if unfound.  */
-  unsigned errors = global.startGagging ();
-  Module *m = Module::load (Loc (), NULL, Identifier::idPool ("__entrypoint"));
-
-  if (global.endGagging (errors))
-    m = NULL;
-
-  if (m != NULL)
-    {
-      m->importedFrom = m;
-      m->importAll (NULL);
-      dsymbolSemantic (m, NULL);
-      semantic2 (m, NULL);
-      semantic3 (m, NULL);
-      d_add_entrypoint_module (m, sc->_module);
-    }
-
-  initialized = true;
-}
 
 /* Perform a reinterpret cast of EXPR to type TYPE for use in CTFE.
    The front end should have already ensured that EXPR is a constant,
@@ -81,11 +47,11 @@ Compiler::paintAsType (UnionExp *, Expression *expr, Type *type)
 
   Type *tb = type->toBasetype ();
 
-  if (expr->type->isintegral ())
-    cst = build_integer_cst (expr->toInteger (), build_ctype (expr->type));
-  else if (expr->type->isfloating ())
-    cst = build_float_cst (expr->toReal (), expr->type);
-  else if (expr->op == TOKarrayliteral)
+  if (dmd::isIntegral (expr->type))
+    cst = build_integer_cst (dmd::toInteger (expr), build_ctype (expr->type));
+  else if (dmd::isFloating (expr->type))
+    cst = build_float_cst (dmd::toReal (expr), expr->type);
+  else if (expr->op == EXP::arrayLiteral)
     {
       /* Build array as VECTOR_CST, assumes EXPR is constant.  */
       Expressions *elements = expr->isArrayLiteralExp ()->elements;
@@ -95,15 +61,15 @@ Compiler::paintAsType (UnionExp *, Expression *expr, Type *type)
       for (size_t i = 0; i < elements->length; i++)
 	{
 	  Expression *e = (*elements)[i];
-	  if (e->type->isintegral ())
+	  if (dmd::isIntegral (e->type))
 	    {
-	      tree value = build_integer_cst (e->toInteger (),
+	      tree value = build_integer_cst (dmd::toInteger (e),
 					      build_ctype (e->type));
 	      CONSTRUCTOR_APPEND_ELT (elms, size_int (i), value);
 	    }
-	  else if (e->type->isfloating ())
+	  else if (dmd::isFloating (e->type))
 	    {
-	      tree value = build_float_cst (e->toReal (), e->type);
+	      tree value = build_float_cst (dmd::toReal (e), e->type);
 	      CONSTRUCTOR_APPEND_ELT (elms, size_int (i), value);
 	    }
 	  else
@@ -111,7 +77,7 @@ Compiler::paintAsType (UnionExp *, Expression *expr, Type *type)
 	}
 
       /* Build vector type.  */
-      int nunits = expr->type->isTypeSArray ()->dim->toUInteger ();
+      int nunits = dmd::toUInteger (expr->type->isTypeSArray ()->dim);
       Type *telem = expr->type->nextOf ();
       tree vectype = build_vector_type (build_ctype (telem), nunits);
 
@@ -123,18 +89,18 @@ Compiler::paintAsType (UnionExp *, Expression *expr, Type *type)
   /* Encode CST to buffer.  */
   int len = native_encode_expr (cst, buffer, sizeof (buffer));
 
-  if (tb->ty == Tsarray)
+  if (tb->ty == TY::Tsarray)
     {
       /* Interpret value as a vector of the same size,
 	 then return the array literal.  */
-      int nunits = type->isTypeSArray ()->dim->toUInteger ();
+      int nunits = dmd::toUInteger (type->isTypeSArray ()->dim);
       Type *elem = type->nextOf ();
       tree vectype = build_vector_type (build_ctype (elem), nunits);
 
       cst = native_interpret_expr (vectype, buffer, len);
 
       Expression *e = d_eval_constant_expression (expr->loc, cst);
-      gcc_assert (e != NULL && e->op == TOKvector);
+      gcc_assert (e != NULL && e->op == EXP::vector);
 
       return e->isVectorExp ()->e1;
     }
@@ -154,31 +120,44 @@ Compiler::paintAsType (UnionExp *, Expression *expr, Type *type)
    Modules we look out for are:
     - object: For D runtime type information.
     - gcc.builtins: For all gcc builtins.
-    - core.stdc.*: For all gcc library builtins.  */
+    - all other modules for extern(C) gcc library builtins.  */
 
 void
 Compiler::onParseModule (Module *m)
 {
   ModuleDeclaration *md = m->md;
 
-  if (!md || !md->id || !md->packages)
+  if (md && md->id)
     {
-      Identifier *id = (md && md->id) ? md->id : m->ident;
-      if (!strcmp (id->toChars (), "object"))
-	create_tinfo_types (m);
+      if (md->packages.length == 0)
+	{
+	  if (!strcmp (md->id->toChars (), "object"))
+	    {
+	      create_tinfo_types (m);
+	      return;
+	    }
+	}
+      else if (md->packages.length == 1)
+	{
+	  if (!strcmp (md->packages.ptr[0]->toChars (), "gcc")
+	      && !strcmp (md->id->toChars (), "builtins"))
+	    {
+	      d_build_builtins_module (m);
+	      return;
+	    }
+	}
     }
-  else if (md->packages->length == 1)
+  else if (m->ident)
     {
-      if (!strcmp ((*md->packages)[0]->toChars (), "gcc")
-	  && !strcmp (md->id->toChars (), "builtins"))
-	d_build_builtins_module (m);
+      if (!strcmp (m->ident->toChars (), "object"))
+	{
+	  create_tinfo_types (m);
+	  return;
+	}
     }
-  else if (md->packages->length == 2)
-    {
-      if (!strcmp ((*md->packages)[0]->toChars (), "core")
-	  && !strcmp ((*md->packages)[1]->toChars (), "stdc"))
-	d_add_builtin_module (m);
-    }
+
+  if (!flag_no_builtin)
+    d_add_builtin_module (m);
 }
 
 /* A callback function that is called once an imported module is parsed.
@@ -186,7 +165,39 @@ Compiler::onParseModule (Module *m)
    driver intends on compiling the import.  */
 
 bool
-Compiler::onImport (Module *)
+Compiler::onImport (Module *m)
 {
-  return false;
+  if (!includeImports)
+    return false;
+
+  if (m->filetype != FileType::d && m->filetype != FileType::c)
+    return false;
+
+  /* All imports modules are included except those in the runtime library.  */
+  ModuleDeclaration *md = m->md;
+  if (md && md->id)
+    {
+      if (md->packages.length >= 1)
+	{
+	  if (!strcmp (md->packages.ptr[0]->toChars (), "core")
+	      || !strcmp (md->packages.ptr[0]->toChars (), "std")
+	      || !strcmp (md->packages.ptr[0]->toChars (), "gcc")
+	      || !strcmp (md->packages.ptr[0]->toChars (), "etc"))
+	    return false;
+	}
+      else if (!strcmp (md->id->toChars (), "object"))
+	return false;
+    }
+  else if (m->ident)
+    {
+      if (!strcmp (m->ident->toChars (), "object"))
+	return false;
+    }
+
+  /* This import will be compiled.  */
+  if (global.params.v.verbose)
+    message ("compileimport (%s)", m->srcfile.toChars ());
+
+  compiledImports.push (m);
+  return true;
 }

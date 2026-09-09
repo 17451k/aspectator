@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,44 +29,59 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-function System.Expont (Left : Int; Right : Natural) return Int is
+package body System.Expont
+  with SPARK_Mode
+is
+   -----------
+   -- Expon --
+   -----------
 
-   --  Note that negative exponents get a constraint error because the
-   --  subtype of the Right argument (the exponent) is Natural.
+   function Expon (Left : Int; Right : Natural) return Int is
 
-   Result : Int     := 1;
-   Factor : Int     := Left;
-   Exp    : Natural := Right;
+      --  Note that negative exponents get a constraint error because the
+      --  subtype of the Right argument (the exponent) is Natural.
 
-begin
-   --  We use the standard logarithmic approach, Exp gets shifted right
-   --  testing successive low order bits and Factor is the value of the
-   --  base raised to the next power of 2.
+      Result : Int     := 1;
+      Factor : Int     := Left;
+      Exp    : Natural := Right;
 
-   --  Note: it is not worth special casing base values -1, 0, +1 since
-   --  the expander does this when the base is a literal, and other cases
-   --  will be extremely rare.
+   begin
+      --  We use the standard logarithmic approach, Exp gets shifted right
+      --  testing successive low order bits and Factor is the value of the
+      --  base raised to the next power of 2.
 
-   if Exp /= 0 then
-      loop
-         if Exp rem 2 /= 0 then
+      --  Note: for compilation only, it is not worth special casing base
+      --  values -1, 0, +1 since the expander does this when the base is a
+      --  literal, and other cases will be extremely rare. But for proof,
+      --  special casing zero in both positions makes ghost code and lemmas
+      --  simpler, so we do it.
+
+      if Right = 0 then
+         Result := 1;
+      elsif Left = 0 then
+         Result := 0;
+      else
+         loop
+            if Exp rem 2 /= 0 then
+               declare
+                  pragma Unsuppress (Overflow_Check);
+               begin
+                  Result := Result * Factor;
+               end;
+            end if;
+
+            Exp := Exp / 2;
+            exit when Exp = 0;
+
             declare
                pragma Unsuppress (Overflow_Check);
             begin
-               Result := Result * Factor;
+               Factor := Factor * Factor;
             end;
-         end if;
+         end loop;
+      end if;
 
-         Exp := Exp / 2;
-         exit when Exp = 0;
+      return Result;
+   end Expon;
 
-         declare
-            pragma Unsuppress (Overflow_Check);
-         begin
-            Factor := Factor * Factor;
-         end;
-      end loop;
-   end if;
-
-   return Result;
 end System.Expont;

@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-O2 -fstack-clash-protection -mtune=generic" } */
+/* { dg-options "-O2 -fstack-clash-protection -mtune=generic -fno-stack-protector" } */
 /* { dg-require-effective-target supports_stack_clash_protection } */
 
 #include <stdint.h>
@@ -14,5 +14,4 @@ frob ()
 }
 
 /* { dg-final { scan-assembler-times "sub\[ql\]" 4 } } */
-/* { dg-final { scan-assembler-times "or\[ql\]" 3 } } */
-
+/* { dg-final { scan-assembler-times "or\[qlb\]" 3 } } */

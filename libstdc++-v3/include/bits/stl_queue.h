@@ -1,6 +1,6 @@
 // Queue implementation -*- C++ -*-
 
-// Copyright (C) 2001-2021 Free Software Foundation, Inc.
+// Copyright (C) 2001-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -61,10 +61,18 @@
 #if __cplusplus >= 201103L
 # include <bits/uses_allocator.h>
 #endif
+#if __glibcxx_containers_ranges // C++ >= 23
+# include <ranges> // ranges::to
+# include <bits/ranges_algobase.h> // ranges::copy
+#endif
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
+
+#if __glibcxx_format_ranges
+  template<typename, typename> class formatter;
+#endif
 
   /**
    *  @brief  A standard container giving FIFO behavior.
@@ -196,6 +204,40 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	: c(std::move(__q.c), __a) { }
 #endif
 
+#ifdef __glibcxx_adaptor_iterator_pair_constructor // C++ >= 23 && HOSTED
+      template<typename _InputIterator,
+	       typename = _RequireInputIter<_InputIterator>>
+	queue(_InputIterator __first, _InputIterator __last)
+	: c(__first, __last) { }
+
+      template<typename _InputIterator, typename _Alloc,
+	       typename = _RequireInputIter<_InputIterator>,
+	       typename = _Uses<_Alloc>>
+	queue(_InputIterator __first, _InputIterator __last, const _Alloc& __a)
+	: c(__first, __last, __a) { }
+#endif
+
+#if __glibcxx_containers_ranges // C++ >= 23
+      /**
+       * @brief Construct a queue from a range.
+       * @since C++23
+       */
+      template<__detail::__container_compatible_range<_Tp> _Rg>
+	queue(from_range_t, _Rg&& __rg)
+	: c(ranges::to<_Sequence>(std::forward<_Rg>(__rg)))
+	{ }
+
+      /**
+       * @brief Construct a queue from a range.
+       * @since C++23
+       */
+      template<__detail::__container_compatible_range<_Tp> _Rg,
+	       typename _Alloc>
+	queue(from_range_t, _Rg&& __rg, const _Alloc& __a)
+	: c(ranges::to<_Sequence>(std::forward<_Rg>(__rg), __a))
+	{ }
+#endif
+
       /**
        *  Returns true if the %queue is empty.
        */
@@ -204,6 +246,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       { return c.empty(); }
 
       /**  Returns the number of elements in the %queue.  */
+      _GLIBCXX_NODISCARD
       size_type
       size() const
       { return c.size(); }
@@ -212,6 +255,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  Returns a read/write reference to the data at the first
        *  element of the %queue.
        */
+      _GLIBCXX_NODISCARD
       reference
       front()
       {
@@ -223,6 +267,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  Returns a read-only (constant) reference to the data at the first
        *  element of the %queue.
        */
+      _GLIBCXX_NODISCARD
       const_reference
       front() const
       {
@@ -234,6 +279,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  Returns a read/write reference to the data at the last
        *  element of the %queue.
        */
+      _GLIBCXX_NODISCARD
       reference
       back()
       {
@@ -245,6 +291,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  Returns a read-only (constant) reference to the data at the last
        *  element of the %queue.
        */
+      _GLIBCXX_NODISCARD
       const_reference
       back() const
       {
@@ -283,6 +330,18 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 #endif
 #endif
 
+#if __glibcxx_containers_ranges // C++ >= 23
+      template<__detail::__container_compatible_range<_Tp> _Rg>
+	void
+	push_range(_Rg&& __rg)
+	{
+	  if constexpr (requires { c.append_range(std::forward<_Rg>(__rg)); })
+	    c.append_range(std::forward<_Rg>(__rg));
+	  else
+	    ranges::copy(__rg, std::back_inserter(c));
+	}
+#endif
+
       /**
        *  @brief  Removes first element.
        *
@@ -314,6 +373,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	swap(c, __q.c);
       }
 #endif // __cplusplus >= 201103L
+
+#if __glibcxx_format_ranges
+      friend class formatter<queue<_Tp, _Sequence>, char>;
+      friend class formatter<queue<_Tp, _Sequence>, wchar_t>;
+#endif
     };
 
 #if __cpp_deduction_guides >= 201606
@@ -322,10 +386,35 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     queue(_Container) -> queue<typename _Container::value_type, _Container>;
 
   template<typename _Container, typename _Allocator,
-	   typename = _RequireNotAllocator<_Container>,
-	   typename = _RequireAllocator<_Allocator>>
+	   typename = _RequireNotAllocator<_Container>>
     queue(_Container, _Allocator)
     -> queue<typename _Container::value_type, _Container>;
+
+#ifdef __glibcxx_adaptor_iterator_pair_constructor
+  template<typename _InputIterator,
+	   typename _ValT
+	     = typename iterator_traits<_InputIterator>::value_type,
+	   typename = _RequireInputIter<_InputIterator>>
+    queue(_InputIterator, _InputIterator) -> queue<_ValT>;
+
+  template<typename _InputIterator, typename _Allocator,
+	   typename _ValT
+	     = typename iterator_traits<_InputIterator>::value_type,
+	   typename = _RequireInputIter<_InputIterator>,
+	   typename = _RequireAllocator<_Allocator>>
+    queue(_InputIterator, _InputIterator, _Allocator)
+    -> queue<_ValT, deque<_ValT, _Allocator>>;
+#endif
+
+#if __glibcxx_containers_ranges // C++ >= 23
+  template<ranges::input_range _Rg>
+    queue(from_range_t, _Rg&&) -> queue<ranges::range_value_t<_Rg>>;
+
+  template<ranges::input_range _Rg, __allocator_like _Alloc>
+    queue(from_range_t, _Rg&&, _Alloc)
+    -> queue<ranges::range_value_t<_Rg>,
+	     deque<ranges::range_value_t<_Rg>, _Alloc>>;
+#endif
 #endif
 
   /**
@@ -340,6 +429,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  if their sequences compare equal.
   */
   template<typename _Tp, typename _Seq>
+    _GLIBCXX_NODISCARD
     inline bool
     operator==(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return __x.c == __y.c; }
@@ -358,36 +448,42 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  determination.
   */
   template<typename _Tp, typename _Seq>
+    _GLIBCXX_NODISCARD
     inline bool
     operator<(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return __x.c < __y.c; }
 
   /// Based on operator==
   template<typename _Tp, typename _Seq>
+    _GLIBCXX_NODISCARD
     inline bool
     operator!=(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return !(__x == __y); }
 
   /// Based on operator<
   template<typename _Tp, typename _Seq>
+    _GLIBCXX_NODISCARD
     inline bool
     operator>(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return __y < __x; }
 
   /// Based on operator<
   template<typename _Tp, typename _Seq>
+    _GLIBCXX_NODISCARD
     inline bool
     operator<=(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return !(__y < __x); }
 
   /// Based on operator<
   template<typename _Tp, typename _Seq>
+    _GLIBCXX_NODISCARD
     inline bool
     operator>=(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return !(__x < __y); }
 
 #if __cpp_lib_three_way_comparison
   template<typename _Tp, three_way_comparable _Seq>
+    [[nodiscard]]
     inline compare_three_way_result_t<_Seq>
     operator<=>(const queue<_Tp, _Seq>& __x, const queue<_Tp, _Seq>& __y)
     { return __x.c <=> __y.c; }
@@ -524,6 +620,26 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       : c(std::move(__s)), comp(__x)
       { std::make_heap(c.begin(), c.end(), comp); }
 
+      priority_queue(const priority_queue&) = default;
+      priority_queue& operator=(const priority_queue&) = default;
+
+      priority_queue(priority_queue&& __q)
+      noexcept(__and_<is_nothrow_move_constructible<_Sequence>,
+		      is_nothrow_move_constructible<_Compare>>::value)
+      : c(std::move(__q.c)), comp(std::move(__q.comp))
+      { __q.c.clear(); }
+
+      priority_queue&
+      operator=(priority_queue&& __q)
+      noexcept(__and_<is_nothrow_move_assignable<_Sequence>,
+		      is_nothrow_move_assignable<_Compare>>::value)
+      {
+	c = std::move(__q.c);
+	__q.c.clear();
+	comp = std::move(__q.comp);
+	return *this;
+      }
+
       template<typename _Alloc, typename _Requires = _Uses<_Alloc>>
 	explicit
 	priority_queue(const _Alloc& __a)
@@ -552,7 +668,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       template<typename _Alloc, typename _Requires = _Uses<_Alloc>>
 	priority_queue(priority_queue&& __q, const _Alloc& __a)
-	: c(std::move(__q.c), __a), comp(std::move(__q.comp)) { }
+	: c(std::move(__q.c), __a), comp(std::move(__q.comp))
+	{ __q.c.clear(); }
 #endif
 
       /**
@@ -567,8 +684,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  the copy according to @a __x.
        *
        *  For more information on function objects, see the
-       *  documentation on @link functors functor base
-       *  classes@endlink.
+       *  documentation on @link functors functor base classes@endlink.
+       *
+       *  @{
        */
 #if __cplusplus < 201103L
       template<typename _InputIterator>
@@ -582,10 +700,21 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  std::make_heap(c.begin(), c.end(), comp);
 	}
 #else
-      template<typename _InputIterator>
+      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+      // 3529. priority_queue(first, last) should construct c with (first, last)
+      template<typename _InputIterator,
+	       typename = std::_RequireInputIter<_InputIterator>>
 	priority_queue(_InputIterator __first, _InputIterator __last,
-		       const _Compare& __x,
-		       const _Sequence& __s)
+		       const _Compare& __x = _Compare())
+	: c(__first, __last), comp(__x)
+	{ std::make_heap(c.begin(), c.end(), comp); }
+
+      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+      // 3522. Missing requirement on InputIterator template parameter
+      template<typename _InputIterator,
+	       typename = std::_RequireInputIter<_InputIterator>>
+	priority_queue(_InputIterator __first, _InputIterator __last,
+		       const _Compare& __x, const _Sequence& __s)
 	: c(__s), comp(__x)
 	{
 	  __glibcxx_requires_valid_range(__first, __last);
@@ -593,16 +722,88 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  std::make_heap(c.begin(), c.end(), comp);
 	}
 
-      template<typename _InputIterator>
+      template<typename _InputIterator,
+	       typename = std::_RequireInputIter<_InputIterator>>
 	priority_queue(_InputIterator __first, _InputIterator __last,
-		       const _Compare& __x = _Compare(),
-		       _Sequence&& __s = _Sequence())
+		       const _Compare& __x, _Sequence&& __s)
 	: c(std::move(__s)), comp(__x)
 	{
 	  __glibcxx_requires_valid_range(__first, __last);
 	  c.insert(c.end(), __first, __last);
 	  std::make_heap(c.begin(), c.end(), comp);
 	}
+#endif // C++11
+      /// @}
+
+#if __cplusplus >= 201103L
+      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+      // 3506. Missing allocator-extended constructors for priority_queue
+      template<typename _InputIterator, typename _Alloc,
+	       typename = std::_RequireInputIter<_InputIterator>,
+	       typename _Requires = _Uses<_Alloc>>
+	priority_queue(_InputIterator __first, _InputIterator __last,
+		       const _Alloc& __alloc)
+	: c(__first, __last, __alloc), comp()
+	{ std::make_heap(c.begin(), c.end(), comp); }
+
+      template<typename _InputIterator, typename _Alloc,
+	       typename = std::_RequireInputIter<_InputIterator>,
+	       typename _Requires = _Uses<_Alloc>>
+	priority_queue(_InputIterator __first, _InputIterator __last,
+		       const _Compare& __x, const _Alloc& __alloc)
+	: c(__first, __last, __alloc), comp(__x)
+	{ std::make_heap(c.begin(), c.end(), comp); }
+
+      template<typename _InputIterator, typename _Alloc,
+	       typename = std::_RequireInputIter<_InputIterator>,
+	       typename _Requires = _Uses<_Alloc>>
+	priority_queue(_InputIterator __first, _InputIterator __last,
+		       const _Compare& __x, const _Sequence& __s,
+		       const _Alloc& __alloc)
+	: c(__s, __alloc), comp(__x)
+	{
+	  __glibcxx_requires_valid_range(__first, __last);
+	  c.insert(c.end(), __first, __last);
+	  std::make_heap(c.begin(), c.end(), comp);
+	}
+
+      template<typename _InputIterator, typename _Alloc,
+	       typename _Requires = _Uses<_Alloc>>
+	priority_queue(_InputIterator __first, _InputIterator __last,
+		       const _Compare& __x, _Sequence&& __s,
+		       const _Alloc& __alloc)
+	: c(std::move(__s), __alloc), comp(__x)
+	{
+	  __glibcxx_requires_valid_range(__first, __last);
+	  c.insert(c.end(), __first, __last);
+	  std::make_heap(c.begin(), c.end(), comp);
+	}
+#endif // C++11
+
+#if __glibcxx_containers_ranges // C++ >= 23
+      /**
+       * @brief Construct a priority_queue from a range.
+       * @since C++23
+       *
+       * @{
+       */
+      template<__detail::__container_compatible_range<_Tp> _Rg>
+	priority_queue(from_range_t, _Rg&& __rg,
+		       const _Compare& __x = _Compare())
+	: c(ranges::to<_Sequence>(std::forward<_Rg>(__rg))), comp(__x)
+	{ std::make_heap(c.begin(), c.end(), comp); }
+
+      template<__detail::__container_compatible_range<_Tp> _Rg, typename _Alloc>
+	priority_queue(from_range_t, _Rg&& __rg, const _Compare& __x,
+		       const _Alloc& __a)
+	: c(ranges::to<_Sequence>(std::forward<_Rg>(__rg), __a)), comp(__x)
+	{ std::make_heap(c.begin(), c.end(), comp); }
+
+      template<__detail::__container_compatible_range<_Tp> _Rg, typename _Alloc>
+	priority_queue(from_range_t, _Rg&& __rg, const _Alloc& __a)
+	: c(ranges::to<_Sequence>(std::forward<_Rg>(__rg), __a)), comp()
+	{ std::make_heap(c.begin(), c.end(), comp); }
+      /// @}
 #endif
 
       /**
@@ -613,6 +814,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       { return c.empty(); }
 
       /**  Returns the number of elements in the %queue.  */
+      _GLIBCXX_NODISCARD
       size_type
       size() const
       { return c.size(); }
@@ -621,6 +823,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
        *  Returns a read-only (constant) reference to the data at the first
        *  element of the %queue.
        */
+      _GLIBCXX_NODISCARD
       const_reference
       top() const
       {
@@ -660,6 +863,19 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	}
 #endif
 
+#if __glibcxx_containers_ranges // C++ >= 23
+      template<__detail::__container_compatible_range<_Tp> _Rg>
+	void
+	push_range(_Rg&& __rg)
+	{
+	  if constexpr (requires { c.append_range(std::forward<_Rg>(__rg)); })
+	    c.append_range(std::forward<_Rg>(__rg));
+	  else
+	    ranges::copy(__rg, std::back_inserter(c));
+	  std::make_heap(c.begin(), c.end(), comp);
+	}
+#endif
+
       /**
        *  @brief  Removes first element.
        *
@@ -696,6 +912,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	swap(comp, __pq.comp);
       }
 #endif // __cplusplus >= 201103L
+
+#if __glibcxx_format_ranges
+      friend class formatter<priority_queue<_Tp, _Sequence, _Compare>, char>;
+      friend class formatter<priority_queue<_Tp, _Sequence, _Compare>, wchar_t>;
+#endif
     };
 
 #if __cpp_deduction_guides >= 201606
@@ -718,10 +939,25 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   template<typename _Compare, typename _Container, typename _Allocator,
 	   typename = _RequireNotAllocator<_Compare>,
-	   typename = _RequireNotAllocator<_Container>,
-	   typename = _RequireAllocator<_Allocator>>
+	   typename = _RequireNotAllocator<_Container>>
     priority_queue(_Compare, _Container, _Allocator)
     -> priority_queue<typename _Container::value_type, _Container, _Compare>;
+
+#if __glibcxx_containers_ranges // C++ >= 23
+  template<ranges::input_range _Rg,
+	   __not_allocator_like _Compare = less<ranges::range_value_t<_Rg>>,
+	   __allocator_like _Alloc = std::allocator<ranges::range_value_t<_Rg>>>
+    priority_queue(from_range_t, _Rg&&, _Compare = _Compare(),
+                   _Alloc = _Alloc())
+      -> priority_queue<ranges::range_value_t<_Rg>,
+			vector<ranges::range_value_t<_Rg>, _Alloc>,
+			_Compare>;
+
+  template<ranges::input_range _Rg, __allocator_like _Alloc>
+    priority_queue(from_range_t, _Rg&&, _Alloc)
+      -> priority_queue<ranges::range_value_t<_Rg>,
+			vector<ranges::range_value_t<_Rg>, _Alloc>>;
+#endif
 #endif
 
   // No equality/comparison operators are provided for priority_queue.

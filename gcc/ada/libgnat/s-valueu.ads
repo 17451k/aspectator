@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,16 +33,15 @@
 --  values for use in Text_IO.Modular_IO, and the Value attribute.
 
 generic
-
    type Uns is mod <>;
-
 package System.Value_U is
    pragma Preelaborate;
 
-   function Scan_Raw_Unsigned
+   procedure Scan_Raw_Unsigned
      (Str : String;
       Ptr : not null access Integer;
-      Max : Integer) return Uns;
+      Max : Integer;
+      Res : out Uns);
    --  This function scans the string starting at Str (Ptr.all) for a valid
    --  integer according to the syntax described in (RM 3.5(43)). The substring
    --  scanned extends no further than Str (Max).  Note: this does not scan
@@ -103,26 +102,26 @@ package System.Value_U is
    --  This string results in a Constraint_Error with the pointer pointing
    --  past the second 2.
    --
-   --  Note: if Str is empty, i.e. if Max is less than Ptr, then this is a
-   --  special case of an all-blank string, and Ptr is unchanged, and hence
-   --  is greater than Max as required in this case.
+   --  Note: If Max is less than Ptr, then Ptr is left unchanged and
+   --  Program_Error is raised to indicate that a valid integer cannot
+   --  be parsed.
    --
    --  Note: this routine should not be called with Str'Last = Positive'Last.
    --  If this occurs Program_Error is raised with a message noting that this
    --  case is not supported. Most such cases are eliminated by the caller.
 
-   function Scan_Unsigned
+   procedure Scan_Unsigned
      (Str : String;
       Ptr : not null access Integer;
-      Max : Integer) return Uns;
+      Max : Integer;
+      Res : out Uns);
    --  Same as Scan_Raw_Unsigned, except scans optional leading
    --  blanks, and an optional leading plus sign.
    --
    --  Note: if a minus sign is present, Constraint_Error will be raised.
    --  Note: trailing blanks are not scanned.
 
-   function Value_Unsigned
-     (Str : String) return Uns;
+   function Value_Unsigned (Str : String) return Uns;
    --  Used in computing X'Value (Str) where X is a modular integer type whose
    --  modulus does not exceed the range of System.Unsigned_Types.Unsigned. Str
    --  is the string argument of the attribute. Constraint_Error is raised if

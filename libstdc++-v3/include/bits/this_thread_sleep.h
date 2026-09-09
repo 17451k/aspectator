@@ -1,6 +1,6 @@
 // std::this_thread::sleep_for/until declarations -*- C++ -*-
 
-// Copyright (C) 2008-2021 Free Software Foundation, Inc.
+// Copyright (C) 2008-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -22,7 +22,7 @@
 // see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 // <http://www.gnu.org/licenses/>.
 
-/** @file bits/std_thread_sleep.h
+/** @file bits/this_thread_sleep.h
  *  This is an internal header file, included by other library headers.
  *  Do not attempt to use it directly. @headername{thread}
  */
@@ -30,12 +30,12 @@
 #ifndef _GLIBCXX_THIS_THREAD_SLEEP_H
 #define _GLIBCXX_THIS_THREAD_SLEEP_H 1
 
+#ifdef _GLIBCXX_SYSHDR
 #pragma GCC system_header
+#endif
 
 #if __cplusplus >= 201103L
-#include <bits/c++config.h>
-
-#include <chrono> // std::chrono::*
+#include <bits/chrono.h> // std::chrono::*
 
 #ifdef _GLIBCXX_USE_NANOSLEEP
 # include <cerrno>  // errno, EINTR
@@ -59,11 +59,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   {
 #ifndef _GLIBCXX_NO_SLEEP
 
-#ifndef _GLIBCXX_USE_NANOSLEEP
-    void
-    __sleep_for(chrono::seconds, chrono::nanoseconds);
-#endif
-
     /// this_thread::sleep_for
     template<typename _Rep, typename _Period>
       inline void
@@ -71,18 +66,16 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       {
 	if (__rtime <= __rtime.zero())
 	  return;
-	auto __s = chrono::duration_cast<chrono::seconds>(__rtime);
-	auto __ns = chrono::duration_cast<chrono::nanoseconds>(__rtime - __s);
+
+	struct timespec __ts = chrono::__to_timeout_timespec(__rtime);
 #ifdef _GLIBCXX_USE_NANOSLEEP
-	struct ::timespec __ts =
-	  {
-	    static_cast<std::time_t>(__s.count()),
-	    static_cast<long>(__ns.count())
-	  };
 	while (::nanosleep(&__ts, &__ts) == -1 && errno == EINTR)
 	  { }
 #else
-	__sleep_for(__s, __ns);
+	using chrono::seconds;
+	using chrono::nanoseconds;
+	void __sleep_for(seconds __s, nanoseconds __ns);
+	__sleep_for(seconds(__ts.tv_sec), nanoseconds(__ts.tv_nsec));
 #endif
       }
 
@@ -107,8 +100,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	    __now = _Clock::now();
 	  }
       }
-  } // namespace this_thread
 #endif // ! NO_SLEEP
+  } // namespace this_thread
 
   /// @}
 

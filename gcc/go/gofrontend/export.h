@@ -51,8 +51,9 @@ enum Builtin_code
   BUILTIN_ERROR = -19,
   BUILTIN_BYTE = -20,
   BUILTIN_RUNE = -21,
+  BUILTIN_ANY = -22,
 
-  SMALLEST_BUILTIN_CODE = -21
+  SMALLEST_BUILTIN_CODE = -22
 };
 
 // Export data version number. New export data is written with the
@@ -216,6 +217,11 @@ class Export : public String_dump
   int
   package_index(const Package* p) const;
 
+  // Return the index of the "unsafe" package, which must be one of
+  // the exported packages.
+  int
+  unsafe_package_index() const;
+
  private:
   Export(const Export&);
   Export& operator=(const Export&);
@@ -376,6 +382,11 @@ class Export_function_body : public String_dump
   int
   package_index(const Package* p) const
   { return this->exp_->package_index(p); }
+
+  // Return the index of the "unsafe" package.
+  int
+  unsafe_package_index() const
+  { return this->exp_->unsafe_package_index(); }
 
   // Record a temporary statement and return its index.
   unsigned int

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---            Copyright (C) 2020, Free Software Foundation, Inc.            --
+--            Copyright (C) 2020-2026, Free Software Foundation, Inc.       --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -37,6 +37,8 @@ package body System.Img_Util is
    -- Set_Decimal_Digits --
    ------------------------
 
+   pragma Annotate (Gnatcheck, Exempt_On, "Unassigned_OUT_Parameters",
+                    "the OUT parameter is assigned by component");
    procedure Set_Decimal_Digits
      (Digs  : in out String;
       NDigs : Natural;
@@ -47,6 +49,8 @@ package body System.Img_Util is
       Aft   : Natural;
       Exp   : Natural)
    is
+      pragma Annotate (Gnatcheck, Exempt_Off, "Unassigned_OUT_Parameters");
+
       pragma Assert (NDigs >= 1);
       pragma Assert (Digs'First = 1);
       pragma Assert (Digs'First < Digs'Last);
@@ -119,6 +123,9 @@ package body System.Img_Util is
          pragma Assert (Digs'First < Digs'Last);
 
       begin
+         pragma Annotate (Gnatcheck, Exempt_On, "Improper_Returns",
+                       "early returns for performance");
+
          --  Nothing to do if rounding past the last digit we have
 
          if N >= LD then
@@ -178,6 +185,8 @@ package body System.Img_Util is
                Digits_Before_Point := Digits_Before_Point + 1;
             end if;
          end if;
+
+         pragma Annotate (Gnatcheck, Exempt_Off, "Improper_Returns");
       end Round;
 
       ---------
@@ -226,7 +235,6 @@ package body System.Img_Util is
       begin
          pragma Assert (S >= Digs'First and E <= Digs'Last);
          --  S and E should be in the Digs array range
-         --  TBC: Analysis should be completed
          for J in S .. E loop
             Set (Digs (J));
          end loop;
@@ -246,6 +254,9 @@ package body System.Img_Util is
    --  Start of processing for Set_Decimal_Digits
 
    begin
+      pragma Annotate (Gnatcheck, Exempt_On, "Improper_Returns",
+                    "early returns for performance");
+
       --  Case of exponent given
 
       if Exp > 0 then
@@ -398,6 +409,93 @@ package body System.Img_Util is
             end if;
          end if;
       end if;
+
+      pragma Annotate (Gnatcheck, Exempt_Off, "Improper_Returns");
    end Set_Decimal_Digits;
+
+   --------------------------------
+   -- Set_Floating_Invalid_Value --
+   --------------------------------
+
+   pragma Annotate (Gnatcheck, Exempt_On, "Unassigned_OUT_Parameters",
+                    "the OUT parameter is assigned by component");
+   procedure Set_Floating_Invalid_Value
+     (V    : Floating_Invalid_Value;
+      S    : out String;
+      P    : in out Natural;
+      Fore : Natural;
+      Aft  : Natural;
+      Exp  : Natural)
+   is
+      pragma Annotate (Gnatcheck, Exempt_Off, "Unassigned_OUT_Parameters");
+
+      procedure Set (C : Character);
+      --  Sets character C in output buffer
+
+      procedure Set_Special_Fill (N : Natural);
+      --  After outputting +Inf, -Inf or NaN, this routine fills out the
+      --  rest of the field with * characters. The argument is the number
+      --  of characters output so far (either 3 or 4)
+
+      ---------
+      -- Set --
+      ---------
+
+      procedure Set (C : Character) is
+      begin
+         pragma Assert (P in S'First - 1 .. S'Last - 1);
+         --  No check is done as documented in the header: updating P to point
+         --  to the last character stored, the caller promises that the buffer
+         --  is large enough and no check is made for this. Constraint_Error
+         --  will not necessarily be raised if this requirement is violated,
+         --  since it is perfectly valid to compile this unit with checks off.
+
+         P := P + 1;
+         S (P) := C;
+      end Set;
+
+      ----------------------
+      -- Set_Special_Fill --
+      ----------------------
+
+      procedure Set_Special_Fill (N : Natural) is
+      begin
+         if Exp /= 0 then
+            for J in N + 1 .. Fore + 1 + Aft + 1 + Exp loop
+               Set ('*');
+            end loop;
+
+         else
+            for J in N + 1 .. Fore + 1 + Aft loop
+               Set ('*');
+            end loop;
+         end if;
+      end Set_Special_Fill;
+
+   --  Start of processing for Set_Floating_Invalid_Value
+
+   begin
+      case V is
+         when Minus_Infinity =>
+            Set ('-');
+            Set ('I');
+            Set ('n');
+            Set ('f');
+            Set_Special_Fill (4);
+
+         when Infinity =>
+            Set ('+');
+            Set ('I');
+            Set ('n');
+            Set ('f');
+            Set_Special_Fill (4);
+
+         when Not_A_Number =>
+            Set ('N');
+            Set ('a');
+            Set ('N');
+            Set_Special_Fill (3);
+      end case;
+   end Set_Floating_Invalid_Value;
 
 end System.Img_Util;

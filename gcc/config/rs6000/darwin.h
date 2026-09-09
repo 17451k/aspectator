@@ -1,5 +1,5 @@
 /* Target definitions for PowerPC running Darwin (Mac OS X).
-   Copyright (C) 1997-2021 Free Software Foundation, Inc.
+   Copyright (C) 1997-2026 Free Software Foundation, Inc.
    Contributed by Apple Computer Inc.
 
    This file is part of GCC.
@@ -98,7 +98,7 @@
    Include libmx when targeting Darwin 7.0 and above, but before libSystem,
    since the functions are actually in libSystem but for 7.x compatibility
    we want them to be looked for in libmx first.
-   Include libSystemStubs when compiling against 10.3 - 10.5 SDKs (we assume
+   Include libSystemStubs when compiling against 10.3 - 10.6 SDKs (we assume
    this is the case when targetting these) - but not for 64-bit long double.
    Don't do either for m64, the library is either a dummy or non-existent.
 */
@@ -107,11 +107,14 @@
 #define LIB_SPEC \
 "%{!static:								\
   %{!m64:%{!mlong-double-64:						\
-    %{pg:%:version-compare(>< 10.3 10.5 mmacosx-version-min= -lSystemStubs_profile)} \
-    %{!pg:%:version-compare(>< 10.3 10.5 mmacosx-version-min= -lSystemStubs)} \
+    %{pg:%:version-compare(>< 10.3 10.7 mmacosx-version-min= -lSystemStubs_profile)} \
+    %{!pg:%:version-compare(>< 10.3 10.7 mmacosx-version-min= -lSystemStubs)} \
      %:version-compare(>< 10.3 10.4 mmacosx-version-min= -lmx)}}	\
   -lSystem								\
 }"
+
+#undef DARWIN_HEAP_T_LIB
+#define DARWIN_HEAP_T_LIB " "
 
 /* We want -fPIC by default, unless we're using -static to compile for
    the kernel or some such.  The "-faltivec" option should have been
@@ -203,7 +206,7 @@
 
 /* Make both r2 and r13 available for allocation.  */
 #define FIXED_R2 0
-#define FIXED_R13 0
+#define FIXED_R13 TARGET_64BIT
 
 /* Base register for access to local variables of the function.  */
 
@@ -212,6 +215,9 @@
 
 #undef  RS6000_PIC_OFFSET_TABLE_REGNUM
 #define RS6000_PIC_OFFSET_TABLE_REGNUM 31
+
+#undef FIRST_SAVED_GP_REGNO
+#define FIRST_SAVED_GP_REGNO 13
 
 /* Darwin's stack must remain 16-byte aligned for both 32 and 64 bit
    ABIs.  */
@@ -243,10 +249,10 @@
 
    The default value for this macro is `STACK_POINTER_OFFSET' plus the
    length of the outgoing arguments.  The default is correct for most
-   machines.  See `function.c' for details.
+   machines.  See `function.cc' for details.
 
    This value must be a multiple of STACK_BOUNDARY (hard coded in
-   `emit-rtl.c').  */
+   `emit-rtl.cc').  */
 
 #undef STACK_DYNAMIC_OFFSET
 #define STACK_DYNAMIC_OFFSET(FUNDECL)					\
@@ -289,7 +295,9 @@
   /* cr0..cr7 */							\
     "cr0", "cr1", "cr2", "cr3", "cr4", "cr5", "cr6", "cr7",		\
   /* vrsave vscr sfp */							\
-    "vrsave", "vscr", "sfp"						\
+    "vrsave", "vscr", "sfp",						\
+  /* DMRs */								\
+      "dm0", "dm1", "dm2", "dm3", "dm4", "dm5", "dm6", "dm7"	\
 }
 
 /* This outputs NAME to FILE.  */
@@ -303,7 +311,7 @@
 #define GLOBAL_ASM_OP "\t.globl "
 #undef TARGET_ASM_GLOBALIZE_LABEL
 
-/* This is how to output an internal label prefix.  rs6000.c uses this
+/* This is how to output an internal label prefix.  rs6000.cc uses this
    when generating traceback tables.  */
 /* Not really used for Darwin?  */
 
@@ -364,7 +372,7 @@
    default as well.  */
 
 #undef  TARGET_DEFAULT
-#define TARGET_DEFAULT (MASK_MULTIPLE | MASK_PPC_GFXOPT)
+#define TARGET_DEFAULT (OPTION_MASK_MULTIPLE | OPTION_MASK_PPC_GFXOPT)
 
 /* Darwin always uses IBM long double, never IEEE long double.  */
 #undef  TARGET_IEEEQUAD
@@ -424,12 +432,10 @@
 /* Darwin increases natural record alignment to doubleword if the first
    field is an FP double while the FP fields remain word aligned.  */
 #define ROUND_TYPE_ALIGN(STRUCT, COMPUTED, SPECIFIED)			  \
-  ((TREE_CODE (STRUCT) == RECORD_TYPE					  \
-    || TREE_CODE (STRUCT) == UNION_TYPE					  \
-    || TREE_CODE (STRUCT) == QUAL_UNION_TYPE)				  \
+  (RECORD_OR_UNION_TYPE_P (STRUCT)				  \
    && TARGET_ALIGN_NATURAL == 0						  \
    ? darwin_rs6000_special_round_type_align (STRUCT, COMPUTED, SPECIFIED) \
-   : (TREE_CODE (STRUCT) == VECTOR_TYPE					  \
+   : (VECTOR_TYPE_P (STRUCT)					  \
       && ALTIVEC_VECTOR_MODE (TYPE_MODE (STRUCT)))			  \
    ? MAX (MAX ((COMPUTED), (SPECIFIED)), 128)				  \
    : MAX ((COMPUTED), (SPECIFIED)))
@@ -483,14 +489,14 @@
    default, as kernel code doesn't save/restore those registers.  */
 #define OS_MISSING_ALTIVEC (flag_mkernel || flag_apple_kext)
 
-/* Darwin has support for section anchors on powerpc*.  
+/* Darwin has support for section anchors on powerpc*.
    It is disabled for any section containing a "zero-sized item" (because these
    are re-written as size=1 to be compatible with the OSX ld64).
    The re-writing would interfere with the computation of anchor offsets.
    Therefore, we place zero-sized items in their own sections and make such
    sections unavailable to section anchoring.  */
 
-#undef TARGET_ASM_OUTPUT_ANCHOR 
+#undef TARGET_ASM_OUTPUT_ANCHOR
 #define TARGET_ASM_OUTPUT_ANCHOR darwin_asm_output_anchor
 
 #undef TARGET_USE_ANCHORS_FOR_SYMBOL_P
@@ -504,8 +510,8 @@
 #define SUBTARGET_INIT_BUILTINS						\
 do {									\
   darwin_patch_builtins ();						\
-  rs6000_builtin_decls[(unsigned) (RS6000_BUILTIN_CFSTRING)]		\
-    = darwin_init_cfstring_builtins ((unsigned) (RS6000_BUILTIN_CFSTRING)); \
+  rs6000_builtin_decls[(unsigned) (RS6000_BIF_CFSTRING)]		\
+    = darwin_init_cfstring_builtins ((unsigned) (RS6000_BIF_CFSTRING)); \
 } while(0)
 
 /* So far, there is no rs6000_fold_builtin, if one is introduced, then

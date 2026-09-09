@@ -535,7 +535,7 @@ class Type
   make_nil_type();
 
   static Type*
-  make_call_multiple_result_type(Call_expression*);
+  make_call_multiple_result_type();
 
   static Struct_type*
   make_struct_type(Struct_field_list* fields, Location);
@@ -575,6 +575,10 @@ class Type
   static Named_type*
   make_builtin_named_type(const char* name, Type* type);
 
+  // Return a string version of this type to use in an error message.
+  std::string
+  message_name() const;
+
   // Traverse a type.
   static int
   traverse(Type*, Traverse*);
@@ -584,8 +588,8 @@ class Type
   // returns false if the type is invalid and we should not continue
   // traversing it.
   bool
-  verify()
-  { return this->do_verify(); }
+  verify(Gogo* gogo)
+  { return this->do_verify(gogo); }
 
   // Bit flags to pass to are_identical and friends.
 
@@ -1095,13 +1099,17 @@ class Type
 
   // Functions implemented by the child class.
 
+  // Message name.
+  virtual void
+  do_message_name(std::string*) const = 0;
+
   // Traverse the subtypes.
   virtual int
   do_traverse(Traverse*);
 
   // Verify the type.
   virtual bool
-  do_verify()
+  do_verify(Gogo*)
   { return true; }
 
   virtual bool
@@ -1194,6 +1202,11 @@ class Type
   Expression*
   type_descriptor_constructor(Gogo*, int runtime_type_kind, Named_type*,
 			      const Methods*, bool only_value_methods);
+
+  // For the benefit of child class message name construction.
+  void
+  append_message_name(const Type* type, std::string* ret) const
+  { type->do_message_name(ret); }
 
   // For the benefit of child class reflection string generation.
   void
@@ -1300,13 +1313,13 @@ class Type
 		       Function_type* equal_fntype);
 
   void
-  write_identity_hash(Gogo*, int64_t size);
+  write_identity_hash(Gogo*, Named_object* function, int64_t size);
 
   void
-  write_identity_equal(Gogo*, int64_t size);
+  write_identity_equal(Gogo*, Named_object* function, int64_t size);
 
   void
-  write_named_equal(Gogo*, Named_type*);
+  write_named_equal(Gogo*, Named_object* function, Named_type*);
 
   // Build a composite literal for the uncommon type information.
   Expression*
@@ -1354,22 +1367,27 @@ class Type
 		     Location);
 
   static void
-  build_one_stub_method(Gogo*, Method*, const char* receiver_name,
+  build_one_stub_method(Gogo*, Method*, Named_object* stub,
+			const char* receiver_name, const Type* receiver_type,
 			const Typed_identifier_list*, bool is_varargs,
-			Location);
+			const Typed_identifier_list*, Location);
 
   // Build direct interface stub methods for a type.
   static void
   build_direct_iface_stub_methods(Gogo*, const Type*, Methods*, Location);
 
   static void
-  build_one_iface_stub_method(Gogo*, Method*, const char*,
-                              const Typed_identifier_list*,
-                              bool, Location);
+  build_one_iface_stub_method(Gogo*, Method*, Named_object* stub, const char*,
+                              const Typed_identifier_list*, bool,
+			      const Typed_identifier_list*, Location);
+
+  static void
+  add_return_from_results(Gogo*, Named_object* stub, Call_expression*,
+			  const Typed_identifier_list*, Location);
 
   static Expression*
   apply_field_indexes(Expression*, const Method::Field_indexes*,
-		      Location);
+		      Location, const Type**);
 
   // Look for a field or method named NAME in TYPE.
   static bool
@@ -1651,6 +1669,10 @@ class Error_type : public Type
   { }
 
  protected:
+  void
+  do_message_name(std::string* ret) const
+  { ret->append("<ERROR>"); }
+
   bool
   do_compare_is_identity(Gogo*)
   { return false; }
@@ -1678,6 +1700,10 @@ class Void_type : public Type
   { }
 
  protected:
+  void
+  do_message_name(std::string* ret) const
+  { ret->append("void"); }
+
   bool
   do_compare_is_identity(Gogo*)
   { return false; }
@@ -1707,6 +1733,10 @@ class Boolean_type : public Type
   { }
 
  protected:
+  void
+  do_message_name(std::string* ret) const
+  { ret->append("<untyped bool>"); }
+
   bool
   do_compare_is_identity(Gogo*)
   { return true; }
@@ -1792,6 +1822,9 @@ class Integer_type : public Type
   { this->is_rune_ = true; }
 
 protected:
+  void
+  do_message_name(std::string* ret) const;
+
   bool
   do_compare_is_identity(Gogo*)
   { return true; }
@@ -1869,6 +1902,9 @@ class Float_type : public Type
   is_identical(const Float_type* t) const;
 
  protected:
+  void
+  do_message_name(std::string* ret) const;
+
   bool
   do_compare_is_identity(Gogo*)
   { return false; }
@@ -1947,6 +1983,9 @@ class Complex_type : public Type
   is_identical(const Complex_type* t) const;
 
  protected:
+  void
+  do_message_name(std::string*) const;
+
   bool
   do_compare_is_identity(Gogo*)
   { return false; }
@@ -2004,6 +2043,10 @@ class String_type : public Type
   { }
 
  protected:
+  void
+  do_message_name(std::string* ret) const
+  { ret->append("<untyped string>"); }
+
   bool
   do_has_pointer() const
   { return true; }
@@ -2161,7 +2204,14 @@ class Function_type : public Type
   is_backend_function_type() const
   { return false; }
 
+  // Append just the signature of the function type.
+  void
+  append_signature(std::string*) const;
+
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse*);
 
@@ -2288,16 +2338,22 @@ class Pointer_type : public Type
   make_pointer_type_descriptor_type();
 
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse*);
 
   bool
-  do_verify()
-  { return this->to_type_->verify(); }
+  do_verify(Gogo* gogo)
+  { return this->to_type_->verify(gogo); }
 
+  // If this is a pointer to a type that can't be in the heap, then
+  // the garbage collector does not have to look at this, so pretend
+  // that this is not a pointer at all.
   bool
   do_has_pointer() const
-  { return true; }
+  { return this->to_type_->in_heap(); }
 
   bool
   do_compare_is_identity(Gogo*)
@@ -2338,6 +2394,10 @@ class Nil_type : public Type
   { }
 
  protected:
+  void
+  do_message_name(std::string* ret) const
+  { ret->append("<NIL>"); }
+
   bool
   do_compare_is_identity(Gogo*)
   { return false; }
@@ -2501,7 +2561,8 @@ class Struct_type : public Type
   Struct_type(Struct_field_list* fields, Location location)
     : Type(TYPE_STRUCT),
       fields_(fields), location_(location), all_methods_(NULL),
-      is_struct_incomparable_(false), has_padding_(false)
+      is_struct_incomparable_(false), has_padding_(false),
+      is_results_struct_(false)
   { }
 
   // Return the field NAME.  This only looks at local fields, not at
@@ -2632,13 +2693,24 @@ class Struct_type : public Type
   set_has_padding()
   { this->has_padding_ = true; }
 
+  // Return whether this is a results struct created to hold the
+  // results of a function that returns multiple results.
+  bool
+  is_results_struct() const
+  { return this->is_results_struct_; }
+
+  // Record that this is a results struct.
+  void
+  set_is_results_struct()
+  { this->is_results_struct_ = true; }
+
   // Write the hash function for this type.
   void
-  write_hash_function(Gogo*, Function_type*);
+  write_hash_function(Gogo*, Named_object* function, Function_type*);
 
   // Write the equality function for this type.
   void
-  write_equal_function(Gogo*, Named_type*);
+  write_equal_function(Gogo*, Named_object* function, Named_type*);
 
   // Whether we can write this type to a C header file, to implement
   // -fgo-c-header.
@@ -2651,11 +2723,14 @@ class Struct_type : public Type
   write_to_c_header(std::ostream&) const;
 
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse*);
 
   bool
-  do_verify();
+  do_verify(Gogo*);
 
   bool
   do_has_pointer() const;
@@ -2742,6 +2817,9 @@ class Struct_type : public Type
   // True if this struct's backend type has padding, due to trailing
   // zero-sized field.
   bool has_padding_;
+  // True if this is a results struct created to hold the results of a
+  // function that returns multiple results.
+  bool is_results_struct_;
 };
 
 // The type of an array.
@@ -2777,7 +2855,7 @@ class Array_type : public Type
 
   // Return an expression for the pointer to the values in an array.
   Expression*
-  get_value_pointer(Gogo*, Expression* array, bool is_lvalue) const;
+  get_value_pointer(Gogo*, Expression* array) const;
 
   // Return an expression for the length of an array with this type.
   Expression*
@@ -2821,18 +2899,21 @@ class Array_type : public Type
 
   // Write the hash function for this type.
   void
-  write_hash_function(Gogo*, Function_type*);
+  write_hash_function(Gogo*, Named_object* function, Function_type*);
 
   // Write the equality function for this type.
   void
-  write_equal_function(Gogo*, Named_type*);
+  write_equal_function(Gogo*, Named_object* function, Named_type*);
 
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse* traverse);
 
   bool
-  do_verify();
+  do_verify(Gogo*);
 
   bool
   do_has_pointer() const;
@@ -2878,7 +2959,7 @@ class Array_type : public Type
 
  private:
   bool
-  verify_length();
+  verify_length(Gogo*);
 
   Expression*
   array_type_descriptor(Gogo*, Named_type*);
@@ -2976,11 +3057,14 @@ class Map_type : public Type
   static const int bucket_size = 8;
 
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse*);
 
   bool
-  do_verify();
+  do_verify(Gogo*);
 
   bool
   do_has_pointer() const
@@ -3095,12 +3179,15 @@ class Channel_type : public Type
   select_case_type();
 
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse* traverse)
   { return Type::traverse(this->element_type_, traverse); }
 
   bool
-  do_verify();
+  do_verify(Gogo*);
 
   bool
   do_has_pointer() const
@@ -3249,16 +3336,10 @@ class Interface_type : public Type
   methods_are_finalized() const
   { return this->methods_are_finalized_; }
 
-  // Sort embedded interfaces by name. Needed when we are preparing
-  // to emit types into the export data.
-  void
-  sort_embedded()
-  {
-    if (parse_methods_ != NULL)
-      parse_methods_->sort_by_name();
-  }
-
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse*);
 
@@ -3436,12 +3517,6 @@ class Named_type : public Type
   const std::string&
   name() const;
 
-  // Return the name of the type for an error message.  The difference
-  // is that if the type is defined in a different package, this will
-  // return PACKAGE.NAME.
-  std::string
-  message_name() const;
-
   // Return the underlying type.
   Type*
   real_type()
@@ -3585,12 +3660,15 @@ class Named_type : public Type
   convert(Gogo*);
 
  protected:
+  void
+  do_message_name(std::string* ret) const;
+
   int
   do_traverse(Traverse* traverse)
   { return Type::traverse(this->type_, traverse); }
 
   bool
-  do_verify();
+  do_verify(Gogo*);
 
   bool
   do_has_pointer() const;
@@ -3605,8 +3683,7 @@ class Named_type : public Type
   do_needs_key_update();
 
   bool
-  do_in_heap() const
-  { return this->in_heap_ && this->type_->in_heap(); }
+  do_in_heap() const;
 
   unsigned int
   do_hash_for_method(Gogo*, int) const;
@@ -3745,11 +3822,14 @@ class Forward_declaration_type : public Type
   add_existing_method(Named_object*);
 
  protected:
+  void
+  do_message_name(std::string*) const;
+
   int
   do_traverse(Traverse* traverse);
 
   bool
-  do_verify();
+  do_verify(Gogo*);
 
   bool
   do_has_pointer() const

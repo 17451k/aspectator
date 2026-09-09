@@ -4,11 +4,10 @@
  * Translated from MinGW Windows headers
  *
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_lmat.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_lmat.d)
  */
 module core.sys.windows.lmat;
 version (Windows):
-@system:
 pragma(lib, "netapi32");
 
 import core.sys.windows.lmcons, core.sys.windows.windef;
@@ -31,7 +30,7 @@ struct AT_ENUM {
     UCHAR Flags;
     LPWSTR Command;
 }
-alias AT_ENUM* PAT_ENUM, LPAT_ENUM;
+alias PAT_ENUM = AT_ENUM*, LPAT_ENUM = AT_ENUM*;
 
 struct AT_INFO {
     DWORD_PTR JobTime;
@@ -40,7 +39,7 @@ struct AT_INFO {
     UCHAR Flags;
     LPWSTR Command;
 }
-alias AT_INFO* PAT_INFO, LPAT_INFO;
+alias PAT_INFO = AT_INFO*, LPAT_INFO = AT_INFO*;
 
 extern (Windows) {
     NET_API_STATUS NetScheduleJobAdd(LPWSTR, PBYTE, LPDWORD);

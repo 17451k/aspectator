@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,19 +29,27 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This function performs exponentiation of unsigned types with binary modulus
---  values up to and including that of System.Unsigned_Types.Unsigned.
---  The result is always full width, the caller must do a masking operation if
---  the modulus is less than 2 ** Unsigned'Size.
+--  This function performs exponentiation of unsigned types (with binary
+--  modulus values up to and including that of Unsigned_Types.Unsigned).
+--
+--  The result is always full width, the caller must do a masking operation
+--  the modulus is less than 2 ** (Unsigned'Size).
 
 with System.Exponu;
 with System.Unsigned_Types;
 
-package System.Exp_Uns is
-
+package System.Exp_Uns
+  with SPARK_Mode
+is
    subtype Unsigned is Unsigned_Types.Unsigned;
 
    function Exp_Unsigned is new Exponu (Unsigned);
    pragma Pure_Function (Exp_Unsigned);
+   --  Return the power of ``Left`` by ``Right`` where ``Left`` is an
+   --  Unsigned.
+   --
+   --  This function is implemented using the standard logarithmic approach:
+   --  ``Right`` gets shifted right testing successive low order bits, and
+   --  ``Left`` is raised to the next power of 2.
 
 end System.Exp_Uns;

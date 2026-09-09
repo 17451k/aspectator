@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -69,8 +69,10 @@ package Sem_Ch3 is
    --  interface primitives with the tagged type primitives that cover them.
 
    procedure Analyze_Declarations (L : List_Id);
-   --  Called to analyze a list of declarations (in what context ???). Also
-   --  performs necessary freezing actions (more description needed ???)
+   --  Called to analyze a list of declarations. Also performs necessary
+   --  freezing actions (such as freezing remaining unfrozen entities at
+   --  the end of declarative parts), resolves usage names in aspects, and
+   --  analyzes contracts that require delay until after freezing is done.
 
    procedure Analyze_Interface_Declaration (T : Entity_Id; Def : Node_Id);
    --  Analyze an interface declaration or a formal interface declaration
@@ -82,6 +84,11 @@ package Sem_Ch3 is
 
    procedure Access_Type_Declaration (T : Entity_Id; Def : Node_Id);
    --  Process an access type declaration
+
+   procedure Build_Access_Subprogram_Wrapper (Decl : Node_Id);
+   --  When an access-to-subprogram type has pre/postconditions, we build a
+   --  subprogram that includes these contracts and is invoked by an indirect
+   --  call through the corresponding access type.
 
    procedure Build_Itype_Reference (Ityp : Entity_Id; Nod : Node_Id);
    --  Create a reference to an internal type, for use by Gigi. The back-end
@@ -158,25 +165,34 @@ package Sem_Ch3 is
    --  node or a plain N_Identifier), find the type of the subtype mark.
 
    function Find_Type_Name (N : Node_Id) return Entity_Id;
-   --  Enter the identifier in a type definition, or find the entity already
-   --  declared, in the case of the full declaration of an incomplete or
-   --  private type. If the previous declaration is tagged then the class-wide
-   --  entity is propagated to the identifier to prevent multiple incompatible
-   --  class-wide types that may be created for self-referential anonymous
-   --  access components.
+   --  N must be a type declaration. The declared view can be incomplete,
+   --  partial, or full. The behavior of this function depends on what
+   --  declaration, if there is one, N completes:
+   --
+   --  - If N is not a completion, the function enters the entity of N in the
+   --    name table and returns that entity.
+   --  - If N completes an incomplete view, the function sets the entity of N
+   --    as the full view of the incomplete view and returns the incomplete
+   --    view.
+   --  - If N completes a partial view, the function "swaps" the partial view
+   --    and the full view (see Copy_And_Swap) and returns the Entity_Id that,
+   --    on exit, points to the full view. The value that
+   --    Defining_Identifier (N) had on entry points to the partial view on
+   --    exit.
+   --
+   --  If the previous declaration is tagged then the class-wide entity is
+   --  propagated to the identifier to prevent multiple incompatible class-wide
+   --  types that may be created for self-referential anonymous access
+   --  components.
 
    function Get_Discriminant_Value
      (Discriminant       : Entity_Id;
       Typ_For_Constraint : Entity_Id;
       Constraint         : Elist_Id) return Node_Id;
-   --  ??? MORE DOCUMENTATION
-   --  Given a discriminant somewhere in the Typ_For_Constraint tree and a
-   --  Constraint, return the value of that discriminant.
-
-   function Is_Null_Extension (T : Entity_Id) return Boolean;
-   --  Returns True if the tagged type T has an N_Full_Type_Declaration that
-   --  is a null extension, meaning that it has an extension part without any
-   --  components and does not have a known discriminant part.
+   --  Given a discriminant Discriminant occurring somewhere up the derivation
+   --  tree from Typ_For_Constraint and a Constraint, return the expression
+   --  corresponding to that discriminant in the constraint that specifies its
+   --  value.
 
    function Is_Visible_Component
      (C : Entity_Id;
@@ -233,11 +249,23 @@ package Sem_Ch3 is
    --  Always False in Ada 95 mode. Equivalent to OK_For_Limited_Init_In_05 in
    --  Ada 2005 mode.
 
-   procedure Preanalyze_Assert_Expression (N : Node_Id; T : Entity_Id);
-   --  Wrapper on Preanalyze_Spec_Expression for assertion expressions, so that
-   --  In_Assertion_Expr can be properly adjusted.
+   procedure Preanalyze_And_Resolve_Assert_Expression
+     (N : Node_Id;
+      T : Entity_Id);
+   --  Wrapper on Preanalyze_And_Resolve_Spec_Expression for assertion
+   --  expressions, so that In_Assertion_Expr can be properly adjusted.
+   --
+   --  This routine must not be called when N is the root of a subtree that is
+   --  not in its final place since it freezes static expression entities,
+   --  which would be misplaced in the tree. Preanalyze_And_Resolve must be
+   --  used in such a case to avoid reporting spurious errors.
 
-   procedure Preanalyze_Spec_Expression (N : Node_Id; T : Entity_Id);
+   procedure Preanalyze_And_Resolve_Assert_Expression (N : Node_Id);
+   --  Similar to the above, but without forcing N to be of a particular type
+
+   procedure Preanalyze_And_Resolve_Spec_Expression
+     (N : Node_Id;
+      T : Entity_Id);
    --  Default and per object expressions do not freeze their components, and
    --  must be analyzed and resolved accordingly. The analysis is done by
    --  calling the Preanalyze_And_Resolve routine and setting the global
@@ -246,6 +274,14 @@ package Sem_Ch3 is
    --  details. N is the expression to be analyzed, T is the expected type.
    --  This mechanism is also used for aspect specifications that have an
    --  expression parameter that needs similar preanalysis.
+   --
+   --  This routine must not be called when N is the root of a subtree that is
+   --  not in its final place since it freezes static expression entities,
+   --  which would be misplaced in the tree. Preanalyze_And_Resolve must be
+   --  used in such a case to avoid reporting spurious errors.
+
+   procedure Preanalyze_And_Resolve_Spec_Expression (N : Node_Id);
+   --  Similar to the above, but without forcing N to be of a particular type
 
    procedure Process_Full_View (N : Node_Id; Full_T, Priv_T : Entity_Id);
    --  Process some semantic actions when the full view of a private type is
@@ -259,11 +295,10 @@ package Sem_Ch3 is
    --  Priv_T is the private view of the type whose full declaration is in N.
 
    procedure Process_Range_Expr_In_Decl
-     (R            : Node_Id;
-      T            : Entity_Id;
-      Subtyp       : Entity_Id := Empty;
-      Check_List   : List_Id   := No_List;
-      R_Check_Off  : Boolean   := False);
+     (R          : Node_Id;
+      T          : Entity_Id;
+      Subtyp     : Entity_Id := Empty;
+      Check_List : List_Id   := No_List);
    --  Process a range expression that appears in a declaration context. The
    --  range is analyzed and resolved with the base type of the given type, and
    --  an appropriate check for expressions in non-static contexts made on the
@@ -273,17 +308,18 @@ package Sem_Ch3 is
    --  pointer of R so that the types get properly frozen. Check_List is used
    --  when the subprogram is called from Build_Record_Init_Proc and is used to
    --  return a set of constraint checking statements generated by the Checks
-   --  package. R_Check_Off is set to True when the call to Range_Check is to
-   --  be skipped.
+   --  package.
    --
    --  If Subtyp is given, then the range is for the named subtype Subtyp, and
    --  in this case the bounds are captured if necessary using this name.
 
    function Process_Subtype
-     (S           : Node_Id;
-      Related_Nod : Node_Id;
-      Related_Id  : Entity_Id := Empty;
-      Suffix      : Character := ' ') return Entity_Id;
+     (S                  : Node_Id;
+      Related_Nod        : Node_Id;
+      Related_Id         : Entity_Id := Empty;
+      Suffix             : Character := ' ';
+      Excludes_Null      : Boolean := False;
+      Incomplete_Type_OK : Boolean := False) return Entity_Id;
    --  Process a subtype indication S and return corresponding entity.
    --  Related_Nod is the node where the potential generated implicit types
    --  will be inserted. The Related_Id and Suffix parameters are used to
@@ -313,5 +349,11 @@ package Sem_Ch3 is
    --  or the completion of a deferred constant declaration, mark the entity
    --  as referenced. Warnings on unused entities, if needed, go on the
    --  partial view.
+
+   procedure Unsigned_Base_Range_Type_Declaration
+     (T   : Entity_Id;
+      Def : Node_Id);
+   --  Create a new unsigned integer entity, and apply the constraint to obtain
+   --  the required first named subtype of this type.
 
 end Sem_Ch3;

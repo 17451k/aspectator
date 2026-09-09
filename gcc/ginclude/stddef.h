@@ -1,4 +1,4 @@
-/* Copyright (C) 1989-2021 Free Software Foundation, Inc.
+/* Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -89,6 +89,21 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef _PTRDIFF_T_
 #endif
 
+/* When modular code is enabled with macOS SDKs from version 15, the
+   include guards are set in the includers of this code, rather than as
+   part of it.  This means the we must unset them or the intended code
+   here will be bypassed (resulting in undefined values).  */
+#if defined (__APPLE__)
+# if defined(__has_feature) && __has_feature(modules)
+#  if defined (__need_ptrdiff_t)
+#   undef __PTRDIFF_T
+#  endif
+#  if defined (__need_size_t)
+#   undef __SIZE_T
+#  endif
+# endif
+#endif
+
 /* On VxWorks, <type/vxTypesBase.h> may have defined macros like
    _TYPE_size_t which will typedef size_t.  fixincludes patched the
    vxTypesBase.h so that this macro is only defined if _GCC_SIZE_T is
@@ -128,6 +143,7 @@ _TYPE_wchar_t;
 #ifndef ___int_ptrdiff_t_h
 #ifndef _GCC_PTRDIFF_T
 #ifndef _PTRDIFF_T_DECLARED /* DragonFly */
+#ifndef __DEFINED_ptrdiff_t /* musl libc */
 #define _PTRDIFF_T
 #define _T_PTRDIFF_
 #define _T_PTRDIFF
@@ -137,10 +153,12 @@ _TYPE_wchar_t;
 #define ___int_ptrdiff_t_h
 #define _GCC_PTRDIFF_T
 #define _PTRDIFF_T_DECLARED
+#define __DEFINED_ptrdiff_t
 #ifndef __PTRDIFF_TYPE__
 #define __PTRDIFF_TYPE__ long int
 #endif
 typedef __PTRDIFF_TYPE__ ptrdiff_t;
+#endif /* __DEFINED_ptrdiff_t */
 #endif /* _PTRDIFF_T_DECLARED */
 #endif /* _GCC_PTRDIFF_T */
 #endif /* ___int_ptrdiff_t_h */
@@ -174,6 +192,7 @@ typedef __PTRDIFF_TYPE__ ptrdiff_t;
 #ifndef _SIZE_T_DEFINED
 #ifndef _BSD_SIZE_T_DEFINED_	/* Darwin */
 #ifndef _SIZE_T_DECLARED	/* FreeBSD 5 */
+#ifndef __DEFINED_size_t	/* musl libc */
 #ifndef ___int_size_t_h
 #ifndef _GCC_SIZE_T
 #ifndef _SIZET_
@@ -191,6 +210,7 @@ typedef __PTRDIFF_TYPE__ ptrdiff_t;
 #define _SIZE_T_DEFINED
 #define _BSD_SIZE_T_DEFINED_	/* Darwin */
 #define _SIZE_T_DECLARED	/* FreeBSD 5 */
+#define __DEFINED_size_t	/* musl libc */
 #define ___int_size_t_h
 #define _GCC_SIZE_T
 #define _SIZET_
@@ -215,6 +235,7 @@ typedef long ssize_t;
 #endif /* _SIZET_ */
 #endif /* _GCC_SIZE_T */
 #endif /* ___int_size_t_h */
+#endif /* __DEFINED_size_t */
 #endif /* _SIZE_T_DECLARED */
 #endif /* _BSD_SIZE_T_DEFINED_ */
 #endif /* _SIZE_T_DEFINED */
@@ -251,6 +272,7 @@ typedef long ssize_t;
 #ifndef _BSD_WCHAR_T_DEFINED_    /* Darwin */
 #ifndef _BSD_RUNE_T_DEFINED_	/* Darwin */
 #ifndef _WCHAR_T_DECLARED /* FreeBSD 5 */
+#ifndef __DEFINED_wchar_t /* musl libc */
 #ifndef _WCHAR_T_DEFINED_
 #ifndef _WCHAR_T_DEFINED
 #ifndef _WCHAR_T_H
@@ -272,13 +294,14 @@ typedef long ssize_t;
 #define __INT_WCHAR_T_H
 #define _GCC_WCHAR_T
 #define _WCHAR_T_DECLARED
+#define __DEFINED_wchar_t
 
 /* On BSD/386 1.1, at least, machine/ansi.h defines _BSD_WCHAR_T_
    instead of _WCHAR_T_, and _BSD_RUNE_T_ (which, unlike the other
    symbols in the _FOO_T_ family, stays defined even after its
    corresponding type is defined).  If we define wchar_t, then we
    must undef _WCHAR_T_; for BSD/386 1.1 (and perhaps others), if
-   we undef _WCHAR_T_, then we must also define rune_t, since 
+   we undef _WCHAR_T_, then we must also define rune_t, since
    headers like runetype.h assume that if machine/ansi.h is included,
    and _BSD_WCHAR_T_ is not defined, then rune_t is available.
    machine/ansi.h says, "Note that _WCHAR_T_ and _RUNE_T_ must be of
@@ -326,6 +349,7 @@ typedef __WCHAR_TYPE__ wchar_t;
 #endif
 #endif
 #endif
+#endif /* __DEFINED_wchar_t */
 #endif /* _WCHAR_T_DECLARED */
 #endif /* _BSD_RUNE_T_DEFINED_ */
 #endif
@@ -403,6 +427,7 @@ typedef __WINT_TYPE__ wint_t;
 #ifdef _STDDEF_H
 
 /* Offset of member MEMBER in a struct of type TYPE. */
+#undef offsetof		/* in case a system header has defined it. */
 #define offsetof(TYPE, MEMBER) __builtin_offsetof (TYPE, MEMBER)
 
 #if (defined (__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) \
@@ -433,6 +458,17 @@ typedef struct {
   typedef decltype(nullptr) nullptr_t;
 #endif
 #endif /* C++11.  */
+
+#if defined (__STDC_VERSION__) && __STDC_VERSION__ > 201710L
+#ifndef _GCC_NULLPTR_T
+#define _GCC_NULLPTR_T
+  typedef __typeof__(nullptr) nullptr_t;
+#endif
+#ifndef __STDC_VERSION_STDDEF_H__
+#define unreachable() (__builtin_unreachable ())
+#define __STDC_VERSION_STDDEF_H__	202311L
+#endif
+#endif /* C23.  */
 
 #endif /* _STDDEF_H was defined this time */
 

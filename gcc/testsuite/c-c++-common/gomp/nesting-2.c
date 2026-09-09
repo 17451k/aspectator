@@ -1,3 +1,4 @@
+// { dg-additional-options "-Wno-deprecated-openmp" }
 void
 foo (void)
 {
@@ -18,6 +19,10 @@ foo (void)
       }
       #pragma omp barrier		/* { dg-error "region may not be closely nested inside of" } */
       #pragma omp master		/* { dg-error "region may not be closely nested inside of" } */
+      ;
+      #pragma omp masked		/* { dg-error "region may not be closely nested inside of" } */
+      ;
+      #pragma omp scope			/* { dg-error "region may not be closely nested inside of" } */
       ;
       #pragma omp ordered		/* { dg-error "region may not be closely nested inside of" } */
       ;
@@ -55,6 +60,10 @@ foo (void)
       #pragma omp barrier
       #pragma omp master
       ;
+      #pragma omp masked
+      ;
+      #pragma omp scope
+      ;
       #pragma omp ordered		/* { dg-error ".ordered. region must be closely nested inside a loop region with an .ordered. clause" } */
       ;
       #pragma omp ordered threads	/* { dg-error ".ordered. region must be closely nested inside a loop region with an .ordered. clause" } */
@@ -88,6 +97,10 @@ foo (void)
       }
       #pragma omp barrier
       #pragma omp master
+      ;
+      #pragma omp masked
+      ;
+      #pragma omp scope
       ;
       #pragma omp ordered		/* { dg-error ".ordered. region must be closely nested inside a loop region with an .ordered. clause" } */
       ;
@@ -148,7 +161,14 @@ foo (void)
   for (i = 0; i < 64; i++)
     #pragma omp parallel
     {
-      #pragma omp ordered depend(source)	/* { dg-error ".ordered. construct with .depend. clause must be closely nested inside a loop with .ordered. clause with a parameter" } */
-      #pragma omp ordered depend(sink: i - 1)	/* { dg-error ".ordered. construct with .depend. clause must be closely nested inside a loop with .ordered. clause with a parameter" } */
+      #pragma omp ordered depend(source)	/* { dg-error ".ordered. construct with .depend. clause must be closely nested inside a loop with .ordered. clause" } */
+      #pragma omp ordered depend(sink: i - 1)	/* { dg-error ".ordered. construct with .depend. clause must be closely nested inside a loop with .ordered. clause" } */
+    }
+  #pragma omp for ordered(1)
+  for (i = 0; i < 64; i++)
+    #pragma omp parallel
+    {
+      #pragma omp ordered doacross(source:)	/* { dg-error ".ordered. construct with .doacross. clause must be closely nested inside a loop with .ordered. clause" } */
+      #pragma omp ordered doacross(sink: i - 1)	/* { dg-error ".ordered. construct with .doacross. clause must be closely nested inside a loop with .ordered. clause" } */
     }
 }

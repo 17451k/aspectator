@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2020, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2026, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -66,7 +66,6 @@
 with Ada.Unchecked_Conversion;
 with Ada.Task_Identification;
 
-with Interfaces.C; use Interfaces.C;
 with System.OS_Interface; use System.OS_Interface;
 with System.Interrupt_Management;
 with System.Task_Primitives.Operations;
@@ -76,11 +75,17 @@ with System.Tasking.Utilities;
 with System.Tasking.Rendezvous;
 pragma Elaborate_All (System.Tasking.Rendezvous);
 
+with System.VxWorks.Ext;
+
 package body System.Interrupts is
 
    use Tasking;
 
    package POP renames System.Task_Primitives.Operations;
+
+   use type System.VxWorks.Ext.STATUS;
+   subtype STATUS is System.VxWorks.Ext.STATUS;
+   OK : constant STATUS := System.VxWorks.Ext.OK;
 
    function To_Ada is new Ada.Unchecked_Conversion
      (System.Tasking.Task_Id, Ada.Task_Identification.Task_Id);
@@ -159,20 +164,23 @@ package body System.Interrupts is
    pragma Volatile_Components (User_Entry);
    --  Holds the task and entry index (if any) for each interrupt / signal
 
-   --  Type and Head, Tail of the list containing Registered Interrupt
-   --  Handlers. These definitions are used to register the handlers
-   --  specified by the pragma Interrupt_Handler.
+   --  Type and the list containing Registered Interrupt Handlers. These
+   --  definitions are used to register the handlers specified by the pragma
+   --  Interrupt_Handler.
+
+   --------------------------
+   -- Handler Registration --
+   --------------------------
 
    type Registered_Handler;
    type R_Link is access all Registered_Handler;
 
    type Registered_Handler is record
-      H    : System.Address := System.Null_Address;
-      Next : R_Link := null;
+      H    : System.Address;
+      Next : R_Link;
    end record;
 
-   Registered_Handler_Head : R_Link := null;
-   Registered_Handler_Tail : R_Link := null;
+   Registered_Handlers : R_Link := null;
 
    Server_ID : array (Interrupt_ID) of System.Tasking.Task_Id :=
                  (others => System.Tasking.Null_Task);
@@ -199,8 +207,10 @@ package body System.Interrupts is
    type Interrupt_Connector is access function
      (Vector    : Interrupt_Vector;
       Handler   : Interrupt_Handler;
-      Parameter : System.Address := System.Null_Address) return int;
-   --  Profile must match VxWorks intConnect()
+      Parameter : System.Address := System.Null_Address) return STATUS;
+   --  Profile must match VxWorks intConnect() for VxWorks prior to 7.
+   --  VxWorks 7 does not support intConnect(). The Vxbus subsystem
+   --  should be used instead.
 
    Interrupt_Connect : Interrupt_Connector :=
      System.OS_Interface.Interrupt_Connect'Access;
@@ -494,7 +504,7 @@ package body System.Interrupts is
    ---------------------------------
 
    procedure Install_Restricted_Handlers
-      (Prio     : Any_Priority;
+      (Prio     : Interrupt_Priority;
        Handlers : New_Handler_Array)
    is
       pragma Unreferenced (Prio);
@@ -515,7 +525,7 @@ package body System.Interrupts is
       Vec : constant Interrupt_Vector :=
               Interrupt_Number_To_Vector (int (Interrupt));
 
-      Status : int;
+      Result : STATUS;
 
    begin
       --  Only install umbrella handler when no Ada handler has already been
@@ -525,9 +535,9 @@ package body System.Interrupts is
       --  number.
 
       if not Handler_Installed (Interrupt) then
-         Status :=
+         Result :=
            Interrupt_Connect.all (Vec, Handler, System.Address (Interrupt));
-         pragma Assert (Status = 0);
+         pragma Assert (Result = OK);
 
          Handler_Installed (Interrupt) := True;
       end if;
@@ -578,6 +588,7 @@ package body System.Interrupts is
    -------------------
 
    function Is_Registered (Handler : Parameterless_Handler) return Boolean is
+      Ptr : R_Link := Registered_Handlers;
 
       type Acc_Proc is access procedure;
 
@@ -589,7 +600,6 @@ package body System.Interrupts is
       function To_Fat_Ptr is new Ada.Unchecked_Conversion
         (Parameterless_Handler, Fat_Ptr);
 
-      Ptr : R_Link;
       Fat : Fat_Ptr;
 
    begin
@@ -599,7 +609,6 @@ package body System.Interrupts is
 
       Fat := To_Fat_Ptr (Handler);
 
-      Ptr := Registered_Handler_Head;
       while Ptr /= null loop
          if Ptr.H = Fat.Handler_Addr.all'Address then
             return True;
@@ -646,11 +655,11 @@ package body System.Interrupts is
    procedure Notify_Interrupt (Param : System.Address) is
       Interrupt : constant Interrupt_ID := Interrupt_ID (Param);
       Id        : constant Binary_Semaphore_Id := Semaphore_ID_Map (Interrupt);
-      Status    : int;
+      Result    : STATUS;
    begin
       if Id /= 0 then
-         Status := Binary_Semaphore_Release (Id);
-         pragma Assert (Status = 0);
+         Result := Binary_Semaphore_Release (Id);
+         pragma Assert (Result = OK);
       end if;
    end Notify_Interrupt;
 
@@ -670,8 +679,6 @@ package body System.Interrupts is
    --------------------------------
 
    procedure Register_Interrupt_Handler (Handler_Addr : System.Address) is
-      New_Node_Ptr : R_Link;
-
    begin
       --  This routine registers a handler as usable for dynamic interrupt
       --  handler association. Routines attaching and detaching handlers
@@ -685,16 +692,8 @@ package body System.Interrupts is
 
       pragma Assert (Handler_Addr /= System.Null_Address);
 
-      New_Node_Ptr := new Registered_Handler;
-      New_Node_Ptr.H := Handler_Addr;
-
-      if Registered_Handler_Head = null then
-         Registered_Handler_Head := New_Node_Ptr;
-         Registered_Handler_Tail := New_Node_Ptr;
-      else
-         Registered_Handler_Tail.Next := New_Node_Ptr;
-         Registered_Handler_Tail := New_Node_Ptr;
-      end if;
+      Registered_Handlers :=
+       new Registered_Handler'(H => Handler_Addr, Next => Registered_Handlers);
    end Register_Interrupt_Handler;
 
    -----------------------
@@ -787,13 +786,13 @@ package body System.Interrupts is
       --------------------
 
       procedure Unbind_Handler (Interrupt : Interrupt_ID) is
-         Status : int;
+         Result : STATUS;
 
       begin
          --  Flush server task off semaphore, allowing it to terminate
 
-         Status := Binary_Semaphore_Flush (Semaphore_ID_Map (Interrupt));
-         pragma Assert (Status = 0);
+         Result := Binary_Semaphore_Flush (Semaphore_ID_Map (Interrupt));
+         pragma Assert (Result = OK);
       end Unbind_Handler;
 
       --------------------------------
@@ -867,20 +866,22 @@ package body System.Interrupts is
          --  We don't check anything if Restoration is True, since we may be
          --  detaching a static handler to restore a dynamic one.
 
-         if not Restoration and then not Static
-           and then (User_Handler (Interrupt).Static
-
+         if not Restoration and then not Static then
             --  Trying to overwrite a static Interrupt Handler with a dynamic
             --  Handler
+            if User_Handler (Interrupt).Static then
+               raise Program_Error
+                 with
+                   "trying to overwrite a static Interrupt Handler with a "
+                   & "dynamic handler";
+            end if;
 
-            --  The new handler is not specified as an Interrupt Handler by a
-            --  pragma.
-
-           or else not Is_Registered (New_Handler))
-         then
-            raise Program_Error with
-               "trying to overwrite a static interrupt handler with a "
-               & "dynamic handler";
+            --  The new handler is not specified as an interrupt handler by an
+            --  aspect (see the second sentence of RM C.3.2 (17/3)).
+            if not Is_Registered (New_Handler) then
+               raise Program_Error
+                 with "trying to attach procedure without Interrupt_Handler";
+            end if;
          end if;
 
          --  Save the old handler
@@ -917,7 +918,7 @@ package body System.Interrupts is
               To_System (Interrupt_Access_Hold.all'Identity);
          end if;
 
-         if (New_Handler = null) and then Old_Handler /= null then
+         if New_Handler = null and then Old_Handler /= null then
 
             --  Restore default handler
 
@@ -1040,7 +1041,7 @@ package body System.Interrupts is
                null;
 
             when others =>
-               pragma Assert (False);
+               pragma Assert (Standard.False);
                null;
          end;
       end loop;
@@ -1067,7 +1068,7 @@ package body System.Interrupts is
       Tmp_Handler     : Parameterless_Handler;
       Tmp_ID          : Task_Id;
       Tmp_Entry_Index : Task_Entry_Index;
-      Status          : int;
+      Result          : STATUS;
 
    begin
       Semaphore_ID_Map (Interrupt) := Int_Sema;
@@ -1076,8 +1077,8 @@ package body System.Interrupts is
          --  Pend on semaphore that will be triggered by the umbrella handler
          --  when the associated interrupt comes in.
 
-         Status := Binary_Semaphore_Obtain (Int_Sema);
-         pragma Assert (Status = 0);
+         Result := Binary_Semaphore_Obtain (Int_Sema);
+         pragma Assert (Result = OK);
 
          if User_Handler (Interrupt).H /= null then
 
@@ -1109,9 +1110,9 @@ package body System.Interrupts is
 
             --  Delete the associated semaphore
 
-            Status := Binary_Semaphore_Delete (Int_Sema);
+            Result := Binary_Semaphore_Delete (Int_Sema);
 
-            pragma Assert (Status = 0);
+            pragma Assert (Result = OK);
 
             --  Set status for the Interrupt_Manager
 

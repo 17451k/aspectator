@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *            Copyright (C) 2014-2020, Free Software Foundation, Inc.       *
+ *            Copyright (C) 2014-2026, Free Software Foundation, Inc.       *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -70,8 +70,8 @@ int __gnat_rt_init_count = 0;
    and finalize properly the run-time. */
 
 #if defined (__MINGW32__)
+#include <stdlib.h>
 #include "mingw32.h"
-#include <windows.h>
 
 extern void __gnat_init_float (void);
 
@@ -147,6 +147,19 @@ static void skip_quoted_string (const WCHAR **current_in,
 	}
       ci++;
     }
+
+  /* Handle the case in which a nul character was found instead of a closing
+     double quote. In that case consider all the backslashes as literal
+     characters. */
+  if (*ci == '\0')
+    {
+      for (int i=0; i<qbs_count; i++)
+        {
+          *co='\\';
+          co++;
+        }
+    }
+
   *current_in = ci;
   *current_out = co;
 }
@@ -205,7 +218,10 @@ static void skip_argument (const WCHAR **current_in,
 	  bs_count = 0;
 	  *co = *ci; co++;
 	}
-      ci++;
+      if (*ci != '\0')
+        {
+          ci++;
+        }
     }
 
   for (int i=0; i<bs_count; i++)
@@ -402,6 +418,7 @@ __gnat_runtime_initialize (int install_handler)
      int last;
      int argc_expanded = 0;
      TCHAR result [MAX_PATH];
+     int arglen;
      int quoted;
 
      __gnat_get_argw (GetCommandLineW (), &wargv, &wargc);
@@ -419,7 +436,10 @@ __gnat_runtime_initialize (int install_handler)
 
 	 for (k=1; k<wargc; k++)
 	   {
-	     quoted = (wargv[k][0] == _T('\''));
+	     arglen = _tcslen (wargv[k]);
+	     quoted = wargv[k][0] == _T('\'')
+		      && arglen > 1
+		      && wargv[k][arglen - 1] == _T('\'');
 
 	     /* Check for wildcard expansion if the argument is not quoted. */
 	     if (!quoted && __gnat_do_argv_expansion
@@ -485,11 +505,26 @@ __gnat_runtime_initialize (int install_handler)
 	   (gnat_argv, argc_expanded * sizeof (char *));
        }
    }
+
+  /* We check whether the SetThreadDescription function is available. If so, we
+     set up a pointer to it. We follow the method that's documented on this page:
+
+     https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
+   */
+  HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
+
+  if (hKernel32) {
+    pSetThreadDescription =
+      (SetThreadDescription_t)GetProcAddress(hKernel32, "SetThreadDescription");
+  }
+
 #endif
 
   if (install_handler)
     __gnat_install_handler();
 }
+
+SetThreadDescription_t pSetThreadDescription;
 
 /**************************************************/
 /* __gnat_runtime_initialize (init_float version) */

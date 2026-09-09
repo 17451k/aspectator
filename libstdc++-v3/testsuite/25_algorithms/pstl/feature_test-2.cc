@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,7 +16,8 @@
 // <http://www.gnu.org/licenses/>.
 
 // { dg-do preprocess { target c++17 } }
-// { dg-require-effective-target tbb-backend }
+// { dg-require-effective-target tbb_backend }
+// { dg-add-options no_pch }
 
 #include <numeric>
 

@@ -75,7 +75,7 @@ TEST_UNIFORM_Z (nmla_2_f16_m_tied1, svfloat16_t,
 		z0 = svnmla_m (p0, z0, z1, 2))
 
 /*
-** nmla_2_f16_m_untied: { xfail *-*-* }
+** nmla_2_f16_m_untied:
 **	fmov	(z[0-9]+\.h), #2\.0(?:e\+0)?
 **	movprfx	z0, z1
 **	fnmla	z0\.h, p0/m, z2\.h, \1
@@ -281,7 +281,7 @@ TEST_UNIFORM_ZD (nmla_h4_f16_x_tied2, svfloat16_t, __fp16,
 		 z0 = svnmla_x (p0, z1, z0, d4))
 
 /*
-** nmla_h4_f16_x_untied: { xfail *-*-* }
+** nmla_h4_f16_x_untied:
 **	mov	z0\.h, h4
 **	fnmad	z0\.h, p0/m, z2\.h, z1\.h
 **	ret

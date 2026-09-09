@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 1995-2020, AdaCore                     --
+--                     Copyright (C) 1995-2026, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,14 +29,12 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-pragma Compiler_Unit_Warning;
-
 with Ada.Unchecked_Conversion;
 with Ada.Unchecked_Deallocation;
-with System; use System;
 with System.Case_Util;
 with System.CRTL;
 with System.Soft_Links;
+with Interfaces.C;
 
 package body System.OS_Lib is
 
@@ -132,42 +130,6 @@ package body System.OS_Lib is
       Path_Len  : Integer) return String_Access;
    --  Converts a C String to an Ada String. We could do this making use of
    --  Interfaces.C.Strings but we prefer not to import that entire package
-
-   ---------
-   -- "<" --
-   ---------
-
-   function "<"  (X, Y : OS_Time) return Boolean is
-   begin
-      return Long_Integer (X) < Long_Integer (Y);
-   end "<";
-
-   ----------
-   -- "<=" --
-   ----------
-
-   function "<="  (X, Y : OS_Time) return Boolean is
-   begin
-      return Long_Integer (X) <= Long_Integer (Y);
-   end "<=";
-
-   ---------
-   -- ">" --
-   ---------
-
-   function ">"  (X, Y : OS_Time) return Boolean is
-   begin
-      return Long_Integer (X) > Long_Integer (Y);
-   end ">";
-
-   ----------
-   -- ">=" --
-   ----------
-
-   function ">="  (X, Y : OS_Time) return Boolean is
-   begin
-      return Long_Integer (X) >= Long_Integer (Y);
-   end ">=";
 
    -----------------
    -- Args_Length --
@@ -1250,7 +1212,6 @@ package body System.OS_Lib is
       H  : Hour_Type;
       Mn : Minute_Type;
       S  : Second_Type;
-      pragma Unreferenced (Y, Mo, H, Mn, S);
 
    begin
       GM_Split (Date, Y, Mo, D, H, Mn, S);
@@ -1269,7 +1230,6 @@ package body System.OS_Lib is
       D  : Day_Type;
       Mn : Minute_Type;
       S  : Second_Type;
-      pragma Unreferenced (Y, Mo, D, Mn, S);
 
    begin
       GM_Split (Date, Y, Mo, D, H, Mn, S);
@@ -1288,7 +1248,6 @@ package body System.OS_Lib is
       D  : Day_Type;
       H  : Hour_Type;
       S  : Second_Type;
-      pragma Unreferenced (Y, Mo, D, H, S);
 
    begin
       GM_Split (Date, Y, Mo, D, H, Mn, S);
@@ -1307,7 +1266,6 @@ package body System.OS_Lib is
       H  : Hour_Type;
       Mn : Minute_Type;
       S  : Second_Type;
-      pragma Unreferenced (Y, D, H, Mn, S);
 
    begin
       GM_Split (Date, Y, Mo, D, H, Mn, S);
@@ -1326,7 +1284,6 @@ package body System.OS_Lib is
       D  : Day_Type;
       H  : Hour_Type;
       Mn : Minute_Type;
-      pragma Unreferenced (Y, Mo, D, H, Mn);
 
    begin
       GM_Split (Date, Y, Mo, D, H, Mn, S);
@@ -1347,13 +1304,13 @@ package body System.OS_Lib is
       Second : out Second_Type)
    is
       procedure To_GM_Time
-        (P_Time_T : Address;
-         P_Year   : Address;
-         P_Month  : Address;
-         P_Day    : Address;
-         P_Hours  : Address;
-         P_Mins   : Address;
-         P_Secs   : Address);
+        (P_OS_Time : Address;
+         P_Year    : Address;
+         P_Month   : Address;
+         P_Day     : Address;
+         P_Hours   : Address;
+         P_Mins    : Address;
+         P_Secs    : Address);
       pragma Import (C, To_GM_Time, "__gnat_to_gm_time");
 
       T  : OS_Time := Date;
@@ -1385,13 +1342,13 @@ package body System.OS_Lib is
       Locked_Processing : begin
          SSL.Lock_Task.all;
          To_GM_Time
-           (P_Time_T => T'Address,
-            P_Year   => Y'Address,
-            P_Month  => Mo'Address,
-            P_Day    => D'Address,
-            P_Hours  => H'Address,
-            P_Mins   => Mn'Address,
-            P_Secs   => S'Address);
+           (P_OS_Time => T'Address,
+            P_Year    => Y'Address,
+            P_Month   => Mo'Address,
+            P_Day     => D'Address,
+            P_Hours   => H'Address,
+            P_Mins    => Mn'Address,
+            P_Secs    => S'Address);
          SSL.Unlock_Task.all;
 
       exception
@@ -1429,26 +1386,26 @@ package body System.OS_Lib is
       Second : Second_Type) return OS_Time
    is
       procedure To_OS_Time
-        (P_Time_T : Address;
-         P_Year   : Integer;
-         P_Month  : Integer;
-         P_Day    : Integer;
-         P_Hours  : Integer;
-         P_Mins   : Integer;
-         P_Secs   : Integer);
+        (P_OS_Time : Address;
+         P_Year    : Integer;
+         P_Month   : Integer;
+         P_Day     : Integer;
+         P_Hours   : Integer;
+         P_Mins    : Integer;
+         P_Secs    : Integer);
       pragma Import (C, To_OS_Time, "__gnat_to_os_time");
 
       Result : OS_Time;
 
    begin
       To_OS_Time
-        (P_Time_T => Result'Address,
-         P_Year   => Year - 1900,
-         P_Month  => Month - 1,
-         P_Day    => Day,
-         P_Hours  => Hour,
-         P_Mins   => Minute,
-         P_Secs   => Second);
+        (P_OS_Time => Result'Address,
+         P_Year    => Year - 1900,
+         P_Month   => Month - 1,
+         P_Day     => Day,
+         P_Hours   => Hour,
+         P_Mins    => Minute,
+         P_Secs    => Second);
       return Result;
    end GM_Time_Of;
 
@@ -1464,7 +1421,6 @@ package body System.OS_Lib is
       H  : Hour_Type;
       Mn : Minute_Type;
       S  : Second_Type;
-      pragma Unreferenced (Mo, D, H, Mn, S);
 
    begin
       GM_Split (Date, Y, Mo, D, H, Mn, S);
@@ -1647,15 +1603,15 @@ package body System.OS_Lib is
       SIGKILL : constant := 9;
       SIGINT  : constant := 2;
 
-      procedure C_Kill (Pid : Process_Id; Sig_Num : Integer; Close : Integer);
+      procedure C_Kill (Pid : Process_Id; Sig_Num : Integer);
       pragma Import (C, C_Kill, "__gnat_kill");
 
    begin
       if Pid /= Invalid_Pid then
          if Hard_Kill then
-            C_Kill (Pid, SIGKILL, 1);
+            C_Kill (Pid, SIGKILL);
          else
-            C_Kill (Pid, SIGINT, 1);
+            C_Kill (Pid, SIGINT);
          end if;
       end if;
    end Kill;
@@ -1686,9 +1642,12 @@ package body System.OS_Lib is
    -------------------------
 
    function Locate_Exec_On_Path
-     (Exec_Name : String) return String_Access
+     (Exec_Name : String;
+      Current_Dir_On_Win : Boolean := False) return String_Access
    is
-      function Locate_Exec_On_Path (C_Exec_Name : Address) return Address;
+      function Locate_Exec_On_Path
+        (C_Exec_Name        : Address;
+         Current_Dir_On_Win : Interfaces.C.int) return Address;
       pragma Import (C, Locate_Exec_On_Path, "__gnat_locate_exec_on_path");
 
       C_Exec_Name  : String (1 .. Exec_Name'Length + 1);
@@ -1700,7 +1659,8 @@ package body System.OS_Lib is
       C_Exec_Name (1 .. Exec_Name'Length)   := Exec_Name;
       C_Exec_Name (C_Exec_Name'Last)        := ASCII.NUL;
 
-      Path_Addr := Locate_Exec_On_Path (C_Exec_Name'Address);
+      Path_Addr := Locate_Exec_On_Path
+        (C_Exec_Name'Address, (if Current_Dir_On_Win then 1 else 0));
       Path_Len  := C_String_Length (Path_Addr);
 
       if Path_Len = 0 then
@@ -1985,7 +1945,7 @@ package body System.OS_Lib is
       procedure Quote_Argument (Arg : in out String_Access) is
          J            : Positive := 1;
          Quote_Needed : Boolean  := False;
-         Res          : String (1 .. Arg'Length * 2);
+         Res          : String (1 .. Arg'Length * 2 + 2);
 
       begin
          if Arg (Arg'First) /= '"' or else Arg (Arg'Last) /= '"' then
@@ -2134,8 +2094,10 @@ package body System.OS_Lib is
       --  Returns True only if the Name is including a drive
       --  letter at start.
 
-      function Missed_Drive_Letter (Name : String) return Boolean;
-      --  Missed drive letter at start of the normalized pathname
+      function Drive_Letter_Omitted (Name : String) return Boolean;
+      --  Name must be an absolute path. Returns True if and only if
+      --  Name doesn't start with a drive letter and Name is not a
+      --  UNC path.
 
       -------------------
       -- Is_With_Drive --
@@ -2149,18 +2111,20 @@ package body System.OS_Lib is
                      or else Name (Name'First) in 'A' .. 'Z');
       end Is_With_Drive;
 
-      -------------------------
-      -- Missed_Drive_Letter --
-      -------------------------
+      --------------------------
+      -- Drive_Letter_Omitted --
+      --------------------------
 
-      function Missed_Drive_Letter (Name : String) return Boolean is
+      function Drive_Letter_Omitted (Name : String) return Boolean is
       begin
          return On_Windows
            and then not Is_With_Drive (Name)
            and then (Name'Length < 2 -- not \\name case
-                     or else Name (Name'First .. Name'First + 1)
-                             /= Directory_Separator & Directory_Separator);
-      end Missed_Drive_Letter;
+                     or else Name (Name'First)
+                             /= Directory_Separator
+                     or else Name (Name'First + 1)
+                             /= Directory_Separator);
+      end Drive_Letter_Omitted;
 
       -----------------
       -- Final_Value --
@@ -2217,7 +2181,7 @@ package body System.OS_Lib is
 
          elsif Directory = ""
            or else not Is_Absolute_Path (Directory)
-           or else Missed_Drive_Letter (Directory)
+           or else Drive_Letter_Omitted (Directory)
          then
             --  Directory name not given or it is not absolute or without drive
             --  letter on Windows, get current directory.
@@ -2294,7 +2258,7 @@ package body System.OS_Lib is
       end if;
 
       if Is_Absolute_Path (Name) then
-         if Missed_Drive_Letter (Name) then
+         if Drive_Letter_Omitted (Name) then
             Fill_Directory (Drive_Only => True);
 
             --  Take only drive letter part with colon
@@ -2328,8 +2292,6 @@ package body System.OS_Lib is
          end loop;
 
          --  Ensure drive letter is upper-case
-
-         pragma Assert (Path_Buffer (2) = ':');
 
          if Path_Buffer (1) in 'a' .. 'z' then
             System.Case_Util.To_Upper (Path_Buffer (1 .. 1));
@@ -3023,7 +2985,7 @@ package body System.OS_Lib is
    -- To_Ada --
    ------------
 
-   function To_Ada (Time : time_t) return OS_Time is
+   function To_Ada (Time : Long_Long_Integer) return OS_Time is
    begin
       return OS_Time (Time);
    end To_Ada;
@@ -3061,9 +3023,9 @@ package body System.OS_Lib is
    -- To_C --
    ----------
 
-   function To_C (Time : OS_Time) return time_t is
+   function To_C (Time : OS_Time) return Long_Long_Integer is
    begin
-      return time_t (Time);
+      return Long_Long_Integer (Time);
    end To_C;
 
    ------------------

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2001-2021 Free Software Foundation, Inc.
+   Copyright (C) 2001-2026 Free Software Foundation, Inc.
    See license.html for license.
 
    This just provides documentation for stuff that doesn't need to be in the
@@ -19,7 +19,7 @@
 /** @namespace std
  *  @brief ISO C++ entities toplevel namespace is std.
 */
-/** @namespace std
+/** @namespace std::literals
  *  @brief ISO C++ inline namespace for literal suffixes.
 */
 /** @namespace std::__detail
@@ -43,7 +43,7 @@
  *  @ingroup extensions
 */
 /** @namespace __gnu_cxx::__detail
- *  @brief Implementation details not part of the namespace __gnu_cxx 
+ *  @brief Implementation details not part of the namespace __gnu_cxx
  *  interface.
 */
 /** @namespace __gnu_internal
@@ -162,6 +162,21 @@ summarized in <a href="tables.html">tables</a>.  */
  *
  * Components for concurrent operations, including threads, mutexes,
  * and condition variables.
+ */
+
+/**
+ * @defgroup variable_templates Variable Templates
+ * @ingroup metaprogramming
+ * @since C++17
+ *
+ * Each trait in `<type_traits>` that has a `value` static data member is
+ * also available as a variable template, using the same name with a `_v`
+ * suffix. For example, `std::is_integral_v<T>` is a `bool` constant with
+ * the same value as `std::is_integral<T>::value`.
+ *
+ * In some cases, using the variable template instead of the `::value` member
+ * avoids instantiating the class template for the trait. This gives the
+ * compiler less work to do and can make your code compile a little faster.
  */
 
 /**

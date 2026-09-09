@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -30,7 +30,6 @@
 ------------------------------------------------------------------------------
 
 function System.Exponu (Left : Int; Right : Natural) return Int is
-
    --  Note that negative exponents get a constraint error because the
    --  subtype of the Right argument (the exponent) is Natural.
 

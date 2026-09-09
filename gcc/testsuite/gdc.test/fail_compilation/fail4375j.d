@@ -1,9 +1,8 @@
-// REQUIRED_ARGS: -w
 // https://issues.dlang.org/show_bug.cgi?id=4375: Dangling else
 /*
 TEST_OUTPUT:
 ---
-fail_compilation/fail4375j.d(16): Warning: else is dangling, add { } after condition at fail_compilation/fail4375j.d(11)
+fail_compilation/fail4375j.d(15): Error: else is dangling, add { } after condition at fail_compilation/fail4375j.d(10)
 ---
 */
 
@@ -16,4 +15,3 @@ void main() {
     else
         assert(120);
 }
-

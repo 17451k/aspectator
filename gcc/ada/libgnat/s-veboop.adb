@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2002-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2002-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,7 +29,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-package body System.Vectors.Boolean_Operations is
+package body System.Vectors.Boolean_Operations
+  with SPARK_Mode
+is
 
    SU : constant := Storage_Unit;
    --  Convenient short hand, used throughout

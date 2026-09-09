@@ -5,11 +5,10 @@
  *
  * Authors: Stewart Gordon
  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source: $(DRUNTIMESRC src/core/sys/windows/_mcx.d)
+ * Source: $(DRUNTIMESRC core/sys/windows/_mcx.d)
  */
 module core.sys.windows.mcx;
 version (Windows):
-@system:
 
 import core.sys.windows.windef;
 
@@ -79,7 +78,7 @@ struct MODEMDEVCAPS {
 
     BYTE* abVariablePortion() return { return &_abVariablePortion; }
 }
-alias MODEMDEVCAPS* PMODEMDEVCAPS, LPMODEMDEVCAPS;
+alias PMODEMDEVCAPS = MODEMDEVCAPS*, LPMODEMDEVCAPS = MODEMDEVCAPS*;
 
 struct MODEMSETTINGS {
     DWORD dwActualSize;
@@ -97,4 +96,4 @@ struct MODEMSETTINGS {
 
     BYTE* abVariablePortion() return { return &_abVariablePortion; }
 }
-alias MODEMSETTINGS* PMODEMSETTINGS, LPMODEMSETTINGS;
+alias PMODEMSETTINGS = MODEMSETTINGS*, LPMODEMSETTINGS = MODEMSETTINGS*;

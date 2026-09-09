@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -82,19 +82,19 @@ package body System.Tasking is
    ---------------------
 
    procedure Initialize_ATCB
-     (Self_ID              : Task_Id;
-      Task_Entry_Point     : Task_Procedure_Access;
-      Task_Arg             : System.Address;
-      Parent               : Task_Id;
-      Elaborated           : Access_Boolean;
-      Base_Priority        : System.Any_Priority;
-      Base_CPU             : System.Multiprocessors.CPU_Range;
-      Domain               : Dispatching_Domain_Access;
-      Task_Info            : System.Task_Info.Task_Info_Type;
-      Stack_Size           : System.Parameters.Size_Type;
-      T                    : Task_Id;
-      Success              : out Boolean)
-   is
+     (Self_ID          : Task_Id;
+      Task_Entry_Point : Task_Procedure_Access;
+      Task_Arg         : System.Address;
+      Parent           : Task_Id;
+      Elaborated       : Access_Boolean;
+      Base_Priority    : System.Any_Priority;
+      Base_CPU         : System.Multiprocessors.CPU_Range;
+      CPU_Is_Explicit  : Boolean;
+      Domain           : Dispatching_Domain_Access;
+      Task_Info        : System.Task_Info.Task_Info_Type;
+      Stack_Size       : System.Parameters.Size_Type;
+      T                : Task_Id;
+      Success          : out Boolean) is
    begin
       T.Common.State := Unactivated;
 
@@ -110,9 +110,10 @@ package body System.Tasking is
       --  would be illegal, because Common_ATCB is limited because
       --  Task_Primitives.Private_Data is limited.
 
-      T.Common.Parent                   := Parent;
-      T.Common.Base_Priority            := Base_Priority;
-      T.Common.Base_CPU                 := Base_CPU;
+      T.Common.Parent := Parent;
+      T.Common.Base_Priority := Base_Priority;
+      T.Common.CPU_Is_Explicit := CPU_Is_Explicit;
+      T.Common.Base_CPU := Base_CPU;
 
       --  The Domain defaults to that of the activator. But that can be null in
       --  the case of foreign threads (see Register_Foreign_Thread), in which
@@ -127,7 +128,7 @@ package body System.Tasking is
       end if;
       pragma Assert (T.Common.Domain /= null);
 
-      T.Common.Current_Priority         := 0;
+      T.Common.Current_Priority         := Priority'First;
       T.Common.Protected_Action_Nesting := 0;
       T.Common.Call                     := null;
       T.Common.Task_Arg                 := Task_Arg;
@@ -140,7 +141,7 @@ package body System.Tasking is
       T.Common.Global_Task_Lock_Nesting := 0;
       T.Common.Fall_Back_Handler        := null;
       T.Common.Specific_Handler         := null;
-      T.Common.Debug_Events             := (others => False);
+      T.Common.Debug_Events             := [others => False];
       T.Common.Task_Image_Len           := 0;
 
       if T.Common.Parent = null then
@@ -173,13 +174,13 @@ package body System.Tasking is
    Main_Task_Image : constant String := "main_task";
    --  Image of environment task
 
-   Main_Priority : Integer;
+   Main_Priority : constant Integer;
    pragma Import (C, Main_Priority, "__gl_main_priority");
    --  Priority for main task. Note that this is of type Integer, not Priority,
    --  because we use the value -1 to indicate the default main priority, and
    --  that is of course not in Priority'range.
 
-   Main_CPU : Integer;
+   Main_CPU : constant Integer;
    pragma Import (C, Main_CPU, "__gl_main_cpu");
    --  Affinity for main task. Note that this is of type Integer, not
    --  CPU_Range, because we use the value -1 to indicate the unassigned
@@ -228,18 +229,19 @@ package body System.Tasking is
 
       T := STPO.New_ATCB (0);
       Initialize_ATCB
-        (Self_ID              => null,
-         Task_Entry_Point     => null,
-         Task_Arg             => Null_Address,
-         Parent               => Null_Task,
-         Elaborated           => null,
-         Base_Priority        => Base_Priority,
-         Base_CPU             => Base_CPU,
-         Domain               => System_Domain,
-         Task_Info            => Task_Info.Unspecified_Task_Info,
-         Stack_Size           => 0,
-         T                    => T,
-         Success              => Success);
+        (Self_ID          => null,
+         Task_Entry_Point => null,
+         Task_Arg         => Null_Address,
+         Parent           => Null_Task,
+         Elaborated       => null,
+         Base_Priority    => Base_Priority,
+         Base_CPU         => Base_CPU,
+         CPU_Is_Explicit  => Main_CPU /= Unspecified_CPU,
+         Domain           => System_Domain,
+         Task_Info        => Task_Info.Unspecified_Task_Info,
+         Stack_Size       => 0,
+         T                => T,
+         Success          => Success);
       pragma Assert (Success);
 
       STPO.Initialize (T);

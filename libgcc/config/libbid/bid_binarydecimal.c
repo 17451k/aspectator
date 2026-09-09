@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2021 Free Software Foundation, Inc.
+/* Copyright (C) 2007-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,65 +26,22 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 // Counting leading zeros in an unsigned 32-bit word
 // The "_nz" version will return the wrong answer (31) for zero inputs
 
-#define CLZ32_MASK16 0xFFFF0000ul
-#define CLZ32_MASK8  0xFF00FF00ul
-#define CLZ32_MASK4  0xF0F0F0F0ul
-#define CLZ32_MASK2  0xCCCCCCCCul
-#define CLZ32_MASK1  0xAAAAAAAAul
-
-#define clz32_nz(n)                                             \
- (((((n) & CLZ32_MASK16) <= ((n) & ~CLZ32_MASK16)) ? 16 : 0) +  \
-  ((((n) & CLZ32_MASK8) <= ((n) & ~CLZ32_MASK8)) ? 8 : 0) +     \
-  ((((n) & CLZ32_MASK4) <= ((n) & ~CLZ32_MASK4)) ? 4 : 0) +     \
-  ((((n) & CLZ32_MASK2) <= ((n) & ~CLZ32_MASK2)) ? 2 : 0) +     \
-  ((((n) & CLZ32_MASK1) <= ((n) & ~CLZ32_MASK1)) ? 1 : 0))
-
+#define clz32_nz(n) (__builtin_clz (n))
 #define clz32(n) (((n)==0) ? 32 : clz32_nz(n))
 
 // Counting trailing zeros in an unsigned 32-bit word
-// The ctz32_1bit version is for a single bit
+#define ctz32(n) (__builtin_ctz (n))
 
-#define ctz32_1bit(n)                                           \
- ((((n) & ~CLZ32_MASK16) ? 0 : 16) +                            \
-  (((n) & ~CLZ32_MASK8) ? 0 : 8) +                              \
-  (((n) & ~CLZ32_MASK4) ? 0 : 4) +                              \
-  (((n) & ~CLZ32_MASK2) ? 0 : 2) +                              \
-  (((n) & ~CLZ32_MASK1) ? 0 : 1))
-
-#define ctz32(n) (((n) == 0) ? 32 : ctz32_1bit((n) & -(n)))
 
 // Counting leading zeros in an unsigned 64-bit word
 // The "_nz" version will return the wrong answer (63) for zero inputs
 
-#define CLZ64_MASK32 0xFFFFFFFF00000000ull
-#define CLZ64_MASK16 0xFFFF0000FFFF0000ull
-#define CLZ64_MASK8  0xFF00FF00FF00FF00ull
-#define CLZ64_MASK4  0xF0F0F0F0F0F0F0F0ull
-#define CLZ64_MASK2  0xCCCCCCCCCCCCCCCCull
-#define CLZ64_MASK1  0xAAAAAAAAAAAAAAAAull
-
-#define clz64_nz(n)                                             \
- (((((n) & CLZ64_MASK32) <= ((n) & ~CLZ64_MASK32)) ? 32 : 0) +  \
-  ((((n) & CLZ64_MASK16) <= ((n) & ~CLZ64_MASK16)) ? 16 : 0) +  \
-  ((((n) & CLZ64_MASK8) <= ((n) & ~CLZ64_MASK8)) ? 8 : 0) +     \
-  ((((n) & CLZ64_MASK4) <= ((n) & ~CLZ64_MASK4)) ? 4 : 0) +     \
-  ((((n) & CLZ64_MASK2) <= ((n) & ~CLZ64_MASK2)) ? 2 : 0) +     \
-  ((((n) & CLZ64_MASK1) <= ((n) & ~CLZ64_MASK1)) ? 1 : 0))      \
-
+#define clz64_nz(n) ( (__SIZEOF_LONG__ == 8) ?__builtin_clzl(n) : __builtin_clzll(n) )
 #define clz64(n) (((n)==0) ? 64 : clz64_nz(n))
 
 // Counting trailing zeros in an unsigned 64-bit word
-// The ctz64_1bit version is for a single bit
+#define ctz64(n) ( (__SIZEOF_LONG__ == 8) ?__builtin_ctzl(n) : __builtin_ctzll(n) )
 
-#define ctz64_1bit(n)                                           \
- ((((n) & ~CLZ64_MASK32) ? 0 : 32) +                            \
-  (((n) & ~CLZ64_MASK16) ? 0 : 16) +                            \
-  (((n) & ~CLZ64_MASK8) ? 0 : 8) +                              \
-  (((n) & ~CLZ64_MASK4) ? 0 : 4) +                              \
-  (((n) & ~CLZ64_MASK2) ? 0 : 2) +                              \
-  (((n) & ~CLZ64_MASK1) ? 0 : 1))
-
-#define ctz64(n) (((n) == 0) ? 64 : ctz64_1bit((n) & -(n)))
 
 // Counting leading zeros in an unsigned 2-part 128-bit word
 
@@ -175,6 +132,7 @@ UINT64 CY;                                                      \
   __mul_10x64(p1,c1,a1,c0);                                     \
   __mul_10x64(p2,c2,a2,c1);                                     \
   __mul_10x64(p3,c3,a3,c2);                                     \
+  (void)c3;							\
 }
 
 // Set up indices for low and high parts, depending on the endian-ness.
@@ -609,19 +567,19 @@ BID_BINARY80LDOUBLE;
    { if ((x & (0xFull<<27)) == (0xFull<<27))                                \
       { if ((x & (0x1Full<<26)) != (0x1Full<<26)) inf;                      \
         if ((x & (1ul<<25))!=0) *pfpsf |= INVALID_EXCEPTION;                \
-        nan(s,((((x) & 0xFFFFul) > 999999ul) ? 0 :                          \
+        nan(s,((((x) & 0xFFFFFul) > 999999ul) ? 0 :                         \
                (((unsigned long long) x) << 44)),0ull);                     \
       }                                                                     \
      e = ((x >> 21) & ((1ull<<8)-1)) - 101;                                 \
      c = (1ull<<23) + (x & ((1ull<<21)-1));                                 \
-     if ((unsigned long)(c) > 9999999ul) c = 0;                             \
+     if ((unsigned long)(c) > 9999999ul) zero;                              \
      k = 0;                                                                 \
    }                                                                        \
   else                                                                      \
    { e = ((x >> 23) & ((1ull<<8)-1)) - 101;                                 \
      c = x & ((1ull<<23)-1);                                                \
      if (c == 0) zero;                                                      \
-     k = clz32(c) - 8;                                                      \
+     k = clz32_nz(c) - 8;                                                   \
      c = c << k;                                                            \
    }                                                                        \
 }
@@ -637,14 +595,14 @@ BID_BINARY80LDOUBLE;
       }                                                                     \
      e = ((x >> 51) & ((1ull<<10)-1)) - 398;                                \
      c = (1ull<<53) + (x & ((1ull<<51)-1));                                 \
-     if ((unsigned long long)(c) > 9999999999999999ull) c = 0;              \
+     if ((unsigned long long)(c) > 9999999999999999ull) zero;               \
      k = 0;                                                                 \
    }                                                                        \
   else                                                                      \
    { e = ((x >> 53) & ((1ull<<10)-1)) - 398;                                \
      c = x & ((1ull<<53)-1);                                                \
      if (c == 0) zero;                                                      \
-     k = clz64(c) - 10;                                                     \
+     k = clz64_nz(c) - 10;                                                  \
      c = c << k;                                                            \
    }                                                                        \
 }
@@ -144345,20 +144303,6 @@ bid32_to_binary64 (UINT32 x
 // We actually check if e >= ceil((sci_emax + 1) * log_10(2))
 // which in this case is e >= ceil(1024 * log_10(2)) = ceil(308.25) = 309
 
-  if (e >= 309) {
-    *pfpsf |= (OVERFLOW_EXCEPTION | INEXACT_EXCEPTION);
-    return_binary64_ovf (s);
-  }
-// Also check for "trivial" underflow, when 10^e * 2^113 <= 2^emin * 1/4,
-// so test e <= floor((emin - 115) * log_10(2))
-// In this case just fix ourselves at that value for uniformity.
-//
-// This is important not only to keep the tables small but to maintain the
-// testing of the round/sticky words as a correct rounding method
-
-  if (e <= -358)
-    e = -358;
-
 // Look up the breakpoint and approximate exponent
 
   m_min = (breakpoints_binary64 + 358)[e];
@@ -144366,7 +144310,7 @@ bid32_to_binary64 (UINT32 x
 
 // Choose provisional exponent and reciprocal multiplier based on breakpoint
 
-  if (le128 (c.w[1], c.w[0], m_min.w[1], m_min.w[0])) {
+  if (c.w[1] < m_min.w[1]) {
     r = (multipliers1_binary64 + 358)[e];
   } else {
     r = (multipliers2_binary64 + 358)[e];
@@ -144375,17 +144319,12 @@ bid32_to_binary64 (UINT32 x
 
 // Do the reciprocal multiplication
 
-  __mul_128x256_to_384 (z, c, r)
+  __mul_64x256_to_320(z, c.w[1], r);
+  z.w[5]=z.w[4]; z.w[4]=z.w[3]; z.w[3]=z.w[2]; z.w[2]=z.w[1]; z.w[1]=z.w[0]; z.w[0]=0;
+
 // Check for exponent underflow and compensate by shifting the product
 // Cut off the process at precision+2, since we can't really shift further
-    if (e_out < 1) {
-    int d;
-    d = 1 - e_out;
-    if (d > 55)
-      d = 55;
-    e_out = 1;
-    srl256 (z.w[5], z.w[4], z.w[3], z.w[2], d);
-  }
+
   c_prov = z.w[5];
 
 // Round using round-sticky words
@@ -144396,31 +144335,14 @@ bid32_to_binary64 (UINT32 x
        w[1],
        roundbound_128[(rnd_mode << 2) + ((s & 1) << 1) +
                       (c_prov & 1)].w[0], z.w[4], z.w[3])) {
-    c_prov = c_prov + 1;
-    if (c_prov == (1ull << 53)) {
-      c_prov = 1ull << 52;
-      e_out = e_out + 1;
-    }
+     c_prov = c_prov + 1;
   }
-// Check for overflow
-
-  if (e_out >= 2047) {
-    *pfpsf |= (OVERFLOW_EXCEPTION | INEXACT_EXCEPTION);
-    return_binary64_ovf (s);
-  }
-// Modify exponent for a tiny result, otherwise lop the implicit bit
-
-  if (c_prov < (1ull << 52))
-    e_out = 0;
-  else
-    c_prov = c_prov & ((1ull << 52) - 1);
+  c_prov = c_prov & ((1ull << 52) - 1);
 
 // Set the inexact and underflow flag as appropriate
 
   if ((z.w[4] != 0) || (z.w[3] != 0)) {
     *pfpsf |= INEXACT_EXCEPTION;
-    if (e_out == 0)
-      *pfpsf |= UNDERFLOW_EXCEPTION;
   }
 // Package up the result as a binary floating-point number
 
@@ -145799,6 +145721,14 @@ binary64_to_bid32 (double x
   __mul_128x256_to_384 (z, c, r)
     c_prov = z.w[5];
 
+// Test inexactness and underflow (when testing tininess before rounding)
+
+  if ((z.w[4] != 0) || (z.w[3] != 0)) {
+   *pfpsf |= INEXACT_EXCEPTION;
+    if (c_prov < 1000000ull)
+      *pfpsf |= UNDERFLOW_EXCEPTION;
+  }
+
 // Round using round-sticky words
 // If we spill over into the next decade, correct
 // Flag underflow where it may be needed even for |result| = SNN
@@ -145812,27 +145742,16 @@ binary64_to_bid32 (double x
     if (c_prov == 10000000ull) {
       c_prov = 1000000ull;
       e_out = e_out + 1;
-    } else if ((c_prov == 1000000ull) && (e_out == 0)) {
-      if ((((rnd_mode & 3) == 0) && (z.w[4] <= 17524406870024074035ull))
-          || ((rnd_mode + (s & 1) == 2)
-              && (z.w[4] <= 16602069666338596454ull)))
-        *pfpsf |= UNDERFLOW_EXCEPTION;
     }
   }
+
 // Check for overflow
 
   if (e_out > 90 + 101) {
     *pfpsf |= (OVERFLOW_EXCEPTION | INEXACT_EXCEPTION);
     return_bid32_ovf (s);
   }
-// Set the inexact flag as appropriate and check underflow
-// It's no doubt superfluous to check inexactness, but anyway...
 
-  if ((z.w[4] != 0) || (z.w[3] != 0)) {
-    *pfpsf |= INEXACT_EXCEPTION;
-    if (c_prov < 1000000ull)
-      *pfpsf |= UNDERFLOW_EXCEPTION;
-  }
 // Package up the result
 
   return_bid32 (s, e_out, c_prov);
@@ -145962,6 +145881,14 @@ binary80_to_bid32 (BINARY80 x
   __mul_128x256_to_384 (z, c, r)
     c_prov = z.w[5];
 
+// Test inexactness and underflow (when testing tininess before rounding)
+
+  if ((z.w[4] != 0) || (z.w[3] != 0)) {
+    *pfpsf |= INEXACT_EXCEPTION;
+    if (c_prov < 1000000ull)
+      *pfpsf |= UNDERFLOW_EXCEPTION;
+  }
+
 // Round using round-sticky words
 // If we spill over into the next decade, correct
 // Flag underflow where it may be needed even for |result| = SNN
@@ -145975,27 +145902,16 @@ binary80_to_bid32 (BINARY80 x
     if (c_prov == 10000000ull) {
       c_prov = 1000000ull;
       e_out = e_out + 1;
-    } else if ((c_prov == 1000000ull) && (e_out == 0)) {
-      if ((((rnd_mode & 3) == 0) && (z.w[4] <= 17524406870024074035ull))
-          || ((rnd_mode + (s & 1) == 2)
-              && (z.w[4] <= 16602069666338596454ull)))
-        *pfpsf |= UNDERFLOW_EXCEPTION;
     }
   }
+
 // Check for overflow
 
   if (e_out > 90 + 101) {
     *pfpsf |= (OVERFLOW_EXCEPTION | INEXACT_EXCEPTION);
     return_bid32_ovf (s);
   }
-// Set the inexact flag as appropriate and check underflow
-// It's no doubt superfluous to check inexactness, but anyway...
 
-  if ((z.w[4] != 0) || (z.w[3] != 0)) {
-    *pfpsf |= INEXACT_EXCEPTION;
-    if (c_prov < 1000000ull)
-      *pfpsf |= UNDERFLOW_EXCEPTION;
-  }
 // Package up the result
 
   return_bid32 (s, e_out, c_prov);
@@ -146114,6 +146030,13 @@ binary128_to_bid32 (BINARY128 x
   __mul_128x256_to_384 (z, c, r)
     c_prov = z.w[5];
 
+// Test inexactness and underflow (when testing tininess before rounding)
+    if ((z.w[4] != 0) || (z.w[3] != 0)) {
+      *pfpsf |= INEXACT_EXCEPTION;
+    if (c_prov < 1000000ull)
+      *pfpsf |= UNDERFLOW_EXCEPTION;
+  }
+
 // Round using round-sticky words
 // If we spill over into the next decade, correct
 // Flag underflow where it may be needed even for |result| = SNN
@@ -146129,30 +146052,16 @@ binary128_to_bid32 (BINARY128 x
     if (c_prov == 10000000ull) {
       c_prov = 1000000ull;
       e_out = e_out + 1;
-    } else if ((c_prov == 1000000ull) && (e_out == 0)) {
-      if ((((rnd_mode & 3) == 0) &&
-           le128 (z.w[4], z.w[3],
-                  17524406870024074035ull, 3689348814741910323ull)) ||
-          ((rnd_mode + (s & 1) == 2) &&
-           le128 (z.w[4], z.w[3],
-                  16602069666338596454ull, 7378697629483820646ull)))
-        *pfpsf |= UNDERFLOW_EXCEPTION;
     }
   }
+
 // Check for overflow
 
   if (e_out > 90 + 101) {
     *pfpsf |= (OVERFLOW_EXCEPTION | INEXACT_EXCEPTION);
     return_bid32_ovf (s);
   }
-// Set the inexact flag as appropriate and check underflow
-// It's no doubt superfluous to check inexactness, but anyway...
 
-  if ((z.w[4] != 0) || (z.w[3] != 0)) {
-    *pfpsf |= INEXACT_EXCEPTION;
-    if (c_prov < 1000000ull)
-      *pfpsf |= UNDERFLOW_EXCEPTION;
-  }
 // Package up the result
 
   return_bid32 (s, e_out, c_prov);
@@ -146605,6 +146514,14 @@ binary80_to_bid64 (BINARY80 x
   __mul_128x256_to_384 (z, c, r)
     c_prov = z.w[5];
 
+// Test inexactness and underflow (when testing tininess before rounding)
+
+  if ((z.w[4] != 0) || (z.w[3] != 0)) {
+    *pfpsf |= INEXACT_EXCEPTION;
+    if (c_prov < 1000000000000000ull)
+      *pfpsf |= UNDERFLOW_EXCEPTION;
+  }
+
 // Round using round-sticky words
 // If we spill over into the next decade, correct
 // Flag underflow where it may be needed even for |result| = SNN
@@ -146618,27 +146535,16 @@ binary80_to_bid64 (BINARY80 x
     if (c_prov == 10000000000000000ull) {
       c_prov = 1000000000000000ull;
       e_out = e_out + 1;
-    } else if ((c_prov == 1000000000000000ull) && (e_out == 0)) {
-      if ((((rnd_mode & 3) == 0) && (z.w[4] <= 17524406870024074035ull))
-          || ((rnd_mode + (s & 1) == 2)
-              && (z.w[4] <= 16602069666338596454ull)))
-        *pfpsf |= UNDERFLOW_EXCEPTION;
     }
   }
+
 // Check for overflow
 
   if (e_out > 369 + 398) {
     *pfpsf |= (OVERFLOW_EXCEPTION | INEXACT_EXCEPTION);
     return_bid64_ovf (s);
   }
-// Set the inexact flag as appropriate and check underflow
-// It's no doubt superfluous to check inexactness, but anyway...
 
-  if ((z.w[4] != 0) || (z.w[3] != 0)) {
-    *pfpsf |= INEXACT_EXCEPTION;
-    if (c_prov < 1000000000000000ull)
-      *pfpsf |= UNDERFLOW_EXCEPTION;
-  }
 // Package up the result
 
   return_bid64 (s, e_out, c_prov);
@@ -146766,6 +146672,14 @@ binary128_to_bid64 (BINARY128 x
   __mul_128x256_to_384 (z, c, r)
     c_prov = z.w[5];
 
+// Test inexactness and underflow (when testing tininess before rounding)
+
+  if ((z.w[4] != 0) || (z.w[3] != 0)) {
+    *pfpsf |= INEXACT_EXCEPTION;
+    if (c_prov < 1000000000000000ull)
+      *pfpsf |= UNDERFLOW_EXCEPTION;
+  }
+
 // Round using round-sticky words
 // If we spill over into the next decade, correct
 // Flag underflow where it may be needed even for |result| = SNN
@@ -146779,27 +146693,16 @@ binary128_to_bid64 (BINARY128 x
     if (c_prov == 10000000000000000ull) {
       c_prov = 1000000000000000ull;
       e_out = e_out + 1;
-    } else if ((c_prov == 1000000000000000ull) && (e_out == 0)) {
-      if ((((rnd_mode & 3) == 0) && (z.w[4] <= 17524406870024074035ull))
-          || ((rnd_mode + (s & 1) == 2)
-              && (z.w[4] <= 16602069666338596454ull)))
-        *pfpsf |= UNDERFLOW_EXCEPTION;
     }
   }
+
 // Check for overflow
 
   if (e_out > 369 + 398) {
     *pfpsf |= (OVERFLOW_EXCEPTION | INEXACT_EXCEPTION);
     return_bid64_ovf (s);
   }
-// Set the inexact flag as appropriate and check underflow
-// It's no doubt superfluous to check inexactness, but anyway...
 
-  if ((z.w[4] != 0) || (z.w[3] != 0)) {
-    *pfpsf |= INEXACT_EXCEPTION;
-    if (c_prov < 1000000000000000ull)
-      *pfpsf |= UNDERFLOW_EXCEPTION;
-  }
 // Package up the result
 
   return_bid64 (s, e_out, c_prov);

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                   S p e c                                --
 --                                                                          --
---          Copyright (C) 1997-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1997-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -51,7 +51,10 @@
 --  It is designed to be a bottom-level (leaf) package.
 
 with Interfaces.C;
+
+with System.C_Time;
 with System.OS_Constants;
+with System.OS_Locks;
 
 package System.OS_Interface is
    pragma Preelaborate;
@@ -84,18 +87,20 @@ package System.OS_Interface is
    ENOMEM    : constant := System.OS_Constants.ENOMEM;
    ETIMEDOUT : constant := System.OS_Constants.ETIMEDOUT;
 
-   -------------
-   -- Signals --
-   -------------
+   ----------------------------
+   -- Signals and Interrupts --
+   ----------------------------
 
-   Num_HW_Interrupts : constant := 256;
+   NSIG : constant := 64;
+   --  Number of signals on the target OS
+   type Signal is new int range 0 .. Interfaces.C."-" (NSIG, 1);
 
-   Max_HW_Interrupt : constant := Num_HW_Interrupts - 1;
+   Max_HW_Interrupt : constant := 255;
    type HW_Interrupt is new int range 0 .. Max_HW_Interrupt;
 
    Max_Interrupt : constant := Max_HW_Interrupt;
-
-   type Signal is new int range 0 .. Max_Interrupt;
+   subtype Interrupt_Range is Natural range 0 .. Max_HW_Interrupt;
+   --  For s-interr
 
    SIGXCPU     : constant := 0; --  XCPU
    SIGHUP      : constant := 1; --  hangup
@@ -176,8 +181,6 @@ package System.OS_Interface is
    Time_Slice_Supported : constant Boolean := True;
    --  Indicates whether time slicing is supported (i.e SCHED_RR is supported)
 
-   type timespec is private;
-
    type clockid_t is new int;
 
    CLOCK_REALTIME  : constant clockid_t;
@@ -185,19 +188,13 @@ package System.OS_Interface is
 
    function clock_gettime
      (clock_id : clockid_t;
-      tp       : access timespec) return int;
+      tp       : access C_Time.timespec) return int;
    pragma Import (C, clock_gettime, "clock_gettime");
 
    function clock_getres
      (clock_id : clockid_t;
-      res      : access timespec) return int;
+      res      : access C_Time.timespec) return int;
    pragma Import (C, clock_getres, "clock_getres");
-
-   function To_Duration (TS : timespec) return Duration;
-   pragma Inline (To_Duration);
-
-   function To_Timespec (D : Duration) return timespec;
-   pragma Inline (To_Timespec);
 
    -------------------------
    -- Priority Scheduling --
@@ -244,7 +241,7 @@ package System.OS_Interface is
    type pthread_t           is private;
    subtype Thread_Id        is pthread_t;
 
-   type pthread_mutex_t      is limited private;
+   subtype pthread_mutex_t   is System.OS_Locks.pthread_mutex_t;
    type pthread_rwlock_t     is limited private;
    type pthread_cond_t       is limited private;
    type pthread_attr_t       is limited private;
@@ -423,7 +420,7 @@ package System.OS_Interface is
    function pthread_cond_timedwait
      (cond    : access pthread_cond_t;
       mutex   : access pthread_mutex_t;
-      abstime : access timespec) return int;
+      abstime : access C_Time.timespec) return int;
    pragma Import (C, pthread_cond_timedwait, "pthread_cond_timedwait");
 
    --------------------------
@@ -449,8 +446,8 @@ package System.OS_Interface is
    type struct_sched_param is record
       sched_priority      : int;
       ss_low_priority     : int;
-      ss_replenish_period : timespec;
-      ss_initial_budget   : timespec;
+      ss_replenish_period : C_Time.timespec;
+      ss_initial_budget   : C_Time.timespec;
       sched_ss_max_repl   : int;
    end record;
    pragma Convention (C, struct_sched_param);
@@ -545,34 +542,19 @@ package System.OS_Interface is
    type Binary_Semaphore_Id is new rtems_id;
 
    function Binary_Semaphore_Create return Binary_Semaphore_Id;
-   pragma Import (
-      C,
-      Binary_Semaphore_Create,
-      "__gnat_binary_semaphore_create");
+   pragma Inline (Binary_Semaphore_Create);
 
    function Binary_Semaphore_Delete (ID : Binary_Semaphore_Id) return int;
-   pragma Import (
-      C,
-      Binary_Semaphore_Delete,
-      "__gnat_binary_semaphore_delete");
+   pragma Inline (Binary_Semaphore_Delete);
 
    function Binary_Semaphore_Obtain (ID : Binary_Semaphore_Id) return int;
-   pragma Import (
-      C,
-      Binary_Semaphore_Obtain,
-      "__gnat_binary_semaphore_obtain");
+   pragma Inline (Binary_Semaphore_Obtain);
 
    function Binary_Semaphore_Release (ID : Binary_Semaphore_Id) return int;
-   pragma Import (
-      C,
-      Binary_Semaphore_Release,
-      "__gnat_binary_semaphore_release");
+   pragma Inline (Binary_Semaphore_Release);
 
    function Binary_Semaphore_Flush (ID : Binary_Semaphore_Id) return int;
-   pragma Import (
-      C,
-      Binary_Semaphore_Flush,
-      "__gnat_binary_semaphore_flush");
+   pragma Inline (Binary_Semaphore_Flush);
 
    ------------------------------------------------------------
    -- Hardware Interrupt Wrappers to Support Interrupt Tasks --
@@ -580,50 +562,26 @@ package System.OS_Interface is
 
    type Interrupt_Handler is access procedure (parameter : System.Address);
    pragma Convention (C, Interrupt_Handler);
+
    type Interrupt_Vector is new System.Address;
 
    function Interrupt_Connect
-     (vector    : Interrupt_Vector;
-      handler   : Interrupt_Handler;
-      parameter : System.Address := System.Null_Address) return int;
-   pragma Import (C, Interrupt_Connect, "__gnat_interrupt_connect");
+     (Vector    : Interrupt_Vector;
+      Handler   : Interrupt_Handler;
+      Parameter : System.Address := System.Null_Address) return int;
    --  Use this to set up an user handler. The routine installs a
    --  a user handler which is invoked after RTEMS has saved enough
    --  context for a high-level language routine to be safely invoked.
 
-   function Interrupt_Vector_Get
-     (Vector : Interrupt_Vector) return Interrupt_Handler;
-   pragma Import (C, Interrupt_Vector_Get, "__gnat_interrupt_get");
-   --  Use this to get the existing handler for later restoral.
-
-   procedure Interrupt_Vector_Set
-     (Vector  : Interrupt_Vector;
-      Handler : Interrupt_Handler);
-   pragma Import (C, Interrupt_Vector_Set, "__gnat_interrupt_set");
-   --  Use this to restore a handler obtained using Interrupt_Vector_Get.
-
    function Interrupt_Number_To_Vector (intNum : int) return Interrupt_Vector;
    --  Convert a logical interrupt number to the hardware interrupt vector
    --  number used to connect the interrupt.
-   pragma Import (
-      C,
-      Interrupt_Number_To_Vector,
-      "__gnat_interrupt_number_to_vector"
-   );
 
 private
 
-   type sigset_t is new int;
+   type sigset_t is new unsigned_long;
 
    type pid_t is new int;
-
-   type time_t is new Long_Long_Integer;
-
-   type timespec is record
-      tv_sec  : time_t;
-      tv_nsec : long;
-   end record;
-   pragma Convention (C, timespec);
 
    CLOCK_REALTIME :  constant clockid_t := System.OS_Constants.CLOCK_REALTIME;
    CLOCK_MONOTONIC : constant clockid_t := System.OS_Constants.CLOCK_MONOTONIC;
@@ -644,7 +602,7 @@ private
 
    type pthread_mutexattr_t is record
       Data : char_array (1 .. OS_Constants.PTHREAD_MUTEXATTR_SIZE);
-   end  record;
+   end record;
    pragma Convention (C, pthread_mutexattr_t);
    for pthread_mutexattr_t'Alignment use Interfaces.C.int'Alignment;
 
@@ -655,12 +613,6 @@ private
    for pthread_rwlockattr_t'Alignment use Interfaces.C.int'Alignment;
 
    type pthread_t is new rtems_id;
-
-   type pthread_mutex_t is record
-      Data : char_array (1 .. OS_Constants.PTHREAD_MUTEX_SIZE);
-   end record;
-   pragma Convention (C, pthread_mutex_t);
-   for pthread_mutex_t'Alignment use Interfaces.C.double'Alignment;
 
    type pthread_rwlock_t is record
       Data : char_array (1 .. OS_Constants.PTHREAD_RWLOCK_SIZE);

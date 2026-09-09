@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,15 +31,19 @@
 
 --  Boolean'Image
 
-package System.Img_Bool is
-   pragma Pure;
+--  This package provides support for ``Image`` attribute on ``Boolean``. The
+--  compiler performs direct calls to this unit to implement the attribute.
 
+package System.Img_Bool
+  with SPARK_Mode, Preelaborate
+is
    procedure Image_Boolean
      (V : Boolean;
       S : in out String;
       P : out Natural);
-   --  Computes Boolean'Image (V) and stores the result in S (1 .. P)
-   --  setting the resulting value of P. The caller guarantees that S
-   --  is long enough to hold the result, and that S'First is 1.
+   --  Computes Boolean'Image (``V``) and stores the result in
+   --  ``S`` (1 .. ``P``) setting the resulting value of ``P``. The caller
+   --  guarantees that ``S`` is long enough to hold the result, and that
+   --  ``S``'First is 1.
 
 end System.Img_Bool;

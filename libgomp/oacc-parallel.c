@@ -1,4 +1,4 @@
-/* Copyright (C) 2013-2021 Free Software Foundation, Inc.
+/* Copyright (C) 2013-2026 Free Software Foundation, Inc.
 
    Contributed by Mentor Embedded.
 
@@ -108,8 +108,6 @@ GOACC_parallel_keyed (int flags_m, void (*fn) (void *),
   va_list ap;
   struct goacc_thread *thr;
   struct gomp_device_descr *acc_dev;
-  struct target_mem_desc *tgt;
-  void **devaddrs;
   unsigned int i;
   struct splay_tree_key_s k;
   splay_tree_key tgt_fn_key;
@@ -186,7 +184,10 @@ GOACC_parallel_keyed (int flags_m, void (*fn) (void *),
 
   /* Host fallback if "if" clause is false or if the current device is set to
      the host.  */
-  if (flags & GOACC_FLAG_HOST_FALLBACK)
+  if ((flags & GOACC_FLAG_HOST_FALLBACK)
+      /* TODO: a proper pthreads based "multi-core CPU" local device
+	 implementation. Currently, this is still the same as host-fallback.  */
+      || (flags & GOACC_FLAG_LOCAL_DEVICE))
     {
       prof_info.device_type = acc_device_host;
       api_info.device_type = prof_info.device_type;
@@ -290,8 +291,10 @@ GOACC_parallel_keyed (int flags_m, void (*fn) (void *),
 
   goacc_aq aq = get_goacc_asyncqueue (async);
 
-  tgt = gomp_map_vars_async (acc_dev, aq, mapnum, hostaddrs, NULL, sizes, kinds,
-			     true, GOMP_MAP_VARS_OPENACC);
+  struct target_mem_desc *tgt
+    = goacc_map_vars (acc_dev, aq, mapnum, hostaddrs, NULL, sizes, kinds, true,
+		      GOMP_MAP_VARS_TARGET);
+
   if (profiling_p)
     {
       prof_info.event_type = acc_ev_enter_data_end;
@@ -300,11 +303,8 @@ GOACC_parallel_keyed (int flags_m, void (*fn) (void *),
       goacc_profiling_dispatch (&prof_info, &enter_exit_data_event_info,
 				&api_info);
     }
-  
-  devaddrs = gomp_alloca (sizeof (void *) * mapnum);
-  for (i = 0; i < mapnum; i++)
-    devaddrs[i] = (void *) gomp_map_val (tgt, hostaddrs, i);
 
+  void **devaddrs = (void **) tgt->tgt_start;
   if (aq == NULL)
     acc_dev->openacc.exec_func (tgt_fn, mapnum, hostaddrs, devaddrs, dims,
 				tgt);
@@ -321,11 +321,8 @@ GOACC_parallel_keyed (int flags_m, void (*fn) (void *),
 				&api_info);
     }
 
-  /* If running synchronously, unmap immediately.  */
-  if (aq == NULL)
-    gomp_unmap_vars (tgt, true);
-  else
-    gomp_unmap_vars_async (tgt, true, aq);
+  /* If running synchronously (aq == NULL), this will unmap immediately.  */
+  goacc_unmap_vars (tgt, true, aq);
 
   if (profiling_p)
     {
@@ -452,12 +449,12 @@ GOACC_data_start (int flags_m, size_t mapnum,
 
   /* Host fallback or 'do nothing'.  */
   if ((acc_dev->capabilities & GOMP_OFFLOAD_CAP_SHARED_MEM)
-      || (flags & GOACC_FLAG_HOST_FALLBACK))
+      || (flags & GOACC_FLAG_HOST_FALLBACK)
+      || (flags & GOACC_FLAG_LOCAL_DEVICE))
     {
       prof_info.device_type = acc_device_host;
       api_info.device_type = prof_info.device_type;
-      tgt = gomp_map_vars (NULL, 0, NULL, NULL, NULL, NULL, true,
-			   GOMP_MAP_VARS_OPENACC);
+      tgt = goacc_map_vars (NULL, NULL, 0, NULL, NULL, NULL, NULL, true, 0);
       tgt->prev = thr->mapped_data;
       thr->mapped_data = tgt;
 
@@ -465,8 +462,8 @@ GOACC_data_start (int flags_m, size_t mapnum,
     }
 
   gomp_debug (0, "  %s: prepare mappings\n", __FUNCTION__);
-  tgt = gomp_map_vars (acc_dev, mapnum, hostaddrs, NULL, sizes, kinds, true,
-		       GOMP_MAP_VARS_OPENACC);
+  tgt = goacc_map_vars (acc_dev, NULL, mapnum, hostaddrs, NULL, sizes, kinds,
+			true, 0);
   gomp_debug (0, "  %s: mappings prepared\n", __FUNCTION__);
   tgt->prev = thr->mapped_data;
   thr->mapped_data = tgt;
@@ -542,7 +539,7 @@ GOACC_data_end (void)
 
   gomp_debug (0, "  %s: restore mappings\n", __FUNCTION__);
   thr->mapped_data = tgt->prev;
-  gomp_unmap_vars (tgt, true);
+  goacc_unmap_vars (tgt, true, NULL);
   gomp_debug (0, "  %s: mappings restored\n", __FUNCTION__);
 
   if (profiling_p)
@@ -727,62 +724,4 @@ int
 GOACC_get_thread_num (void)
 {
   return 0;
-}
-
-void
-GOACC_declare (int flags_m, size_t mapnum,
-	       void **hostaddrs, size_t *sizes, unsigned short *kinds)
-{
-  int i;
-
-  for (i = 0; i < mapnum; i++)
-    {
-      unsigned char kind = kinds[i] & 0xff;
-
-      if (kind == GOMP_MAP_POINTER || kind == GOMP_MAP_TO_PSET)
-	continue;
-
-      switch (kind)
-	{
-	  case GOMP_MAP_FORCE_ALLOC:
-	  case GOMP_MAP_FORCE_FROM:
-	  case GOMP_MAP_FORCE_TO:
-	  case GOMP_MAP_POINTER:
-	  case GOMP_MAP_RELEASE:
-	  case GOMP_MAP_DELETE:
-	    GOACC_enter_exit_data (flags_m, 1, &hostaddrs[i], &sizes[i],
-				   &kinds[i], GOMP_ASYNC_SYNC, 0);
-	    break;
-
-	  case GOMP_MAP_FORCE_DEVICEPTR:
-	    break;
-
-	  case GOMP_MAP_ALLOC:
-	    if (!acc_is_present (hostaddrs[i], sizes[i]))
-	      GOACC_enter_exit_data (flags_m, 1, &hostaddrs[i], &sizes[i],
-				     &kinds[i], GOMP_ASYNC_SYNC, 0);
-	    break;
-
-	  case GOMP_MAP_TO:
-	    GOACC_enter_exit_data (flags_m, 1, &hostaddrs[i], &sizes[i],
-				   &kinds[i], GOMP_ASYNC_SYNC, 0);
-
-	    break;
-
-	  case GOMP_MAP_FROM:
-	    GOACC_enter_exit_data (flags_m, 1, &hostaddrs[i], &sizes[i],
-				   &kinds[i], GOMP_ASYNC_SYNC, 0);
-	    break;
-
-	  case GOMP_MAP_FORCE_PRESENT:
-	    if (!acc_is_present (hostaddrs[i], sizes[i]))
-	      gomp_fatal ("[%p,%ld] is not mapped", hostaddrs[i],
-			  (unsigned long) sizes[i]);
-	    break;
-
-	  default:
-	    assert (0);
-	    break;
-	}
-    }
 }

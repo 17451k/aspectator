@@ -1,4 +1,5 @@
-void
+// { dg-additional-options "-Wno-deprecated-openmp" }
+  void
 f1 (int *a)
 {
   int i;
@@ -24,7 +25,7 @@ f2 (int *a)
 {
   int i;
   #pragma omp teams
-  #pragma omp distribute order(concurrent)	/* { dg-error "'order' is not valid for '#pragma omp distribute'" } */
+  #pragma omp distribute order(concurrent)
   for (i = 0; i < 128; i++)
     a[i]++;
   #pragma omp taskloop order (concurrent)	/* { dg-error "'order' is not valid for '#pragma omp taskloop'" } */

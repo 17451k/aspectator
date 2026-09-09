@@ -1,6 +1,6 @@
 /* elfos.h  --  operating system specific defines to be used when
    targeting GCC for some generic ELF system
-   Copyright (C) 1991-2021 Free Software Foundation, Inc.
+   Copyright (C) 1991-2026 Free Software Foundation, Inc.
    Based on svr4.h contributed by Ron Guilmette (rfg@netcom.com).
 
 This file is part of GCC.
@@ -43,10 +43,10 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef  USER_LABEL_PREFIX
 #define USER_LABEL_PREFIX ""
 
-/* The biggest alignment supported by ELF in bits. 32-bit ELF 
-   supports section alignment up to (0x80000000 * 8), while 
-   64-bit ELF supports (0x8000000000000000 * 8). If this macro 
-   is not defined, the default is the largest alignment supported 
+/* The biggest alignment supported by ELF in bits. 32-bit ELF
+   supports section alignment up to (0x80000000 * 8), while
+   64-bit ELF supports (0x8000000000000000 * 8). If this macro
+   is not defined, the default is the largest alignment supported
    by 32-bit ELF and representable on a 32-bit host. Use this
    macro to limit the alignment which can be specified using
    the `__attribute__ ((aligned (N)))' construct.  */
@@ -67,6 +67,14 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 /* All ELF targets can support DWARF-2.  */
 
 #define DWARF2_DEBUGGING_INFO 1
+
+/* All ELF targets can support CTF.  */
+
+#define CTF_DEBUGGING_INFO 1
+
+/* All ELF targets can support BTF.  */
+
+#define BTF_DEBUGGING_INFO 1
 
 /* The GNU tools operate better with dwarf2, and it is required by some
    psABI's.  Since we don't have any native tools to be compatible with,
@@ -436,6 +444,10 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #define STRING_ASM_OP	"\t.string\t"
 
+#ifdef HAVE_GAS_BASE64
+#define BASE64_ASM_OP	"\t.base64\t"
+#endif
+
 /* The routine used to output NUL terminated strings.  We use a special
    version of this for most svr4 targets because doing so makes the
    generated assembly code more compact (and thus faster to assemble)
@@ -458,7 +470,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
   default_elf_asm_output_ascii ((FILE), (STR), (LENGTH))
 
 /* Allow the use of the -frecord-gcc-switches switch via the
-   elf_record_gcc_switches function defined in varasm.c.  */
+   elf_record_gcc_switches function defined in varasm.cc.  */
 #undef  TARGET_ASM_RECORD_GCC_SWITCHES
 #define TARGET_ASM_RECORD_GCC_SWITCHES elf_record_gcc_switches
 
@@ -474,9 +486,3 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #undef TARGET_LIBC_HAS_FUNCTION
 #define TARGET_LIBC_HAS_FUNCTION no_c99_libc_has_function
-
-/* ELF support needed only by D front-end.  */
-
-#define TARGET_D_MINFO_SECTION "minfo"
-#define TARGET_D_MINFO_START_NAME "__start_minfo"
-#define TARGET_D_MINFO_END_NAME "__stop_minfo"

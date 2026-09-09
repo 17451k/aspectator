@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,19 +31,21 @@
 
 with System.Val_Util; use System.Val_Util;
 
-package body System.Val_Bool is
+package body System.Val_Bool
+  with SPARK_Mode
+is
 
    -------------------
    -- Value_Boolean --
    -------------------
 
    function Value_Boolean (Str : String) return Boolean is
-      F : Natural;
-      L : Natural;
+      F : Integer;
+      L : Integer;
       S : String (Str'Range) := Str;
 
    begin
-      Normalize_String (S, F, L);
+      Normalize_String (S, F, L, To_Upper_Case => True);
 
       if S (F .. L) = "TRUE" then
          return True;

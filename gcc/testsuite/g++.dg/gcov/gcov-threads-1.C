@@ -1,6 +1,7 @@
 /* { dg-options "-fprofile-arcs -ftest-coverage -pthread -fprofile-update=atomic" } */
-/* { dg-do run { target native } } */
+/* { dg-do run } */
 /* { dg-require-effective-target profile_update_atomic } */
+/* { dg-require-effective-target pthread } */
 
 #include <stdint.h>
 #include <pthread.h>
@@ -36,7 +37,7 @@ int main(int argc, char **argv) {
     assert (r == 0);				/* count(5*) */
   }
 
-  int ret;
+  void *ret;
   for (int i = 0; i < NR; i++)
     {
       int r = pthread_join (t[i], (void**)&ret);

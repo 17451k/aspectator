@@ -1,11 +1,10 @@
 /*
-PERMUTE_ARGS:
 TEST_OUTPUT:
 ---
-fail_compilation/test13537.d(32): Error: field U.y cannot modify fields in @safe code that overlap fields with other storage classes
-fail_compilation/test13537.d(33): Error: field U.y cannot modify fields in @safe code that overlap fields with other storage classes
-fail_compilation/test13537.d(34): Error: field U.z cannot access pointers in @safe code that overlap other fields
-fail_compilation/test13537.d(35): Error: field U.y cannot modify fields in @safe code that overlap fields with other storage classes
+fail_compilation/test13537.d(31): Error: modifying field `U.y` which overlaps with fields with other storage classes is not allowed in a `@safe` function
+fail_compilation/test13537.d(32): Error: modifying field `U.y` which overlaps with fields with other storage classes is not allowed in a `@safe` function
+fail_compilation/test13537.d(33): Error: accessing overlapped field `U.z` with pointers is not allowed in a `@safe` function
+fail_compilation/test13537.d(34): Error: modifying field `U.y` which overlaps with fields with other storage classes is not allowed in a `@safe` function
 ---
 */
 
@@ -58,4 +57,3 @@ void gun() @system
 @safe:
 void abc(ref int x) { }
 void def(const ref int x) { }
-

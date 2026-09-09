@@ -9,18 +9,6 @@ class Foo
 {
     static uint flags;
 
-    new(size_t sz, int x)
-    {   void* p;
-
-        printf("Foo.new(sz = %d, x = %d)\n", sz, x);
-        assert(sz == Foo.classinfo.initializer.length);
-        assert(x == 5);
-
-        p = core.stdc.stdlib.malloc(sz);
-        flags |= 4;
-        return p;
-    }
-
     this()
     {
         printf("this() %p\n", this);
@@ -34,13 +22,6 @@ class Foo
         flags |= 1;
     }
 
-    delete(void* p)
-    {
-        printf("delete %p\n", p);
-        free(p);
-        flags |= 2;
-    }
-
     int a = 3;
     int b = 4;
     int d = 56;
@@ -50,52 +31,33 @@ void test1()
 {
     Foo f;
 
-    f = new(5) Foo;
+    f = new Foo();
     assert(f.a == 36);
     assert(f.b == 4);
     assert(f.d == 56);
-    assert(Foo.flags == 4);
+    assert(Foo.flags == 0);
 
-    delete f;
-    assert(Foo.flags == 7);
+    destroy(f);
+    assert(Foo.flags == 1);
 }
 
-
 /*********************************************/
+// delete is no longer a keyword and can be used as an identifier
 
-struct Foo2
+enum E
 {
-    static uint flags;
+    add, delete
+}
 
-    new(size_t sz, int x)
-    {   void* p;
-
-        printf("Foo2.new(sz = %d, x = %d)\n", sz, x);
-        assert(sz == Foo2.sizeof);
-        assert(x == 5);
-
-        p = core.stdc.stdlib.malloc(sz);
-        flags |= 4;
-        return p;
-    }
-
-    delete(void *p)
-    {
-        printf("p = %p\n", p);
-        flags |= 2;
-        core.stdc.stdlib.free(p);
-    }
+E delete()
+{
+    return E.delete;
 }
 
 void test2()
 {
-    Foo2 *f = new(5) Foo2();
-
-    printf("f = %p\n", f);
-    delete f;
-    assert(Foo2.flags == 6);
+    assert(delete() == E.delete);
 }
-
 
 /*********************************************/
 
@@ -107,4 +69,3 @@ int main()
     printf("Success\n");
     return 0;
 }
-

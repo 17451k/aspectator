@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2007-2021 Free Software Foundation, Inc.
+// Copyright (C) 2007-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -29,21 +29,36 @@ namespace __gnu_test
   struct counter
   {
     std::size_t _M_count;
+    std::size_t _M_increments, _M_decrements;
     bool	_M_throw;
 
     counter() : _M_count(0), _M_throw(true) { }
 
     ~counter() THROW (counter_error)
     {
+#if __cpp_exceptions
       if (_M_throw && _M_count != 0)
 	throw counter_error();
+#else
+      VERIFY( !_M_throw || _M_count == 0 );
+#endif
     }
 
     static void
-    increment() { get()._M_count++; }
+    increment()
+    {
+      counter& cntr = get();
+      cntr._M_count++;
+      cntr._M_increments++;
+    }
 
     static void
-    decrement() { get()._M_count--; }
+    decrement()
+    {
+      counter& cntr = get();
+      cntr._M_count--;
+      cntr._M_decrements++;
+    }
 
     static counter&
     get()
@@ -57,12 +72,39 @@ namespace __gnu_test
 
     static void
     exceptions(bool __b) { get()._M_throw = __b; }
+
+    static void
+    reset()
+    {
+      counter& cntr = get();
+      cntr._M_increments = cntr._M_decrements = 0;
+    }
+
+    struct scope
+    {
+      scope() : _M_count(counter::count())
+      { counter::get()._M_count = 0; }
+      ~scope()
+      { counter::get()._M_count = _M_count; }
+
+    private:
+      std::size_t _M_count;
+
+#if __cplusplus >= 201103L
+      scope(const scope&) = delete;
+      scope& operator=(const scope&) = delete;
+#else
+      scope(const scope&);
+      scope& operator=(const scope&);
+#endif
+    };
   };
 
   template<typename Alloc, bool uses_global_new>
     bool
     check_new(Alloc a = Alloc())
     {
+      __gnu_test::counter::scope s;
       __gnu_test::counter::exceptions(false);
       (void) a.allocate(10);
       const bool __b((__gnu_test::counter::count() > 0) == uses_global_new);
@@ -95,8 +137,12 @@ void* operator new(std::size_t size) THROW(std::bad_alloc)
 {
   std::printf("operator new is called \n");
   void* p = std::malloc(size);
+#if __cpp_exceptions
   if (!p)
     throw std::bad_alloc();
+#else
+  VERIFY( p );
+#endif
   __gnu_test::counter::increment();
   return p;
 }

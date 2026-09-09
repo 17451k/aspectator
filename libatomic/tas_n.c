@@ -1,4 +1,4 @@
-/* Copyright (C) 2012-2021 Free Software Foundation, Inc.
+/* Copyright (C) 2012-2026 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
    This file is part of the GNU Atomic Library (libatomic).
@@ -22,6 +22,7 @@
    see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    <http://www.gnu.org/licenses/>.  */
 
+#define LAT_TAS_N
 #include "libatomic_i.h"
 
 
@@ -73,7 +74,7 @@ SIZE(libat_test_and_set) (UTYPE *mptr, int smodel)
 				     __ATOMIC_RELAXED, __ATOMIC_RELAXED));
 
   post_barrier (smodel);
-  return woldval != 0;
+  return (woldval & ((UTYPE) ~(UTYPE) 0 << shift)) != 0;
 }
 
 #define DONE 1
@@ -113,3 +114,4 @@ SIZE(libat_test_and_set) (UTYPE *mptr, int smodel UNUSED)
 #endif
 
 EXPORT_ALIAS (SIZE(test_and_set));
+#undef LAT_TAS_N

@@ -1,6 +1,6 @@
 // Vector implementation (out of line) -*- C++ -*-
 
-// Copyright (C) 2001-2021 Free Software Foundation, Inc.
+// Copyright (C) 2001-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -61,7 +61,11 @@ namespace std _GLIBCXX_VISIBILITY(default)
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
 _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc++17-extensions" // if constexpr
+
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     void
     vector<_Tp, _Alloc>::
     reserve(size_type __n)
@@ -73,11 +77,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  const size_type __old_size = size();
 	  pointer __tmp;
 #if __cplusplus >= 201103L
-	  if _GLIBCXX17_CONSTEXPR (_S_use_relocate())
+	  if constexpr (_S_use_relocate())
 	    {
 	      __tmp = this->_M_allocate(__n);
-	      _S_relocate(this->_M_impl._M_start, this->_M_impl._M_finish,
-			  __tmp, _M_get_Tp_allocator());
+	      std::__relocate_a(this->_M_impl._M_start, this->_M_impl._M_finish,
+				__tmp, _M_get_Tp_allocator());
 	    }
 	  else
 #endif
@@ -97,11 +101,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  this->_M_impl._M_end_of_storage = this->_M_impl._M_start + __n;
 	}
     }
+#pragma GCC diagnostic pop
 
 #if __cplusplus >= 201103L
   template<typename _Tp, typename _Alloc>
     template<typename... _Args>
 #if __cplusplus > 201402L
+      _GLIBCXX20_CONSTEXPR
       typename vector<_Tp, _Alloc>::reference
 #else
       void
@@ -118,7 +124,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    _GLIBCXX_ASAN_ANNOTATE_GREW(1);
 	  }
 	else
-	  _M_realloc_insert(end(), std::forward<_Args>(__args)...);
+	  _M_realloc_append(std::forward<_Args>(__args)...);
 #if __cplusplus > 201402L
 	return back();
 #endif
@@ -126,6 +132,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 #endif
 
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     typename vector<_Tp, _Alloc>::iterator
     vector<_Tp, _Alloc>::
 #if __cplusplus >= 201103L
@@ -136,26 +143,32 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     {
       const size_type __n = __position - begin();
       if (this->_M_impl._M_finish != this->_M_impl._M_end_of_storage)
-	if (__position == end())
-	  {
-	    _GLIBCXX_ASAN_ANNOTATE_GROW(1);
-	    _Alloc_traits::construct(this->_M_impl, this->_M_impl._M_finish,
-				     __x);
-	    ++this->_M_impl._M_finish;
-	    _GLIBCXX_ASAN_ANNOTATE_GREW(1);
-	  }
-	else
-	  {
+	{
+	  __glibcxx_assert(__position != const_iterator());
+	  if (!(__position != const_iterator()))
+	    __builtin_unreachable(); // PR 106434
+
+	  if (__position == end())
+	    {
+	      _GLIBCXX_ASAN_ANNOTATE_GROW(1);
+	      _Alloc_traits::construct(this->_M_impl, this->_M_impl._M_finish,
+				       __x);
+	      ++this->_M_impl._M_finish;
+	      _GLIBCXX_ASAN_ANNOTATE_GREW(1);
+	    }
+	  else
+	    {
 #if __cplusplus >= 201103L
-	    const auto __pos = begin() + (__position - cbegin());
-	    // __x could be an existing element of this vector, so make a
-	    // copy of it before _M_insert_aux moves elements around.
-	    _Temporary_value __x_copy(this, __x);
-	    _M_insert_aux(__pos, std::move(__x_copy._M_val()));
+	      const auto __pos = begin() + (__position - cbegin());
+	      // __x could be an existing element of this vector, so make a
+	      // copy of it before _M_insert_aux moves elements around.
+	      _Temporary_value __x_copy(this, __x);
+	      _M_insert_aux(__pos, std::move(__x_copy._M_val()));
 #else
-	    _M_insert_aux(__position, __x);
+	      _M_insert_aux(__position, __x);
 #endif
-	  }
+	    }
+	}
       else
 #if __cplusplus >= 201103L
 	_M_realloc_insert(begin() + (__position - cbegin()), __x);
@@ -167,6 +180,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     }
 
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     typename vector<_Tp, _Alloc>::iterator
     vector<_Tp, _Alloc>::
     _M_erase(iterator __position)
@@ -180,6 +194,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     }
 
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     typename vector<_Tp, _Alloc>::iterator
     vector<_Tp, _Alloc>::
     _M_erase(iterator __first, iterator __last)
@@ -194,11 +209,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     }
 
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     vector<_Tp, _Alloc>&
     vector<_Tp, _Alloc>::
     operator=(const vector<_Tp, _Alloc>& __x)
     {
-      if (&__x != this)
+      if (std::__addressof(__x) != this)
 	{
 	  _GLIBCXX_ASAN_ANNOTATE_REINIT;
 #if __cplusplus >= 201103L
@@ -253,19 +269,23 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     }
 
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     void
     vector<_Tp, _Alloc>::
     _M_fill_assign(size_t __n, const value_type& __val)
     {
+      const size_type __sz = size();
       if (__n > capacity())
 	{
+	  if (__n <= __sz)
+	    __builtin_unreachable();
 	  vector __tmp(__n, __val, _M_get_Tp_allocator());
 	  __tmp._M_impl._M_swap_data(this->_M_impl);
 	}
-      else if (__n > size())
+      else if (__n > __sz)
 	{
 	  std::fill(begin(), end(), __val);
-	  const size_type __add = __n - size();
+	  const size_type __add = __n - __sz;
 	  _GLIBCXX_ASAN_ANNOTATE_GROW(__add);
 	  this->_M_impl._M_finish =
 	    std::__uninitialized_fill_n_a(this->_M_impl._M_finish,
@@ -278,6 +298,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   template<typename _Tp, typename _Alloc>
     template<typename _InputIterator>
+      _GLIBCXX20_CONSTEXPR
       void
       vector<_Tp, _Alloc>::
       _M_assign_aux(_InputIterator __first, _InputIterator __last,
@@ -296,15 +317,20 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   template<typename _Tp, typename _Alloc>
     template<typename _ForwardIterator>
+      _GLIBCXX20_CONSTEXPR
       void
       vector<_Tp, _Alloc>::
       _M_assign_aux(_ForwardIterator __first, _ForwardIterator __last,
 		    std::forward_iterator_tag)
       {
+	const size_type __sz = size();
 	const size_type __len = std::distance(__first, __last);
 
 	if (__len > capacity())
 	  {
+	    if (__len <= __sz)
+	      __builtin_unreachable();
+
 	    _S_check_init_len(__len, _M_get_Tp_allocator());
 	    pointer __tmp(_M_allocate_and_copy(__len, __first, __last));
 	    std::_Destroy(this->_M_impl._M_start, this->_M_impl._M_finish,
@@ -317,14 +343,14 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    this->_M_impl._M_finish = this->_M_impl._M_start + __len;
 	    this->_M_impl._M_end_of_storage = this->_M_impl._M_finish;
 	  }
-	else if (size() >= __len)
+	else if (__sz >= __len)
 	  _M_erase_at_end(std::copy(__first, __last, this->_M_impl._M_start));
 	else
 	  {
 	    _ForwardIterator __mid = __first;
-	    std::advance(__mid, size());
+	    std::advance(__mid, __sz);
 	    std::copy(__first, __mid, this->_M_impl._M_start);
-	    const size_type __attribute__((__unused__)) __n = __len - size();
+	    const size_type __attribute__((__unused__)) __n = __len - __sz;
 	    _GLIBCXX_ASAN_ANNOTATE_GROW(__n);
 	    this->_M_impl._M_finish =
 	      std::__uninitialized_copy_a(__mid, __last,
@@ -336,6 +362,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
 #if __cplusplus >= 201103L
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     auto
     vector<_Tp, _Alloc>::
     _M_insert_rval(const_iterator __position, value_type&& __v) -> iterator
@@ -360,6 +387,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   template<typename _Tp, typename _Alloc>
     template<typename... _Args>
+      _GLIBCXX20_CONSTEXPR
       auto
       vector<_Tp, _Alloc>::
       _M_emplace_aux(const_iterator __position, _Args&&... __args)
@@ -391,6 +419,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   template<typename _Tp, typename _Alloc>
     template<typename _Arg>
+      _GLIBCXX20_CONSTEXPR
       void
       vector<_Tp, _Alloc>::
       _M_insert_aux(iterator __position, _Arg&& __arg)
@@ -419,9 +448,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 #endif
     }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc++17-extensions" // if constexpr
 #if __cplusplus >= 201103L
   template<typename _Tp, typename _Alloc>
     template<typename... _Args>
+      _GLIBCXX20_CONSTEXPR
       void
       vector<_Tp, _Alloc>::
       _M_realloc_insert(iterator __position, _Args&&... __args)
@@ -432,87 +464,210 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     _M_realloc_insert(iterator __position, const _Tp& __x)
 #endif
     {
-      const size_type __len =
-	_M_check_len(size_type(1), "vector::_M_realloc_insert");
+      const size_type __len = _M_check_len(1u, "vector::_M_realloc_insert");
+      if (__len <= 0)
+	__builtin_unreachable();
       pointer __old_start = this->_M_impl._M_start;
       pointer __old_finish = this->_M_impl._M_finish;
       const size_type __elems_before = __position - begin();
       pointer __new_start(this->_M_allocate(__len));
       pointer __new_finish(__new_start);
-      __try
-	{
-	  // The order of the three operations is dictated by the C++11
-	  // case, where the moves could alter a new element belonging
-	  // to the existing vector.  This is an issue only for callers
-	  // taking the element by lvalue ref (see last bullet of C++11
-	  // [res.on.arguments]).
-	  _Alloc_traits::construct(this->_M_impl,
-				   __new_start + __elems_before,
+
+      {
+	_Guard_alloc __guard(__new_start, __len, *this);
+
+	// The order of the three operations is dictated by the C++11
+	// case, where the moves could alter a new element belonging
+	// to the existing vector.  This is an issue only for callers
+	// taking the element by lvalue ref (see last bullet of C++11
+	// [res.on.arguments]).
+
+	// If this throws, the existing elements are unchanged.
 #if __cplusplus >= 201103L
-				   std::forward<_Args>(__args)...);
+	_Alloc_traits::construct(this->_M_impl,
+				 std::__to_address(__new_start + __elems_before),
+				 std::forward<_Args>(__args)...);
 #else
-				   __x);
+	_Alloc_traits::construct(this->_M_impl,
+				 __new_start + __elems_before,
+				 __x);
 #endif
-	  __new_finish = pointer();
 
 #if __cplusplus >= 201103L
-	  if _GLIBCXX17_CONSTEXPR (_S_use_relocate())
-	    {
-	      __new_finish = _S_relocate(__old_start, __position.base(),
-					 __new_start, _M_get_Tp_allocator());
-
-	      ++__new_finish;
-
-	      __new_finish = _S_relocate(__position.base(), __old_finish,
-					 __new_finish, _M_get_Tp_allocator());
-	    }
-	  else
+	if constexpr (_S_use_relocate())
+	  {
+	    // Relocation cannot throw.
+	    __new_finish = std::__relocate_a(__old_start, __position.base(),
+					     __new_start,
+					     _M_get_Tp_allocator());
+	    ++__new_finish;
+	    __new_finish = std::__relocate_a(__position.base(), __old_finish,
+					     __new_finish,
+					     _M_get_Tp_allocator());
+	  }
+	else
 #endif
+	  {
+	    // RAII type to destroy initialized elements.
+	    struct _Guard_elts
 	    {
-	      __new_finish
-		= std::__uninitialized_move_if_noexcept_a
-		(__old_start, __position.base(),
-		 __new_start, _M_get_Tp_allocator());
+	      pointer _M_first, _M_last;  // Elements to destroy
+	      _Tp_alloc_type& _M_alloc;
 
-	      ++__new_finish;
+	      _GLIBCXX20_CONSTEXPR
+	      _Guard_elts(pointer __elt, _Tp_alloc_type& __a)
+	      : _M_first(__elt), _M_last(__elt + 1), _M_alloc(__a)
+	      { }
 
-	      __new_finish
-		= std::__uninitialized_move_if_noexcept_a
-		(__position.base(), __old_finish,
-		 __new_finish, _M_get_Tp_allocator());
-	    }
-	}
-      __catch(...)
-	{
-	  if (!__new_finish)
-	    _Alloc_traits::destroy(this->_M_impl,
-				   __new_start + __elems_before);
-	  else
-	    std::_Destroy(__new_start, __new_finish, _M_get_Tp_allocator());
-	  _M_deallocate(__new_start, __len);
-	  __throw_exception_again;
-	}
-#if __cplusplus >= 201103L
-      if _GLIBCXX17_CONSTEXPR (!_S_use_relocate())
-#endif
-	std::_Destroy(__old_start, __old_finish, _M_get_Tp_allocator());
-      _GLIBCXX_ASAN_ANNOTATE_REINIT;
-      _M_deallocate(__old_start,
-		    this->_M_impl._M_end_of_storage - __old_start);
+	      _GLIBCXX20_CONSTEXPR
+	      ~_Guard_elts()
+	      { std::_Destroy(_M_first, _M_last, _M_alloc); }
+
+	    private:
+	      _Guard_elts(const _Guard_elts&);
+	    };
+
+	    // Guard the new element so it will be destroyed if anything throws.
+	    _Guard_elts __guard_elts(__new_start + __elems_before, _M_impl);
+
+	    __new_finish = std::__uninitialized_move_if_noexcept_a(
+			     __old_start, __position.base(),
+			     __new_start, _M_get_Tp_allocator());
+
+	    ++__new_finish;
+	    // Guard everything before the new element too.
+	    __guard_elts._M_first = __new_start;
+
+	    __new_finish = std::__uninitialized_move_if_noexcept_a(
+			      __position.base(), __old_finish,
+			      __new_finish, _M_get_Tp_allocator());
+
+	    // New storage has been fully initialized, destroy the old elements.
+	    __guard_elts._M_first = __old_start;
+	    __guard_elts._M_last = __old_finish;
+	  }
+	__guard._M_storage = __old_start;
+	__guard._M_len = this->_M_impl._M_end_of_storage - __old_start;
+      }
+      // deallocate should be called before assignments to _M_impl,
+      // to avoid call-clobbering
+
       this->_M_impl._M_start = __new_start;
       this->_M_impl._M_finish = __new_finish;
       this->_M_impl._M_end_of_storage = __new_start + __len;
     }
 
+#if __cplusplus >= 201103L
   template<typename _Tp, typename _Alloc>
+    template<typename... _Args>
+      _GLIBCXX20_CONSTEXPR
+      void
+      vector<_Tp, _Alloc>::
+      _M_realloc_append(_Args&&... __args)
+#else
+  template<typename _Tp, typename _Alloc>
+    void
+    vector<_Tp, _Alloc>::
+    _M_realloc_append(const _Tp& __x)
+#endif
+    {
+      const size_type __len = _M_check_len(1u, "vector::_M_realloc_append");
+      if (__len <= 0)
+	__builtin_unreachable();
+      pointer __old_start = this->_M_impl._M_start;
+      pointer __old_finish = this->_M_impl._M_finish;
+      const size_type __elems = size();
+      pointer __new_start(this->_M_allocate(__len));
+      pointer __new_finish(__new_start);
+
+      {
+	_Guard_alloc __guard(__new_start, __len, *this);
+
+	// The order of the three operations is dictated by the C++11
+	// case, where the moves could alter a new element belonging
+	// to the existing vector.  This is an issue only for callers
+	// taking the element by lvalue ref (see last bullet of C++11
+	// [res.on.arguments]).
+
+	// If this throws, the existing elements are unchanged.
+#if __cplusplus >= 201103L
+	_Alloc_traits::construct(this->_M_impl,
+				 std::__to_address(__new_start + __elems),
+				 std::forward<_Args>(__args)...);
+#else
+	_Alloc_traits::construct(this->_M_impl,
+				 __new_start + __elems,
+				 __x);
+#endif
+
+#if __cplusplus >= 201103L
+	if constexpr (_S_use_relocate())
+	  {
+	    // Relocation cannot throw.
+	    __new_finish = std::__relocate_a(__old_start, __old_finish,
+					     __new_start,
+					     _M_get_Tp_allocator());
+	    ++__new_finish;
+	  }
+	else
+#endif
+	  {
+	    // RAII type to destroy initialized elements.
+	    struct _Guard_elts
+	    {
+	      pointer _M_first, _M_last;  // Elements to destroy
+	      _Tp_alloc_type& _M_alloc;
+
+	      _GLIBCXX20_CONSTEXPR
+	      _Guard_elts(pointer __elt, _Tp_alloc_type& __a)
+	      : _M_first(__elt), _M_last(__elt + 1), _M_alloc(__a)
+	      { }
+
+	      _GLIBCXX20_CONSTEXPR
+	      ~_Guard_elts()
+	      { std::_Destroy(_M_first, _M_last, _M_alloc); }
+
+	    private:
+	      _Guard_elts(const _Guard_elts&);
+	    };
+
+	    // Guard the new element so it will be destroyed if anything throws.
+	    _Guard_elts __guard_elts(__new_start + __elems, _M_impl);
+
+	    __new_finish = std::__uninitialized_move_if_noexcept_a(
+			     __old_start, __old_finish,
+			     __new_start, _M_get_Tp_allocator());
+
+	    ++__new_finish;
+
+	    // New storage has been fully initialized, destroy the old elements.
+	    __guard_elts._M_first = __old_start;
+	    __guard_elts._M_last = __old_finish;
+	  }
+	__guard._M_storage = __old_start;
+	__guard._M_len = this->_M_impl._M_end_of_storage - __old_start;
+      }
+      // deallocate should be called before assignments to _M_impl,
+      // to avoid call-clobbering
+
+      this->_M_impl._M_start = __new_start;
+      this->_M_impl._M_finish = __new_finish;
+      this->_M_impl._M_end_of_storage = __new_start + __len;
+    }
+#pragma GCC diagnostic pop
+
+  template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     void
     vector<_Tp, _Alloc>::
     _M_fill_insert(iterator __position, size_type __n, const value_type& __x)
     {
       if (__n != 0)
 	{
-	  if (size_type(this->_M_impl._M_end_of_storage
-			- this->_M_impl._M_finish) >= __n)
+	  if (__position.base() == this->_M_impl._M_finish)
+	    _M_fill_append(__n, __x);
+	  else if (size_type(this->_M_impl._M_end_of_storage
+			       - this->_M_impl._M_finish) >= __n)
 	    {
 #if __cplusplus < 201103L
 	      value_type __x_copy = __x;
@@ -525,9 +680,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	      if (__elems_after > __n)
 		{
 		  _GLIBCXX_ASAN_ANNOTATE_GROW(__n);
-		  std::__uninitialized_move_a(this->_M_impl._M_finish - __n,
-					      this->_M_impl._M_finish,
-					      this->_M_impl._M_finish,
+		  std::__uninitialized_move_a(__old_finish - __n,
+					      __old_finish,
+					      __old_finish,
 					      _M_get_Tp_allocator());
 		  this->_M_impl._M_finish += __n;
 		  _GLIBCXX_ASAN_ANNOTATE_GREW(__n);
@@ -540,7 +695,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 		{
 		  _GLIBCXX_ASAN_ANNOTATE_GROW(__n);
 		  this->_M_impl._M_finish =
-		    std::__uninitialized_fill_n_a(this->_M_impl._M_finish,
+		    std::__uninitialized_fill_n_a(__old_finish,
 						  __n - __elems_after,
 						  __x_copy,
 						  _M_get_Tp_allocator());
@@ -555,9 +710,15 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    }
 	  else
 	    {
+	      // Make local copies of these members because the compiler thinks
+	      // the allocator can alter them if 'this' is globally reachable.
+	      pointer __old_start = this->_M_impl._M_start;
+	      pointer __old_finish = this->_M_impl._M_finish;
+	      const pointer __pos = __position.base();
+
 	      const size_type __len =
 		_M_check_len(__n, "vector::_M_fill_insert");
-	      const size_type __elems_before = __position - begin();
+	      const size_type __elems_before = __pos - __old_start;
 	      pointer __new_start(this->_M_allocate(__len));
 	      pointer __new_finish(__new_start);
 	      __try
@@ -570,15 +731,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
 		  __new_finish
 		    = std::__uninitialized_move_if_noexcept_a
-		    (this->_M_impl._M_start, __position.base(),
-		     __new_start, _M_get_Tp_allocator());
+		    (__old_start, __pos, __new_start, _M_get_Tp_allocator());
 
 		  __new_finish += __n;
 
 		  __new_finish
 		    = std::__uninitialized_move_if_noexcept_a
-		    (__position.base(), this->_M_impl._M_finish,
-		     __new_finish, _M_get_Tp_allocator());
+		    (__pos, __old_finish, __new_finish, _M_get_Tp_allocator());
 		}
 	      __catch(...)
 		{
@@ -592,12 +751,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 		  _M_deallocate(__new_start, __len);
 		  __throw_exception_again;
 		}
-	      std::_Destroy(this->_M_impl._M_start, this->_M_impl._M_finish,
-			    _M_get_Tp_allocator());
+	      std::_Destroy(__old_start, __old_finish, _M_get_Tp_allocator());
 	      _GLIBCXX_ASAN_ANNOTATE_REINIT;
-	      _M_deallocate(this->_M_impl._M_start,
-			    this->_M_impl._M_end_of_storage
-			    - this->_M_impl._M_start);
+	      _M_deallocate(__old_start,
+			    this->_M_impl._M_end_of_storage - __old_start);
 	      this->_M_impl._M_start = __new_start;
 	      this->_M_impl._M_finish = __new_finish;
 	      this->_M_impl._M_end_of_storage = __new_start + __len;
@@ -605,8 +762,65 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	}
     }
 
-#if __cplusplus >= 201103L
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
+    void
+    vector<_Tp, _Alloc>::
+    _M_fill_append(size_type __n, const value_type& __x)
+    {
+       if (size_type(this->_M_impl._M_end_of_storage
+		     - this->_M_impl._M_finish) >= __n)
+	 {
+	   _GLIBCXX_ASAN_ANNOTATE_GROW(__n);
+	   this->_M_impl._M_finish =
+	     std::__uninitialized_fill_n_a(this->_M_impl._M_finish, __n, __x,
+					   _M_get_Tp_allocator());
+	   _GLIBCXX_ASAN_ANNOTATE_GREW(__n);
+	 }
+       else
+	 {
+	   // Make local copies of these members because the compiler thinks
+	   // the allocator can alter them if 'this' is globally reachable.
+	   pointer __old_start = this->_M_impl._M_start;
+	   pointer __old_finish = this->_M_impl._M_finish;
+	   const size_type __old_size = __old_finish - __old_start;
+
+	   const size_type __len =
+	     _M_check_len(__n, "vector::_M_fill_append");
+	   pointer __new_start(this->_M_allocate(__len));
+	   pointer __new_finish(__new_start + __old_size);
+	   __try
+	     {
+	       // See _M_realloc_insert above.
+	       __new_finish = std::__uninitialized_fill_n_a(
+				__new_finish, __n, __x,
+				_M_get_Tp_allocator());
+	       std::__uninitialized_move_if_noexcept_a(
+		 __old_start, __old_finish, __new_start,
+		 _M_get_Tp_allocator());
+	     }
+	   __catch(...)
+	     {
+		std::_Destroy(__new_start + __old_size, __new_finish,
+			      _M_get_Tp_allocator());
+		_M_deallocate(__new_start, __len);
+		__throw_exception_again;
+	      }
+	   std::_Destroy(__old_start, __old_finish, _M_get_Tp_allocator());
+	   _GLIBCXX_ASAN_ANNOTATE_REINIT;
+	   _M_deallocate(__old_start,
+			 this->_M_impl._M_end_of_storage - __old_start);
+	   this->_M_impl._M_start = __new_start;
+	   this->_M_impl._M_finish = __new_finish;
+	   this->_M_impl._M_end_of_storage = __new_start + __len;
+	 }
+    }
+
+#if __cplusplus >= 201103L
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc++17-extensions" // if constexpr
+  template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     void
     vector<_Tp, _Alloc>::
     _M_default_append(size_type __n)
@@ -622,6 +836,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
 	  if (__navail >= __n)
 	    {
+	      if (!this->_M_impl._M_finish)
+		__builtin_unreachable();
+
 	      _GLIBCXX_ASAN_ANNOTATE_GROW(__n);
 	      this->_M_impl._M_finish =
 		std::__uninitialized_default_n_a(this->_M_impl._M_finish,
@@ -630,59 +847,73 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    }
 	  else
 	    {
+	      // Make local copies of these members because the compiler thinks
+	      // the allocator can alter them if 'this' is globally reachable.
+	      pointer __old_start = this->_M_impl._M_start;
+	      pointer __old_finish = this->_M_impl._M_finish;
+
 	      const size_type __len =
 		_M_check_len(__n, "vector::_M_default_append");
 	      pointer __new_start(this->_M_allocate(__len));
-	      if _GLIBCXX17_CONSTEXPR (_S_use_relocate())
-		{
-		  __try
+
+	      {
+		_Guard_alloc __guard(__new_start, __len, *this);
+
+		std::__uninitialized_default_n_a(__new_start + __size, __n,
+						 _M_get_Tp_allocator());
+
+		if constexpr (_S_use_relocate())
+		  {
+		    std::__relocate_a(__old_start, __old_finish,
+				      __new_start, _M_get_Tp_allocator());
+		  }
+		else
+		  {
+		    // RAII type to destroy initialized elements.
+		    struct _Guard_elts
 		    {
-		      std::__uninitialized_default_n_a(__new_start + __size,
-			      __n, _M_get_Tp_allocator());
-		    }
-		  __catch(...)
-		    {
-		      _M_deallocate(__new_start, __len);
-		      __throw_exception_again;
-		    }
-		  _S_relocate(this->_M_impl._M_start, this->_M_impl._M_finish,
-			      __new_start, _M_get_Tp_allocator());
-		}
-	      else
-		{
-		  pointer __destroy_from = pointer();
-		  __try
-		    {
-		      std::__uninitialized_default_n_a(__new_start + __size,
-			      __n, _M_get_Tp_allocator());
-		      __destroy_from = __new_start + __size;
-		      std::__uninitialized_move_if_noexcept_a(
-			      this->_M_impl._M_start, this->_M_impl._M_finish,
-			      __new_start, _M_get_Tp_allocator());
-		    }
-		  __catch(...)
-		    {
-		      if (__destroy_from)
-			std::_Destroy(__destroy_from, __destroy_from + __n,
-				      _M_get_Tp_allocator());
-		      _M_deallocate(__new_start, __len);
-		      __throw_exception_again;
-		    }
-		  std::_Destroy(this->_M_impl._M_start, this->_M_impl._M_finish,
-				_M_get_Tp_allocator());
-		}
-	      _GLIBCXX_ASAN_ANNOTATE_REINIT;
-	      _M_deallocate(this->_M_impl._M_start,
-			    this->_M_impl._M_end_of_storage
-			    - this->_M_impl._M_start);
+		      pointer _M_first, _M_last;  // Elements to destroy
+		      _Tp_alloc_type& _M_alloc;
+
+		      _GLIBCXX20_CONSTEXPR
+		      _Guard_elts(pointer __first, size_type __n,
+				  _Tp_alloc_type& __a)
+		      : _M_first(__first), _M_last(__first + __n), _M_alloc(__a)
+		      { }
+
+		      _GLIBCXX20_CONSTEXPR
+		      ~_Guard_elts()
+		      { std::_Destroy(_M_first, _M_last, _M_alloc); }
+
+		    private:
+		      _Guard_elts(const _Guard_elts&);
+		    };
+		    _Guard_elts __guard_elts(__new_start + __size, __n, _M_impl);
+
+		    std::__uninitialized_move_if_noexcept_a(
+		      __old_start, __old_finish, __new_start,
+		      _M_get_Tp_allocator());
+
+		    __guard_elts._M_first = __old_start;
+		    __guard_elts._M_last = __old_finish;
+		  }
+		_GLIBCXX_ASAN_ANNOTATE_REINIT;
+		__guard._M_storage = __old_start;
+		__guard._M_len = this->_M_impl._M_end_of_storage - __old_start;
+	      }
+	      // deallocate should be called before assignments to _M_impl,
+	      // to avoid call-clobbering
+
 	      this->_M_impl._M_start = __new_start;
 	      this->_M_impl._M_finish = __new_start + __size + __n;
 	      this->_M_impl._M_end_of_storage = __new_start + __len;
 	    }
 	}
     }
+#pragma GCC diagnostic pop
 
   template<typename _Tp, typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     bool
     vector<_Tp, _Alloc>::
     _M_shrink_to_fit()
@@ -696,6 +927,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   template<typename _Tp, typename _Alloc>
     template<typename _InputIterator>
+      _GLIBCXX20_CONSTEXPR
       void
       vector<_Tp, _Alloc>::
       _M_range_insert(iterator __pos, _InputIterator __first,
@@ -717,6 +949,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   template<typename _Tp, typename _Alloc>
     template<typename _ForwardIterator>
+      _GLIBCXX20_CONSTEXPR
       void
       vector<_Tp, _Alloc>::
       _M_range_insert(iterator __position, _ForwardIterator __first,
@@ -764,15 +997,26 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	      }
 	    else
 	      {
+		// Make local copies of these members because the compiler
+		// thinks the allocator can alter them if 'this' is globally
+		// reachable.
+		pointer __old_start = this->_M_impl._M_start;
+		pointer __old_finish = this->_M_impl._M_finish;
+
 		const size_type __len =
 		  _M_check_len(__n, "vector::_M_range_insert");
+#if __cplusplus < 201103L
+		if (__len < (__n + (__old_finish - __old_start)))
+		  __builtin_unreachable();
+#endif
+
 		pointer __new_start(this->_M_allocate(__len));
 		pointer __new_finish(__new_start);
 		__try
 		  {
 		    __new_finish
 		      = std::__uninitialized_move_if_noexcept_a
-		      (this->_M_impl._M_start, __position.base(),
+		      (__old_start, __position.base(),
 		       __new_start, _M_get_Tp_allocator());
 		    __new_finish
 		      = std::__uninitialized_copy_a(__first, __last,
@@ -780,7 +1024,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 						    _M_get_Tp_allocator());
 		    __new_finish
 		      = std::__uninitialized_move_if_noexcept_a
-		      (__position.base(), this->_M_impl._M_finish,
+		      (__position.base(), __old_finish,
 		       __new_finish, _M_get_Tp_allocator());
 		  }
 		__catch(...)
@@ -790,12 +1034,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 		    _M_deallocate(__new_start, __len);
 		    __throw_exception_again;
 		  }
-		std::_Destroy(this->_M_impl._M_start, this->_M_impl._M_finish,
+		std::_Destroy(__old_start, __old_finish,
 			      _M_get_Tp_allocator());
 		_GLIBCXX_ASAN_ANNOTATE_REINIT;
-		_M_deallocate(this->_M_impl._M_start,
-			      this->_M_impl._M_end_of_storage
-			      - this->_M_impl._M_start);
+		_M_deallocate(__old_start,
+			      this->_M_impl._M_end_of_storage - __old_start);
 		this->_M_impl._M_start = __new_start;
 		this->_M_impl._M_finish = __new_finish;
 		this->_M_impl._M_end_of_storage = __new_start + __len;
@@ -803,16 +1046,147 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  }
       }
 
+#if __glibcxx_containers_ranges // C++ >= 23
+  template<typename _Tp, typename _Alloc>
+    template<__detail::__container_compatible_range<_Tp> _Rg>
+      constexpr auto
+      vector<_Tp, _Alloc>::
+      insert_range(const_iterator __pos, _Rg&& __rg)
+      -> iterator
+      {
+	if (__pos == cend())
+	  {
+	    const auto __ins_idx = size();
+	    append_range(std::forward<_Rg>(__rg));
+	    return begin() + __ins_idx;
+	  }
+
+	if constexpr (ranges::forward_range<_Rg>)
+	  {
+	    const auto __ins_idx = __pos - cbegin();
+	    // Number of new elements to insert:
+	    const auto __n = size_type(ranges::distance(__rg));
+	    if (__n == 0)
+	      return begin() + __ins_idx;
+
+	    // Start of existing elements:
+	    pointer __old_start = this->_M_impl._M_start;
+	    // End of existing elements:
+	    pointer __old_finish = this->_M_impl._M_finish;
+	    // Insertion point:
+	    pointer __ins = __old_start + __ins_idx;
+	    // Number of elements that can fit in unused capacity:
+	    const auto __cap = this->_M_impl._M_end_of_storage - __old_finish;
+	    if (__cap >= __n)
+	      {
+		// Number of existing elements after insertion point:
+		const size_type __elems_after = cend() - __pos;
+		if (__elems_after > __n)
+		  {
+		    _GLIBCXX_ASAN_ANNOTATE_GROW(__n);
+		    std::__uninitialized_move_a(__old_finish - __n,
+						__old_finish,
+						__old_finish,
+						_M_get_Tp_allocator());
+		    this->_M_impl._M_finish += __n;
+		    _GLIBCXX_ASAN_ANNOTATE_GREW(__n);
+		    std::move_backward(__ins, __old_finish - __n, __old_finish);
+		    ranges::copy(__rg, __ins);
+		  }
+		else
+		  {
+		    auto __first = ranges::begin(__rg);
+		    const auto __last = ranges::end(__rg);
+		    auto __mid = ranges::next(__first, __elems_after);
+		    _GLIBCXX_ASAN_ANNOTATE_GROW(__n);
+		    _Base::_M_append_range(ranges::subrange(__mid, __last));
+		    _GLIBCXX_ASAN_ANNOTATE_GREW(__n - __elems_after);
+		    std::__uninitialized_move_a(__ins, __old_finish,
+						this->_M_impl._M_finish,
+						_M_get_Tp_allocator());
+		    this->_M_impl._M_finish += __elems_after;
+		    _GLIBCXX_ASAN_ANNOTATE_GREW(__elems_after);
+		    ranges::copy(__first, __mid, __ins);
+		  }
+	      }
+	    else // Reallocate
+	      {
+		const size_type __len
+		  = _M_check_len(__n, "vector::insert_range");
+
+		struct _Guard : _Guard_alloc
+		{
+		  // End of elements to destroy:
+		  pointer _M_finish = _Guard_alloc::_M_storage;
+
+		  using _Guard_alloc::_Guard_alloc;
+
+		  constexpr
+		  ~_Guard()
+		  {
+		    std::_Destroy(this->_M_storage, _M_finish,
+				  this->_M_vect._M_get_Tp_allocator());
+		  }
+		};
+
+		// Allocate new storage:
+		pointer __new_start(this->_M_allocate(__len));
+		_Guard __guard(__new_start, __len, *this);
+
+		auto& __alloc = _M_get_Tp_allocator();
+
+		// Populate the new storage in three steps. After each step,
+		// __guard owns the new storage and any elements that have
+		// been constructed there.
+
+		// Move elements from before insertion point to new storage:
+		__guard._M_finish
+		  = std::__uninitialized_move_if_noexcept_a(
+		      __old_start, __ins, __new_start, __alloc);
+
+		// Append new elements to new storage:
+		_Base::_M_append_range_to(__rg, __guard._M_finish);
+
+		// Move elements from after insertion point to new storage:
+		__guard._M_finish
+		    = std::__uninitialized_move_if_noexcept_a(
+			__ins, __old_finish, __guard._M_finish, __alloc);
+
+		_GLIBCXX_ASAN_ANNOTATE_REINIT; // Creates _Asan::_Reinit.
+
+		// All elements are in the new storage, exchange ownership
+		// with __guard so that it cleans up the old storage:
+		this->_M_impl._M_start = __guard._M_storage;
+		this->_M_impl._M_finish = __guard._M_finish;
+		this->_M_impl._M_end_of_storage = __new_start + __len;
+		__guard._M_storage = __old_start;
+		__guard._M_finish = __old_finish;
+		__guard._M_len = (__old_finish - __old_start) + __cap;
+		// _Asan::_Reinit destructor marks unused capacity.
+		// _Guard destructor destroys [old_start,old_finish).
+		// _Guard_alloc destructor frees [old_start,old_start+len).
+	      }
+	    return begin() + __ins_idx;
+	  }
+	else
+	  return insert_range(__pos, vector(from_range, std::forward<_Rg>(__rg),
+					    _M_get_Tp_allocator()));
+      }
+#endif // containers_ranges
 
   // vector<bool>
   template<typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     void
     vector<bool, _Alloc>::
     _M_reallocate(size_type __n)
     {
+      const iterator __begin = begin(), __end = end();
+      if (size_type(__end - __begin) > __n)
+	__builtin_unreachable();
       _Bit_pointer __q = this->_M_allocate(__n);
       iterator __start(std::__addressof(*__q), 0);
-      iterator __finish(_M_copy_aligned(begin(), end(), __start));
+      iterator __finish(_M_copy_aligned(__begin, __end, __start));
       this->_M_deallocate();
       this->_M_impl._M_start = __start;
       this->_M_impl._M_finish = __finish;
@@ -820,6 +1194,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     }
 
   template<typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     void
     vector<bool, _Alloc>::
     _M_fill_insert(iterator __position, size_type __n, bool __x)
@@ -837,11 +1212,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	{
 	  const size_type __len = 
 	    _M_check_len(__n, "vector<bool>::_M_fill_insert");
+	  iterator __begin = begin(), __end = end();
 	  _Bit_pointer __q = this->_M_allocate(__len);
 	  iterator __start(std::__addressof(*__q), 0);
-	  iterator __i = _M_copy_aligned(begin(), __position, __start);
+	  iterator __i = _M_copy_aligned(__begin, __position, __start);
 	  std::fill(__i, __i + difference_type(__n), __x);
-	  iterator __finish = std::copy(__position, end(),
+	  iterator __finish = std::copy(__position, __end,
 					__i + difference_type(__n));
 	  this->_M_deallocate();
 	  this->_M_impl._M_end_of_storage = __q + _S_nword(__len);
@@ -852,6 +1228,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
   template<typename _Alloc>
     template<typename _ForwardIterator>
+      _GLIBCXX20_CONSTEXPR
       void
       vector<bool, _Alloc>::
       _M_insert_range(iterator __position, _ForwardIterator __first, 
@@ -872,11 +1249,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	      {
 		const size_type __len =
 		  _M_check_len(__n, "vector<bool>::_M_insert_range");
+		const iterator __begin = begin(), __end = end();
 		_Bit_pointer __q = this->_M_allocate(__len);
 		iterator __start(std::__addressof(*__q), 0);
-		iterator __i = _M_copy_aligned(begin(), __position, __start);
+		iterator __i = _M_copy_aligned(__begin, __position, __start);
 		__i = std::copy(__first, __last, __i);
-		iterator __finish = std::copy(__position, end(), __i);
+		iterator __finish = std::copy(__position, __end, __i);
 		this->_M_deallocate();
 		this->_M_impl._M_end_of_storage = __q + _S_nword(__len);
 		this->_M_impl._M_start = __start;
@@ -886,6 +1264,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       }
 
   template<typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     void
     vector<bool, _Alloc>::
     _M_insert_aux(iterator __position, bool __x)
@@ -914,6 +1293,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     }
 
   template<typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     typename vector<bool, _Alloc>::iterator
     vector<bool, _Alloc>::
     _M_erase(iterator __position)
@@ -925,6 +1305,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     }
 
   template<typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     typename vector<bool, _Alloc>::iterator
     vector<bool, _Alloc>::
     _M_erase(iterator __first, iterator __last)
@@ -936,6 +1317,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
 #if __cplusplus >= 201103L
   template<typename _Alloc>
+    _GLIBCXX20_CONSTEXPR
     bool
     vector<bool, _Alloc>::
     _M_shrink_to_fit()
@@ -944,7 +1326,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	return false;
       __try
 	{
-	  _M_reallocate(size());
+	  if (size_type __n = size())
+	    _M_reallocate(__n);
+	  else
+	    {
+	      this->_M_deallocate();
+	      this->_M_impl._M_reset();
+	    }
 	  return true;
 	}
       __catch(...)
@@ -968,9 +1356,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     operator()(const _GLIBCXX_STD_C::vector<bool, _Alloc>& __b) const noexcept
     {
       size_t __hash = 0;
-      using _GLIBCXX_STD_C::_S_word_bit;
-      using _GLIBCXX_STD_C::_Bit_type;
-
       const size_t __words = __b.size() / _S_word_bit;
       if (__words)
 	{

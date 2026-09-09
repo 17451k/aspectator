@@ -11,12 +11,12 @@
 // { dg-options "" }
 
 struct s {
-    char c[];   // { dg-error "flexible array member .* in an otherwise empty" }
+    char c[];
 };
 
 int main()
 {
-    struct s s = { .c = 0 };	// { dg-error "initializer" }
+    struct s s = { .c = 0 };
     // { dg-error "non-static initialization of a flexible array member" "" { target *-*-* } .-1 }
     return 0;
 }

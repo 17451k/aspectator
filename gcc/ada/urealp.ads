@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -233,7 +233,7 @@ package Urealp is
    function UR_Sub (Left : Ureal; Right : Uint)  return Ureal;
    --  Returns real difference of operands
 
-   function UR_Exponentiate (Real  : Ureal; N : Uint) return  Ureal;
+   function UR_Exponentiate (Real : Ureal; N : Uint) return Ureal;
    --  Returns result of raising Ureal to Uint power.
    --  Fatal error if Left is 0 and Right is negative.
 
@@ -288,6 +288,10 @@ package Urealp is
    --  In the case where an expression is output, if Brackets is set to True,
    --  the expression is surrounded by square brackets.
 
+   procedure UR_Write_To_JSON (Real : Ureal);
+   --  Writes value of Real to standard output in the JSON data interchange
+   --  format specified by the ECMA-404 standard, for the -gnatRj output.
+
    procedure pr (Real : Ureal);
    pragma Export (Ada, pr);
    --  Writes value of Real to standard output with a terminating line return,
@@ -313,7 +317,7 @@ package Urealp is
    function "-" (Left : Uint;  Right : Ureal) return Ureal renames UR_Sub;
    function "-" (Left : Ureal; Right : Uint)  return Ureal renames UR_Sub;
 
-   function "**"  (Real  : Ureal; N : Uint) return Ureal
+   function "**"  (Real : Ureal; N : Uint) return Ureal
                                                      renames UR_Exponentiate;
 
    function "abs" (Real : Ureal) return Ureal renames UR_Abs;

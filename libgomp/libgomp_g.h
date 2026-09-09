@@ -1,4 +1,4 @@
-/* Copyright (C) 2005-2021 Free Software Foundation, Inc.
+/* Copyright (C) 2005-2026 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
    This file is part of the GNU Offloading and Multi Processing Library
@@ -305,6 +305,7 @@ extern void GOMP_taskloop_ull (void (*) (void *), void *,
 			       unsigned long long);
 extern void GOMP_taskwait (void);
 extern void GOMP_taskwait_depend (void **);
+extern void GOMP_taskwait_depend_nowait (void **);
 extern void GOMP_taskyield (void);
 extern void GOMP_taskgroup_start (void);
 extern void GOMP_taskgroup_end (void);
@@ -332,6 +333,10 @@ extern bool GOMP_single_start (void);
 extern void *GOMP_single_copy_start (void);
 extern void GOMP_single_copy_end (void *);
 
+/* scope.c */
+
+extern void GOMP_scope_start (uintptr_t *);
+
 /* target.c */
 
 extern void GOMP_target (int, void (*) (void *), const void *,
@@ -351,6 +356,12 @@ extern void GOMP_target_enter_exit_data (int, size_t, void **, size_t *,
 					 unsigned short *, unsigned int,
 					 void **);
 extern void GOMP_teams (unsigned int, unsigned int);
+extern bool GOMP_teams4 (unsigned int, unsigned int, unsigned int, bool);
+extern void *GOMP_target_map_indirect_ptr (void *);
+struct interop_obj_t;
+extern void GOMP_interop (int, int, struct interop_obj_t ***, const int *,
+			  const char **, int, struct interop_obj_t **, int,
+			  struct interop_obj_t ***, unsigned, void **);
 
 /* teams.c */
 
@@ -359,8 +370,16 @@ extern void GOMP_teams_reg (void (*) (void *), void *, unsigned, unsigned,
 
 /* allocator.c */
 
+extern void GOMP_add_alloc (void *);
+extern bool GOMP_is_alloc (void *);
+
 extern void *GOMP_alloc (size_t, size_t, uintptr_t);
 extern void GOMP_free (void *, uintptr_t);
+
+/* error.c */
+
+extern void GOMP_warning (const char *, size_t);
+extern void GOMP_error (const char *, size_t);
 
 /* oacc-async.c */
 
@@ -370,6 +389,11 @@ extern void GOACC_wait (int, int, ...);
 
 extern void GOACC_enter_exit_data (int, size_t, void **, size_t *,
 				   unsigned short *, int, int, ...);
+extern void GOACC_enter_data (int, size_t, void **, size_t *,
+			      unsigned short *, int, int, ...);
+extern void GOACC_exit_data (int, size_t, void **, size_t *,
+			     unsigned short *, int, int, ...);
+extern void GOACC_declare (int, size_t, void **, size_t *, unsigned short *);
 
 /* oacc-parallel.c */
 
@@ -384,6 +408,5 @@ extern void GOACC_update (int, size_t, void **, size_t *,
 			  unsigned short *, int, int, ...);
 extern int GOACC_get_num_threads (void);
 extern int GOACC_get_thread_num (void);
-extern void GOACC_declare (int, size_t, void **, size_t *, unsigned short *);
 
 #endif /* LIBGOMP_G_H */

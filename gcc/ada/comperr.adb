@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,21 +27,22 @@
 --  is detected. Calls to these routines cause termination of the current
 --  compilation with appropriate error output.
 
-with Atree;    use Atree;
-with Debug;    use Debug;
-with Errout;   use Errout;
-with Gnatvsn;  use Gnatvsn;
-with Lib;      use Lib;
-with Namet;    use Namet;
-with Opt;      use Opt;
-with Osint;    use Osint;
-with Output;   use Output;
-with Sinfo;    use Sinfo;
-with Sinput;   use Sinput;
-with Sprint;   use Sprint;
-with Sdefault; use Sdefault;
-with Treepr;   use Treepr;
-with Types;    use Types;
+with Atree;          use Atree;
+with Debug;          use Debug;
+with Errout;         use Errout;
+with Generate_Minimal_Reproducer;
+with Gnatvsn;        use Gnatvsn;
+with Lib;            use Lib;
+with Namet;          use Namet;
+with Opt;            use Opt;
+with Osint;          use Osint;
+with Output;         use Output;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinput;         use Sinput;
+with Sprint;         use Sprint;
+with Sdefault;       use Sdefault;
+with Treepr;         use Treepr;
+with Types;          use Types;
 
 with Ada.Exceptions; use Ada.Exceptions;
 
@@ -144,7 +145,7 @@ package body Comperr is
 
       if Serious_Errors_Detected /= 0 and then not Debug_Flag_K then
          Errout.Finalize (Last_Call => True);
-         Errout.Output_Messages;
+         Errout.Output_Messages (E_Errors);
 
          Set_Standard_Error;
          Write_Str ("compilation abandoned due to previous error");
@@ -176,10 +177,8 @@ package body Comperr is
 
          --  Output target name, deleting junk final reverse slash
 
-         if Target_Name.all (Target_Name.all'Last) = '\'
-           or else Target_Name.all (Target_Name.all'Last) = '/'
-         then
-            Write_Str (Target_Name.all (1 .. Target_Name.all'Last - 1));
+         if Target_Name (Target_Name'Last) in '/' | '\' then
+            Write_Str (Target_Name (1 .. Target_Name'Last - 1));
          else
             Write_Str (Target_Name.all);
          end if;
@@ -243,11 +242,16 @@ package body Comperr is
             end if;
 
             End_Line;
+
          else
             Write_Str ("| Error detected at ");
             Write_Location (Sloc (Current_Error_Node));
             End_Line;
          end if;
+
+         Write_Str ("| Compiling ");
+         Write_Str (Get_First_Main_File_Name);
+         End_Line;
 
          --  There are two cases now. If the file gnat_bug.box exists,
          --  we use the contents of this file at this point.
@@ -259,7 +263,7 @@ package body Comperr is
             Src : Source_Buffer_Ptr;
 
          begin
-            Namet.Unlock;
+            Namet.Unlock_If_Locked;
             Name_Buffer (1 .. 12) := "gnat_bug.box";
             Name_Len := 12;
             Read_Source_File (Name_Enter, 0, Hi, Src, FD);
@@ -302,16 +306,16 @@ package body Comperr is
 
                   Write_Str
                     ("| Please submit a bug report by email " &
-                     "to report@adacore.com.");
+                     "to support@adacore.com.");
                   End_Line;
 
                   Write_Str
-                    ("| GAP members can alternatively use GNAT Tracker:");
+                    ("| GAP members can alternatively use GNATtracker:");
                   End_Line;
 
                   Write_Str
-                    ("| https://www.adacore.com/login?mode=gap " &
-                     "section 'Create New Ticket'.");
+                    ("| https://support.adacore.com/csm " &
+                     "by using the button 'Create A New Case'.");
                   End_Line;
 
                   Write_Str
@@ -321,17 +325,17 @@ package body Comperr is
 
                else
                   Write_Str
-                    ("| Please submit a bug report using GNAT Tracker:");
+                    ("| Please submit a bug report using GNATtracker at");
                   End_Line;
 
                   Write_Str
-                    ("| https://www.adacore.com/login " &
-                     "section 'Create New Ticket'.");
+                    ("| https://support.adacore.com/csm " &
+                     "by using the button 'Create New Case'.");
                   End_Line;
 
                   Write_Str
                     ("| Or submit a bug report by email " &
-                     "to report@adacore.com");
+                     "to support@adacore.com");
                   End_Line;
 
                   Write_Str
@@ -399,10 +403,20 @@ package body Comperr is
                Write_Str ("list may be incomplete");
          end;
 
+         begin
+            if Debug_Flag_Underscore_M then
+               Generate_Minimal_Reproducer;
+            end if;
+         exception
+            when others =>
+               Write_Str ("failed to generate reproducer");
+         end;
+
          Write_Eol;
          Set_Standard_Output;
 
          Tree_Dump;
+         Sinput.Unlock; -- so Source_Dump can modify it
          Source_Dump;
          raise Unrecoverable_Error;
       end if;
@@ -417,7 +431,7 @@ package body Comperr is
       Unit_Name : Node_Id;
 
       Success : Boolean;
-      pragma Unreferenced (Success);
+      pragma Warnings (Off, "modified by call");
 
       procedure Decode_Name_Buffer;
       --  Replace "__" by "." in Name_Buffer, and adjust Name_Len accordingly
@@ -471,6 +485,7 @@ package body Comperr is
          when N_Package_Declaration
             | N_Subprogram_Body
             | N_Subprogram_Declaration
+            | N_Subprogram_Renaming_Declaration
          =>
             Unit_Name := Defining_Unit_Name (Specification (Main));
 
@@ -482,10 +497,10 @@ package body Comperr is
          =>
             Unit_Name := Defining_Unit_Name (Main);
 
-         --  No SCIL file generated for generic package declarations
+         --  No SCIL file generated for generic unit declarations
 
-         when N_Generic_Package_Declaration
-            | N_Generic_Package_Renaming_Declaration
+         when N_Generic_Declaration
+            | N_Generic_Renaming_Declaration
          =>
             return;
 
@@ -533,5 +548,4 @@ package body Comperr is
 
       Write_Char (After);
    end Repeat_Char;
-
 end Comperr;

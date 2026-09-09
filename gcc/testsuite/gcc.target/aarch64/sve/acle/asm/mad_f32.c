@@ -75,7 +75,7 @@ TEST_UNIFORM_Z (mad_2_f32_m_tied1, svfloat32_t,
 		z0 = svmad_m (p0, z0, z1, 2))
 
 /*
-** mad_2_f32_m_untied: { xfail *-*-* }
+** mad_2_f32_m_untied:
 **	fmov	(z[0-9]+\.s), #2\.0(?:e\+0)?
 **	movprfx	z0, z1
 **	fmad	z0\.s, p0/m, z2\.s, \1
@@ -281,7 +281,7 @@ TEST_UNIFORM_ZD (mad_s4_f32_x_tied2, svfloat32_t, float,
 		 z0 = svmad_x (p0, z1, z0, d4))
 
 /*
-** mad_s4_f32_x_untied: { xfail *-*-* }
+** mad_s4_f32_x_untied:
 **	mov	z0\.s, s4
 **	fmla	z0\.s, p0/m, z1\.s, z2\.s
 **	ret

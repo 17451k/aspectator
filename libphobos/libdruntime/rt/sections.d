@@ -5,12 +5,9 @@
  *      $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0).
  *    (See accompanying file LICENSE)
  * Authors:   Walter Bright, Sean Kelly, Martin Nowak
- * Source: $(DRUNTIMESRC src/rt/_sections.d)
+ * Source: $(DRUNTIMESRC rt/_sections.d)
  */
 
-/* NOTE: This file has been patched from the original DMD distribution to
- * work with the GDC compiler.
- */
 module rt.sections;
 
 version (OSX)
@@ -26,27 +23,42 @@ version (GNU)
     public import gcc.sections;
 else version (CRuntime_Glibc)
     public import rt.sections_elf_shared;
+else version (CRuntime_Musl)
+    public import rt.sections_elf_shared;
 else version (FreeBSD)
     public import rt.sections_elf_shared;
 else version (NetBSD)
+    public import rt.sections_elf_shared;
+else version (OpenBSD)
+{
+    /**
+     * OpenBSD is missing support needed for elf_shared.
+     * See the top of sections_solaris.d for more info.
+     */
+
+    public import rt.sections_solaris;
+}
+else version (DragonFlyBSD)
     public import rt.sections_elf_shared;
 else version (Solaris)
     public import rt.sections_solaris;
 else version (Darwin)
 {
     version (X86_64)
-        public import rt.sections_osx_x86_64;
+        public import rt.sections_osx_64;
     else version (X86)
         public import rt.sections_osx_x86;
+    else version (AArch64)
+        public import rt.sections_osx_64;
     else
         static assert(0, "unimplemented");
 }
-else version (CRuntime_DigitalMars)
-    public import rt.sections_win32;
 else version (CRuntime_Microsoft)
     public import rt.sections_win64;
 else version (CRuntime_Bionic)
-    public import rt.sections_android;
+    public import rt.sections_elf_shared;
+else version (CRuntime_UClibc)
+    public import rt.sections_elf_shared;
 else
     static assert(0, "unimplemented");
 
@@ -70,7 +82,10 @@ static assert(is(typeof(&initTLSRanges) RT == return) &&
               is(typeof(&finiTLSRanges) == void function(RT) nothrow @nogc) &&
               is(typeof(&scanTLSRanges) == void function(RT, scope void delegate(void*, void*) nothrow) nothrow));
 
-version (Shared)
+version (Windows)
+{
+}
+else version (Shared)
 {
     static assert(is(typeof(&pinLoadedLibraries) == void* function() nothrow @nogc));
     static assert(is(typeof(&unpinLoadedLibraries) == void function(void*) nothrow @nogc));

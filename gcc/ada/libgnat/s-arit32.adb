@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---            Copyright (C) 2020, Free Software Foundation, Inc.            --
+--            Copyright (C) 2020-2026, Free Software Foundation, Inc.       --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -29,10 +29,16 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+--  Preconditions, postconditions, ghost code, loop invariants and assertions
+--  in this unit are meant for analysis only, not for run-time checking, as it
+--  would be too costly otherwise. This is enforced by setting the assertion
+--  policy to Ignore.
+
 with Ada.Unchecked_Conversion;
 
-package body System.Arith_32 is
-
+package body System.Arith_32
+  with SPARK_Mode
+is
    pragma Suppress (Overflow_Check);
    pragma Suppress (Range_Check);
 
@@ -49,7 +55,7 @@ package body System.Arith_32 is
 
    function "abs" (X : Int32) return Uns32 is
      (if X = Int32'First
-      then 2**31
+      then Uns32'(2**31)
       else Uns32 (Int32'(abs X)));
    --  Convert absolute value of X to unsigned. Note that we can't just use
    --  the expression of the Else since it overflows for X = Int32'First.
@@ -68,8 +74,7 @@ package body System.Arith_32 is
    --  0 .. 2**31 - 1, then the corresponding nonnegative signed integer is
    --  returned, otherwise constraint error is raised.
 
-   procedure Raise_Error;
-   pragma No_Return (Raise_Error);
+   procedure Raise_Error with No_Return;
    --  Raise constraint error with appropriate message
 
    -----------------
@@ -106,30 +111,36 @@ package body System.Arith_32 is
 
       D := Uns64 (Xu) * Uns64 (Yu);
 
+      --  If divisor is zero, raise error
+
+      if Z = 0 then
+         Raise_Error;
+      end if;
+
       --  If dividend is too large, raise error
 
       if Hi (D) >= Zu then
          Raise_Error;
+      end if;
 
       --  Then do the 64-bit division
 
-      else
-         Qu := Uns32 (D / Uns64 (Zu));
-         Ru := Uns32 (D rem Uns64 (Zu));
-      end if;
+      Qu := Uns32 (D / Uns64 (Zu));
+      Ru := Uns32 (D rem Uns64 (Zu));
 
       --  Deal with rounding case
 
-      if Round and then Ru > (Zu - Uns32'(1)) / Uns32'(2) then
+      if Round then
+         if Ru > (Zu - Uns32'(1)) / Uns32'(2) then
+            --  Protect against wrapping around when rounding, by signaling
+            --  an overflow when the quotient is too large.
 
-         --  Protect against wrapping around when rounding, by signaling
-         --  an overflow when the quotient is too large.
+            if Qu = Uns32'Last then
+               Raise_Error;
+            end if;
 
-         if Qu = Uns32'Last then
-            Raise_Error;
+            Qu := Qu + Uns32'(1);
          end if;
-
-         Qu := Qu + Uns32'(1);
       end if;
 
       --  Set final signs (RM 4.5.5(27-30))
@@ -157,6 +168,7 @@ package body System.Arith_32 is
         (if A = 2**31 then Int32'First else -To_Int (A));
       --  Note that we can't just use the expression of the Else, because it
       --  overflows for A = 2**31.
+
    begin
       if R <= 0 then
          return R;

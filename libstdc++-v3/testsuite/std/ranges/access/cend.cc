@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Free Software Foundation, Inc.
+// Copyright (C) 2019-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,11 +15,14 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do run { target c++2a } }
+// { dg-do run { target c++20 } }
 
 #include <ranges>
+#include <utility> // as_const
 #include <testsuite_hooks.h>
+#include <testsuite_iterators.h>
+
+static_assert(__gnu_test::is_customization_point_object(std::ranges::cend));
 
 using std::same_as;
 
@@ -38,7 +41,7 @@ struct R
   int a[4] = { 0, 1, 2, 3 };
 
   const int* begin() const { return nullptr; }
-  friend const int* begin(const R&& r) noexcept { return nullptr; }
+  friend const int* begin(const R&&) noexcept { return nullptr; }
 
   // Should be ignored because it doesn't return a sentinel for int*
   const long* end() const { return nullptr; }
@@ -71,15 +74,16 @@ test03()
   VERIFY( std::ranges::cend(c) == std::ranges::end(c) );
 
   RV v{r};
-  const RV cv{r};
   VERIFY( std::ranges::cend(std::move(v)) == std::ranges::end(c) );
+
+  const RV cv{r};
   VERIFY( std::ranges::cend(std::move(cv)) == std::ranges::end(c) );
 }
 
 struct RR
 {
   short s = 0;
-  long l = 0;
+  short l = 0;
   int a[4] = { 0, 1, 2, 3 };
 
   const void* begin() const; // return type not an iterator
@@ -87,8 +91,8 @@ struct RR
   friend int* end(RR&) { throw 1; }
   short* end() noexcept { return &s; }
 
-  friend const long* begin(const RR&) noexcept;
-  const long* end() const { return &l; }
+  friend const short* begin(const RR&) noexcept;
+  const short* end() const { return &l; }
 
   friend int* begin(RR&&) noexcept;
   friend int* end(RR&& r) { return r.a + 1; }

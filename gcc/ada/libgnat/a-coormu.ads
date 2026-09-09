@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -34,7 +34,7 @@
 private with Ada.Containers.Red_Black_Trees;
 private with Ada.Finalization;
 private with Ada.Streams;
-private with Ada.Strings.Text_Output;
+private with Ada.Strings.Text_Buffers;
 with Ada.Iterator_Interfaces;
 
 generic
@@ -57,12 +57,11 @@ is
    type Set is tagged private
    with Constant_Indexing => Constant_Reference,
         Default_Iterator  => Iterate,
-        Iterator_Element  => Element_Type;
+        Iterator_Element  => Element_Type,
+        Preelaborable_Initialization;
 
-   pragma Preelaborable_Initialization (Set);
-
-   type Cursor is private;
-   pragma Preelaborable_Initialization (Cursor);
+   type Cursor is private
+   with Preelaborable_Initialization;
 
    Empty_Set : constant Set;
    --  The default value for set objects declared without an explicit
@@ -133,8 +132,9 @@ is
    --  with elements") will raise Program_Error.
 
    type Constant_Reference_Type
-     (Element : not null access constant Element_Type) is private
-        with Implicit_Dereference => Element;
+     (Element : not null access constant Element_Type) is limited private
+   with
+      Implicit_Dereference => Element;
 
    function Constant_Reference
      (Container : aliased Set;
@@ -476,7 +476,7 @@ private
    end record with Put_Image => Put_Image;
 
    procedure Put_Image
-     (S : in out Ada.Strings.Text_Output.Sink'Class; V : Set);
+     (S : in out Ada.Strings.Text_Buffers.Root_Buffer_Type'Class; V : Set);
 
    overriding procedure Adjust (Container : in out Set);
 

@@ -1,5 +1,5 @@
-/* dwarf2out.h - Various declarations for functions found in dwarf2out.c
-   Copyright (C) 1998-2021 Free Software Foundation, Inc.
+/* dwarf2out.h - Various declarations for functions found in dwarf2out.cc
+   Copyright (C) 1998-2026 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -30,15 +30,14 @@ typedef struct dw_cfi_node *dw_cfi_ref;
 typedef struct dw_loc_descr_node *dw_loc_descr_ref;
 typedef struct dw_loc_list_struct *dw_loc_list_ref;
 typedef struct dw_discr_list_node *dw_discr_list_ref;
-typedef wide_int *wide_int_ptr;
+typedef struct dw_wide_int *dw_wide_int_ptr;
 
 
 /* Call frames are described using a sequence of Call Frame
    Information instructions.  The register number, offset
    and address fields are provided as possible operands;
    their use is selected by the opcode field.  */
-
-enum dw_cfi_oprnd_type {
+enum dw_cfi_oprnd_type: int {
   dw_cfi_oprnd_unused,
   dw_cfi_oprnd_reg_num,
   dw_cfi_oprnd_offset,
@@ -108,14 +107,49 @@ struct GTY(()) dw_fde_node {
   /* True iff dw_fde_second_begin label is in text_section or
      cold_text_section.  */
   unsigned second_in_std_section : 1;
-  /* True if Rule 18 described in dwarf2cfi.c is in action, i.e. for dynamic
+  /* True if Rule 18 described in dwarf2cfi.cc is in action, i.e. for dynamic
      stack realignment in between pushing of hard frame pointer to stack
      and setting hard frame pointer to stack pointer.  The register save for
      hard frame pointer register should be emitted only on the latter
      instruction.  */
   unsigned rule18 : 1;
+  /* True if this function is to be ignored by debugger.  */
+  unsigned ignored_debug : 1;
 };
 
+
+/* This represents a register, in DWARF_FRAME_REGNUM space, for use in CFA
+   definitions and expressions.
+   Most architectures only need a single register number, but some (amdgcn)
+   have pointers that span multiple registers.  DWARF permits arbitrary
+   register sets but existing use-cases only require contiguous register
+   sets, as represented here.  */
+struct GTY(()) cfa_reg {
+  unsigned int reg;
+  unsigned short span;
+  unsigned short span_width;  /* A.K.A. register mode size.  */
+
+  cfa_reg& set_by_dwreg (unsigned int r)
+    {
+      reg = r;
+      span = 1;
+      span_width = 0;  /* Unknown size (permitted when span == 1).  */
+      return *this;
+    }
+
+  bool operator== (const cfa_reg &other) const
+    {
+      return (reg == other.reg && span == other.span
+	      && (span_width == other.span_width
+		  || (span == 1
+		      && (span_width == 0 || other.span_width == 0))));
+    }
+
+  bool operator!= (const cfa_reg &other) const
+    {
+      return !(*this == other);
+    }
+};
 
 /* This is how we define the location of the CFA. We use to handle it
    as REG + OFFSET all the time,  but now it can be more complex.
@@ -123,10 +157,10 @@ struct GTY(()) dw_fde_node {
    Instead of passing around REG and OFFSET, we pass a copy
    of this structure.  */
 struct GTY(()) dw_cfa_location {
-  poly_int64_pod offset;
-  poly_int64_pod base_offset;
+  poly_int64 offset;
+  poly_int64 base_offset;
   /* REG is in DWARF_FRAME_REGNUM space, *not* normal REGNO space.  */
-  unsigned int reg;
+  struct cfa_reg reg;
   BOOL_BITFIELD indirect : 1;  /* 1 if CFA is accessed via a dereference.  */
   BOOL_BITFIELD in_use : 1;    /* 1 if a saved cfa is stored here.  */
 };
@@ -200,11 +234,67 @@ struct GTY(()) dw_discr_value {
 
 struct addr_table_entry;
 
+typedef unsigned int var_loc_view;
+
+/* Location lists are ranges + location descriptions for that range,
+   so you can track variables that are in different places over
+   their entire life.  */
+typedef struct GTY(()) dw_loc_list_struct {
+  dw_loc_list_ref dw_loc_next;
+  const char *begin; /* Label and addr_entry for start of range */
+  addr_table_entry *begin_entry;
+  const char *end;  /* Label for end of range */
+  addr_table_entry *end_entry;
+  char *ll_symbol; /* Label for beginning of location list.
+		      Only on head of list.  */
+  char *vl_symbol; /* Label for beginning of view list.  Ditto.  */
+  const char *section; /* Section this loclist is relative to */
+  dw_loc_descr_ref expr;
+  var_loc_view vbegin, vend;
+  hashval_t hash;
+  /* True if all addresses in this and subsequent lists are known to be
+     resolved.  */
+  bool resolved_addr;
+  /* True if this list has been replaced by dw_loc_next.  */
+  bool replaced;
+  /* True if it has been emitted into .debug_loc* / .debug_loclists*
+     section.  */
+  unsigned char emitted : 1;
+  /* True if hash field is index rather than hash value.  */
+  unsigned char num_assigned : 1;
+  /* True if .debug_loclists.dwo offset has been emitted for it already.  */
+  unsigned char offset_emitted : 1;
+  /* True if note_variable_value_in_expr has been called on it.  */
+  unsigned char noted_variable_value : 1;
+  /* True if the range should be emitted even if begin and end
+     are the same.  */
+  bool force;
+} dw_loc_list_node;
+
 /* The dw_val_node describes an attribute's value, as it is
    represented internally.  */
 
 struct GTY(()) dw_val_node {
   enum dw_val_class val_class;
+  /* On 64-bit host, there are 4 bytes of padding between val_class
+     and val_entry.  Reuse the padding for other content of
+     dw_loc_descr_node and dw_attr_struct.  */
+  union dw_val_node_parent
+    {
+      struct dw_val_loc_descr_node
+	{
+	  ENUM_BITFIELD (dwarf_location_atom) dw_loc_opc_v : 8;
+	  /* Used to distinguish DW_OP_addr with a direct symbol relocation
+	     from DW_OP_addr with a dtp-relative symbol relocation.  */
+	  unsigned int dw_loc_dtprel_v : 1;
+	  /* For DW_OP_pick, DW_OP_dup and DW_OP_over operations: true iff.
+	     it targets a DWARF prodecure argument.  In this case, it needs to be
+	     relocated according to the current frame offset.  */
+	  unsigned int dw_loc_frame_offset_rel_v : 1;
+	} u1;
+      int u2;
+      enum dwarf_attribute u3;
+    } GTY((skip)) u;
   struct addr_table_entry * GTY(()) val_entry;
   union dw_val_struct_union
     {
@@ -217,7 +307,7 @@ struct GTY(()) dw_val_node {
       unsigned HOST_WIDE_INT
 	GTY ((tag ("dw_val_class_unsigned_const"))) val_unsigned;
       double_int GTY ((tag ("dw_val_class_const_double"))) val_double;
-      wide_int_ptr GTY ((tag ("dw_val_class_wide_int"))) val_wide;
+      dw_wide_int_ptr GTY ((tag ("dw_val_class_wide_int"))) val_wide;
       dw_vec_const GTY ((tag ("dw_val_class_vec"))) val_vec;
       struct dw_val_die_union
 	{
@@ -250,15 +340,15 @@ struct GTY(()) dw_val_node {
 
 struct GTY((chain_next ("%h.dw_loc_next"))) dw_loc_descr_node {
   dw_loc_descr_ref dw_loc_next;
-  ENUM_BITFIELD (dwarf_location_atom) dw_loc_opc : 8;
+#define dw_loc_opc dw_loc_oprnd1.u.u1.dw_loc_opc_v
   /* Used to distinguish DW_OP_addr with a direct symbol relocation
      from DW_OP_addr with a dtp-relative symbol relocation.  */
-  unsigned int dtprel : 1;
+#define dw_loc_dtprel dw_loc_oprnd1.u.u1.dw_loc_dtprel_v
   /* For DW_OP_pick, DW_OP_dup and DW_OP_over operations: true iff.
      it targets a DWARF prodecure argument.  In this case, it needs to be
      relocated according to the current frame offset.  */
-  unsigned int frame_offset_rel : 1;
-  int dw_loc_addr;
+#define dw_loc_frame_offset_rel dw_loc_oprnd1.u.u1.dw_loc_frame_offset_rel_v
+#define dw_loc_addr dw_loc_oprnd2.u.u2
   dw_val_node dw_loc_oprnd1;
   dw_val_node dw_loc_oprnd2;
 };
@@ -278,11 +368,41 @@ struct GTY(()) dw_discr_list_node {
   int dw_discr_range;
 };
 
-/* Interface from dwarf2out.c to dwarf2cfi.c.  */
+struct GTY((variable_size)) dw_wide_int {
+  unsigned int precision;
+  unsigned int len;
+  HOST_WIDE_INT val[1];
+
+  unsigned int get_precision () const { return precision; }
+  unsigned int get_len () const { return len; }
+  const HOST_WIDE_INT *get_val () const { return val; }
+  inline HOST_WIDE_INT elt (unsigned int) const;
+  inline bool operator == (const dw_wide_int &) const;
+};
+
+inline HOST_WIDE_INT
+dw_wide_int::elt (unsigned int i) const
+{
+  if (i < len)
+    return val[i];
+  wide_int_ref ref = wi::storage_ref (val, len, precision);
+  return wi::sign_mask (ref);
+}
+
+inline bool
+dw_wide_int::operator == (const dw_wide_int &o) const
+{
+  wide_int_ref ref1 = wi::storage_ref (val, len, precision);
+  wide_int_ref ref2 = wi::storage_ref (o.val, o.len, o.precision);
+  return ref1 == ref2;
+}
+
+/* Interface from dwarf2out.cc to dwarf2cfi.cc.  */
 extern struct dw_loc_descr_node *build_cfa_loc
   (dw_cfa_location *, poly_int64);
 extern struct dw_loc_descr_node *build_cfa_aligned_loc
   (dw_cfa_location *, poly_int64, HOST_WIDE_INT);
+extern struct dw_loc_descr_node *build_span_loc (struct cfa_reg);
 extern struct dw_loc_descr_node *mem_loc_descriptor
   (rtx, machine_mode mode, machine_mode mem_mode,
    enum var_init_status);
@@ -293,7 +413,7 @@ extern unsigned long size_of_locs (dw_loc_descr_ref);
 extern void output_loc_sequence (dw_loc_descr_ref, int);
 extern void output_loc_sequence_raw (dw_loc_descr_ref);
 
-/* Interface from dwarf2cfi.c to dwarf2out.c.  */
+/* Interface from dwarf2cfi.cc to dwarf2out.cc.  */
 extern void lookup_cfa_1 (dw_cfi_ref cfi, dw_cfa_location *loc,
 			  dw_cfa_location *remember);
 extern bool cfa_equal_p (const dw_cfa_location *, const dw_cfa_location *);
@@ -303,12 +423,10 @@ extern void output_cfi (dw_cfi_ref, dw_fde_ref, int);
 extern GTY(()) cfi_vec cie_cfi_vec;
 
 /* Interface from dwarf2*.c to the rest of the compiler.  */
-extern enum dw_cfi_oprnd_type dw_cfi_oprnd1_desc
-  (enum dwarf_call_frame_info cfi);
-extern enum dw_cfi_oprnd_type dw_cfi_oprnd2_desc
-  (enum dwarf_call_frame_info cfi);
+extern enum dw_cfi_oprnd_type dw_cfi_oprnd1_desc (dwarf_call_frame_info cfi);
+extern enum dw_cfi_oprnd_type dw_cfi_oprnd2_desc (dwarf_call_frame_info cfi);
 
-extern void output_cfi_directive (FILE *f, struct dw_cfi_node *cfi);
+extern void output_cfi_directive (FILE *f, dw_cfi_ref cfi);
 
 extern void dwarf2out_emit_cfi (dw_cfi_ref cfi);
 
@@ -383,6 +501,54 @@ struct fixed_point_type_info
     } scale_factor;
 };
 
-void dwarf2out_c_finalize (void);
+void dwarf2cfi_cc_finalize (void);
+void dwarf2out_cc_finalize (void);
+
+/* Some DWARF internals are exposed for the needs of DWARF-based debug
+   formats.  */
+
+/* Each DIE attribute has a field specifying the attribute kind,
+   a link to the next attribute in the chain, and an attribute value.
+   Attributes are typically linked below the DIE they modify.  */
+
+typedef struct GTY(()) dw_attr_struct {
+#define dw_attr dw_attr_val.u.u3
+  dw_val_node dw_attr_val;
+}
+dw_attr_node;
+
+extern dw_attr_node *get_AT (dw_die_ref, enum dwarf_attribute);
+extern HOST_WIDE_INT AT_int (dw_attr_node *);
+extern unsigned HOST_WIDE_INT AT_unsigned (dw_attr_node *a);
+extern dw_loc_descr_ref AT_loc (dw_attr_node *);
+extern dw_die_ref get_AT_ref (dw_die_ref, enum dwarf_attribute);
+extern const char *get_AT_string (dw_die_ref, enum dwarf_attribute);
+extern enum dw_val_class AT_class (dw_attr_node *);
+extern unsigned HOST_WIDE_INT AT_unsigned (dw_attr_node *);
+extern unsigned get_AT_unsigned (dw_die_ref, enum dwarf_attribute);
+extern int get_AT_flag (dw_die_ref, enum dwarf_attribute);
+
+extern void add_name_attribute (dw_die_ref, const char *);
+
+extern dw_die_ref new_die_raw (enum dwarf_tag);
+extern dw_die_ref base_type_die (tree, bool);
+
+extern dw_die_ref lookup_decl_die (tree);
+extern dw_die_ref lookup_type_die (tree);
+
+extern dw_die_ref dw_get_die_child (dw_die_ref);
+extern dw_die_ref dw_get_die_sib (dw_die_ref);
+extern dw_die_ref dw_get_die_parent (dw_die_ref);
+extern enum dwarf_tag dw_get_die_tag (dw_die_ref);
+
+/* Data about a single source file.  */
+struct GTY((for_user)) dwarf_file_data {
+  const char * key;
+  const char * filename;
+  int emitted_number;
+};
+
+extern struct dwarf_file_data *get_AT_file (dw_die_ref,
+					    enum dwarf_attribute);
 
 #endif /* GCC_DWARF2OUT_H */

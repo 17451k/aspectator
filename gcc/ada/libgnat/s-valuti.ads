@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -31,23 +31,22 @@
 
 --  This package provides some common utilities used by the s-valxxx files
 
-package System.Val_Util is
-   pragma Pure;
-
-   procedure Bad_Value (S : String);
-   pragma No_Return (Bad_Value);
+package System.Val_Util
+  with SPARK_Mode, Pure
+is
+   procedure Bad_Value (S : String) with No_Return;
    --  Raises constraint error with message: bad input for 'Value: "xxx"
 
    procedure Normalize_String
-     (S    : in out String;
-      F, L : out Integer);
+     (S             : in out String;
+      F, L          : out Integer;
+      To_Upper_Case : Boolean);
    --  This procedure scans the string S setting F to be the index of the first
    --  non-blank character of S and L to be the index of the last non-blank
-   --  character of S. Any lower case characters present in S will be folded to
-   --  their upper case equivalent except for character literals. If S consists
-   --  of entirely blanks then Constraint_Error is raised.
-   --
-   --  Note: if S is the null string, F is set to S'First, L to S'Last
+   --  character of S. If To_Upper_Case is True and S does not represent a
+   --  character literal, then any lower case characters in S are changed to
+   --  their upper case counterparts. If S consists of only blank characters
+   --  (including when S = "") then we return with F > L.
 
    procedure Scan_Sign
      (Str   : String;
@@ -59,13 +58,12 @@ package System.Val_Util is
    --  string to be scanned starting at Ptr.all, and Max is the index of the
    --  last character in the string). Scan_Sign first scans out any initial
    --  blanks, raising Constraint_Error if the field is all blank. It then
-   --  checks for and skips an initial plus or minus, requiring a non-blank
-   --  character to follow (Constraint_Error is raised if plus or minus appears
-   --  at the end of the string or with a following blank). Minus is set True
-   --  if a minus sign was skipped, and False otherwise. On exit Ptr.all points
-   --  to the character after the sign, or to the first non-blank character
-   --  if no sign is present. Start is set to the point to the first non-blank
-   --  character (sign or digit after it).
+   --  checks for and skips an initial plus or minus (Constraint_Error is
+   --  raised if plus or minus appears at the end of the string). Minus is set
+   --  True if a minus sign was skipped, and False otherwise. On exit Ptr.all
+   --  points to the character after the sign, or to the first non-blank
+   --  character if no sign is present. Start is set to the point to the first
+   --  non-blank character.
    --
    --  Note: if Str is null, i.e. if Max is less than Ptr, then this is a
    --  special case of an all-blank string, and Ptr is unchanged, and hence
@@ -83,11 +81,12 @@ package System.Val_Util is
    --  Same as Scan_Sign, but allows only plus, not minus. This is used for
    --  modular types.
 
-   function Scan_Exponent
+   procedure Scan_Exponent
      (Str  : String;
       Ptr  : not null access Integer;
       Max  : Integer;
-      Real : Boolean := False) return Integer;
+      Exp  : out Integer;
+      Real : Boolean := False);
    --  Called to scan a possible exponent. Str, Ptr, Max are as described above
    --  for Scan_Sign. If Ptr.all < Max and Str (Ptr.all) = 'E' or 'e', then an
    --  exponent is scanned out, with the exponent value returned in Exp, and
@@ -113,7 +112,7 @@ package System.Val_Util is
       Max : Integer;
       Ext : Boolean);
    --  Called if an underscore is encountered while scanning digits. Str (P)
-   --  contains the underscore. Ptr it the pointer to be returned to the
+   --  contains the underscore. Ptr is the pointer to be returned to the
    --  ultimate caller of the scan routine, Max is the maximum subscript in
    --  Str, and Ext indicates if extended digits are allowed. In the case
    --  where the underscore is invalid, Constraint_Error is raised with Ptr

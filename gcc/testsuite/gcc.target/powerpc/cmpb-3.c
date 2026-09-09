@@ -1,6 +1,7 @@
 /* { dg-do compile { target { powerpc*-*-* } } } */
+/* Skip powerpc*-*-darwin* powerpc-*-eabi as dropped popcntb_ok.  */
+/* { dg-skip-if "" { powerpc*-*-darwin* powerpc-*-eabi } } */
 /* { dg-require-effective-target ilp32 } */
-/* { dg-require-effective-target powerpc_popcntb_ok } */
 /* { dg-options "-mdejagnu-cpu=power6" } */
 
 void abort ();
@@ -8,7 +9,7 @@ void abort ();
 long long int
 do_compare (long long int a, long long int b)
 {
-  return __builtin_cmpb (a, b);	/* { dg-error "'__builtin_cmpb' is not supported in this compiler configuration" } */
+  return __builtin_cmpb (a, b);	/* { dg-error "'__builtin_p6_cmpb' requires the '-mcpu=power6' option and either the '-m64' or '-mpowerpc64' option" } */
 }
 
 void expect (long long int pattern, long long int value)

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -35,23 +35,25 @@
 with System.Unsigned_Types;
 with System.Value_U;
 
-package System.Val_LLLU is
+package System.Val_LLLU with SPARK_Mode is
    pragma Preelaborate;
 
    subtype Long_Long_Long_Unsigned is Unsigned_Types.Long_Long_Long_Unsigned;
 
    package Impl is new Value_U (Long_Long_Long_Unsigned);
 
-   function Scan_Raw_Long_Long_Long_Unsigned
+   procedure Scan_Raw_Long_Long_Long_Unsigned
      (Str : String;
       Ptr : not null access Integer;
-      Max : Integer) return Long_Long_Long_Unsigned
+      Max : Integer;
+      Res : out Long_Long_Long_Unsigned)
      renames Impl.Scan_Raw_Unsigned;
 
-   function Scan_Long_Long_Long_Unsigned
+   procedure Scan_Long_Long_Long_Unsigned
      (Str : String;
       Ptr : not null access Integer;
-      Max : Integer) return Long_Long_Long_Unsigned
+      Max : Integer;
+      Res : out Long_Long_Long_Unsigned)
      renames Impl.Scan_Unsigned;
 
    function Value_Long_Long_Long_Unsigned

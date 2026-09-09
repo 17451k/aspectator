@@ -45,12 +45,8 @@ func (gccgoToolchain) linker() string {
 	return GccgoBin
 }
 
-func (gccgoToolchain) ar() string {
-	ar := cfg.Getenv("AR")
-	if ar == "" {
-		ar = "ar"
-	}
-	return ar
+func (gccgoToolchain) ar() []string {
+	return envList("AR", "ar")
 }
 
 func checkGccgoBin() {
@@ -102,7 +98,7 @@ func (tools gccgoToolchain) gc(b *Builder, a *Action, archive string, importcfg,
 
 	if b.gccSupportsFlag(args[:1], "-ffile-prefix-map=a=b") {
 		if cfg.BuildTrimpath {
-			args = append(args, "-ffile-prefix-map="+base.Cwd+"=.")
+			args = append(args, "-ffile-prefix-map="+base.Cwd()+"=.")
 			args = append(args, "-ffile-prefix-map="+b.WorkDir+"=/tmp/go-build")
 		}
 		if fsys.OverlayFile != "" {
@@ -114,9 +110,9 @@ func (tools gccgoToolchain) gc(b *Builder, a *Action, archive string, importcfg,
 				}
 				toPath := absPath
 				// gccgo only applies the last matching rule, so also handle the case where
-				// BuildTrimpath is true and the path is relative to base.Cwd.
-				if cfg.BuildTrimpath && str.HasFilePathPrefix(toPath, base.Cwd) {
-					toPath = "." + toPath[len(base.Cwd):]
+				// BuildTrimpath is true and the path is relative to base.Cwd().
+				if cfg.BuildTrimpath && str.HasFilePathPrefix(toPath, base.Cwd()) {
+					toPath = "." + toPath[len(base.Cwd()):]
 				}
 				args = append(args, "-ffile-prefix-map="+overlayPath+"="+toPath)
 			}
@@ -413,15 +409,8 @@ func (tools gccgoToolchain) link(b *Builder, root *Action, out, importcfg string
 	}
 
 	for _, a := range allactions {
-		// Gather CgoLDFLAGS, but not from standard packages.
-		// The go tool can dig up runtime/cgo from GOROOT and
-		// think that it should use its CgoLDFLAGS, but gccgo
-		// doesn't use runtime/cgo.
 		if a.Package == nil {
 			continue
-		}
-		if !a.Package.Standard {
-			cgoldflags = append(cgoldflags, a.Package.CgoLDFLAGS...)
 		}
 		if len(a.Package.CgoFiles) > 0 {
 			usesCgo = true
@@ -452,9 +441,6 @@ func (tools gccgoToolchain) link(b *Builder, root *Action, out, importcfg string
 
 	ldflags = append(ldflags, cgoldflags...)
 	ldflags = append(ldflags, envList("CGO_LDFLAGS", "")...)
-	if root.Package != nil {
-		ldflags = append(ldflags, root.Package.CgoLDFLAGS...)
-	}
 	if cfg.Goos != "aix" {
 		ldflags = str.StringList("-Wl,-(", ldflags, "-Wl,-)")
 	}
@@ -597,7 +583,7 @@ func (tools gccgoToolchain) cc(b *Builder, a *Action, ofile, cfile string) error
 	}
 	defs = tools.maybePIC(defs)
 	if b.gccSupportsFlag(compiler, "-ffile-prefix-map=a=b") {
-		defs = append(defs, "-ffile-prefix-map="+base.Cwd+"=.")
+		defs = append(defs, "-ffile-prefix-map="+base.Cwd()+"=.")
 		defs = append(defs, "-ffile-prefix-map="+b.WorkDir+"=/tmp/go-build")
 	} else if b.gccSupportsFlag(compiler, "-fdebug-prefix-map=a=b") {
 		defs = append(defs, "-fdebug-prefix-map="+b.WorkDir+"=/tmp/go-build")

@@ -1,5 +1,27 @@
+! OpenACC 'if' clause.
+
+! See also 'self-1.f90'.
+
 ! { dg-do run }
 ! { dg-additional-options "-cpp" }
+
+! { dg-additional-options "--param=openacc-kernels=decompose" }
+
+! { dg-additional-options "-fopt-info-note-omp" }
+! { dg-additional-options "-foffload=-fopt-info-note-omp" }
+
+! { dg-additional-options "--param=openacc-privatization=noisy" }
+! { dg-additional-options "-foffload=--param=openacc-privatization=noisy" }
+! Prune a few: uninteresting, and potentially varying depending on GCC configuration (data types):
+! { dg-prune-output {note: variable 'D\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} }
+
+! It's only with Tcl 8.5 (released in 2007) that "the variable 'varName'
+! passed to 'incr' may be unset, and in that case, it will be set to [...]",
+! so to maintain compatibility with earlier Tcl releases, we manually
+! initialize counter variables:
+! { dg-line l_dummy[variable c_compute 0] }
+! { dg-message "dummy" "" { target iN-VAl-Id } l_dummy } to avoid
+! "WARNING: dg-line var l_dummy defined, but not used".  */
 
 program main
   use openacc
@@ -19,8 +41,10 @@ program main
 
   a(:) = 4.0
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (1 == 1)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (1 == 1) ! { dg-line l_compute[incr c_compute] }
      do i = 1, N
+        ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
+        !TODO Unhandled 'CONST_DECL' instances for constant argument in 'acc_on_device' call.
         if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
           b(i) = a(i) + 1
         else
@@ -41,8 +65,9 @@ program main
 
   a(:) = 16.0
 
-  !$acc parallel if (0 == 1)
+  !$acc parallel if (0 == 1) ! { dg-line l_compute[incr c_compute] }
      do i = 1, N
+        ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
        if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
          b(i) = a(i) + 1
        else
@@ -57,8 +82,9 @@ program main
 
   a(:) = 8.0
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (one == 1)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (one == 1) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -79,8 +105,9 @@ program main
 
   a(:) = 22.0
 
-  !$acc parallel if (zero == 1)
+  !$acc parallel if (zero == 1) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -95,8 +122,9 @@ program main
 
   a(:) = 16.0
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (.TRUE.)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (.TRUE.) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -117,8 +145,9 @@ program main
 
   a(:) = 76.0
 
-  !$acc parallel if (.FALSE.)
+  !$acc parallel if (.FALSE.) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -135,8 +164,9 @@ program main
 
   nn = 1
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (nn == 1)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (nn == 1) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -159,8 +189,9 @@ program main
 
   nn = 0
 
-  !$acc parallel if (nn == 1)
+  !$acc parallel if (nn == 1) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -177,8 +208,9 @@ program main
 
   nn = 1
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -201,8 +233,9 @@ program main
 
   nn = 0;
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -217,8 +250,9 @@ program main
 
   a(:) = 91.0
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (-2 > 0)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (-2 > 0) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -233,8 +267,9 @@ program main
 
   a(:) = 43.0
 
-  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (one == 1)
+  !$acc parallel copyin (a(1:N)) copyout (b(1:N)) if (one == 1) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -255,8 +290,9 @@ program main
 
   a(:) = 87.0
 
-  !$acc parallel if (one == 0)
+  !$acc parallel if (one == 0) ! { dg-line l_compute[incr c_compute] }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -333,6 +369,7 @@ program main
   b(:) = 0.0
 
   !$acc data copyin (a(1:N)) copyout (b(1:N)) if (1 == 1)
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
 
     !$acc parallel present (a(1:N))
        do i = 1, N
@@ -349,6 +386,7 @@ program main
   b(:) = 1.0
 
   !$acc data copyin (a(1:N)) copyout (b(1:N)) if (0 == 1)
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: artificial} "" { target { ! openacc_host_selected } } .-1 }
 
 #if !ACC_MEM_SHARED
   if (acc_is_present (a) .eqv. .TRUE.) STOP 21
@@ -361,16 +399,21 @@ program main
   b(:) = 21.0
 
   !$acc data copyin (a(1:N)) if (1 == 1)
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: artificial} "" { target { ! openacc_host_selected } } .-2 }
 
 #if !ACC_MEM_SHARED
     if (acc_is_present (a) .eqv. .FALSE.) STOP 23
 #endif
 
     !$acc data copyout (b(1:N)) if (0 == 1)
+    ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
+    ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: artificial} "" { target { ! openacc_host_selected } } .-2 }
 #if !ACC_MEM_SHARED
       if (acc_is_present (b) .eqv. .TRUE.) STOP 24
 #endif
         !$acc data copyout (b(1:N)) if (1 == 1)
+        ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
 
         !$acc parallel present (a(1:N)) present (b(1:N))
           do i = 1, N
@@ -452,8 +495,12 @@ program main
 
   a(:) = 4.0
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (1 == 1)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (1 == 1) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
      do i = 1, N
+        ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
         if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
           b(i) = a(i) + 1
         else
@@ -474,8 +521,12 @@ program main
 
   a(:) = 16.0
 
-  !$acc kernels if (0 == 1)
+  !$acc kernels if (0 == 1) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
      do i = 1, N
+        ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
        if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
          b(i) = a(i) + 1
        else
@@ -490,8 +541,12 @@ program main
 
   a(:) = 8.0
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (one == 1)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (one == 1) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -512,8 +567,12 @@ program main
 
   a(:) = 22.0
 
-  !$acc kernels if (zero == 1)
+  !$acc kernels if (zero == 1) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -528,8 +587,12 @@ program main
 
   a(:) = 16.0
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (.TRUE.)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (.TRUE.) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -550,8 +613,12 @@ program main
 
   a(:) = 76.0
 
-  !$acc kernels if (.FALSE.)
+  !$acc kernels if (.FALSE.) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -568,8 +635,12 @@ program main
 
   nn = 1
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (nn == 1)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (nn == 1) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -592,8 +663,12 @@ program main
 
   nn = 0
 
-  !$acc kernels if (nn == 1)
+  !$acc kernels if (nn == 1) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -610,8 +685,12 @@ program main
 
   nn = 1
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -634,8 +713,12 @@ program main
 
   nn = 0;
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if ((nn + nn) > 0) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -650,8 +733,12 @@ program main
 
   a(:) = 91.0
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (-2 > 0)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (-2 > 0) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -666,8 +753,12 @@ program main
 
   a(:) = 43.0
 
-  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (one == 1)
+  !$acc kernels copyin (a(1:N)) copyout (b(1:N)) if (one == 1) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+       ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -688,8 +779,12 @@ program main
 
   a(:) = 87.0
 
-  !$acc kernels if (one == 0)
+  !$acc kernels if (one == 0) ! { dg-line l_compute[incr c_compute] }
+  ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+  !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+  ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
     do i = 1, N
+      ! { dg-note {variable 'C\.[0-9]+' declared in block potentially has improper OpenACC privatization level: 'const_decl'} "TODO" { target *-*-* } l_compute$c_compute }
       if (acc_on_device (acc_device_host) .eqv. .TRUE.) then
         b(i) = a(i) + 1
       else
@@ -766,8 +861,12 @@ program main
   b(:) = 0.0
 
   !$acc data copyin (a(1:N)) copyout (b(1:N)) if (1 == 1)
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
 
-    !$acc kernels present (a(1:N))
+    !$acc kernels present (a(1:N)) ! { dg-line l_compute[incr c_compute] }
+    ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+    !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+    ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
        do i = 1, N
            b(i) = a(i)
        end do
@@ -782,6 +881,7 @@ program main
   b(:) = 1.0
 
   !$acc data copyin (a(1:N)) copyout (b(1:N)) if (0 == 1)
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: artificial} "" { target { ! openacc_host_selected } } .-1 }
 
 #if !ACC_MEM_SHARED
   if (acc_is_present (a) .eqv. .TRUE.) STOP 56
@@ -794,18 +894,26 @@ program main
   b(:) = 21.0
 
   !$acc data copyin (a(1:N)) if (1 == 1)
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
+  ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: artificial} "" { target { ! openacc_host_selected } } .-2 }
 
 #if !ACC_MEM_SHARED
     if (acc_is_present (a) .eqv. .FALSE.) STOP 58
 #endif
 
     !$acc data copyout (b(1:N)) if (0 == 1)
+    ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
+    ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: artificial} "" { target { ! openacc_host_selected } } .-2 }
 #if !ACC_MEM_SHARED
       if (acc_is_present (b) .eqv. .TRUE.) STOP 59
 #endif
         !$acc data copyout (b(1:N)) if (1 == 1)
+        ! { dg-note {variable 'parm\.[0-9]+' declared in block isn't candidate for adjusting OpenACC privatization level: not addressable} "" { target *-*-* } .-1 }
 
-        !$acc kernels present (a(1:N)) present (b(1:N))
+        !$acc kernels present (a(1:N)) present (b(1:N)) ! { dg-line l_compute[incr c_compute] }
+        ! { dg-note {OpenACC 'kernels' decomposition: variable 'i' in 'copy' clause requested to be made addressable} {} { target *-*-* } l_compute$c_compute }
+        !   { dg-note {variable 'i' already made addressable} {} { target *-*-* } l_compute$c_compute } */
+        ! { dg-note {beginning 'parloops' part in OpenACC 'kernels' region} "" { target *-*-* } .+1 }
           do i = 1, N
             b(i) = a(i)
           end do

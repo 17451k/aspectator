@@ -1,4 +1,4 @@
-// Copyright (C) 2015-2021 Free Software Foundation, Inc.
+// Copyright (C) 2015-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -16,12 +16,6 @@
 // <http://www.gnu.org/licenses/>.
 
 #include <type_traits>
-#include <testsuite_tr1.h>
-#include <utility>
-#include <array>
-#include <tuple>
-#include <queue>
-#include <stack>
 
 #if defined(test_std_is_nothrow_swappable)
 #  ifndef __cpp_lib_is_swappable
@@ -40,6 +34,13 @@ using is_nothrow_swappable = std::__is_nothrow_swappable<T>;
 # error "Either test_std_is_nothrow_swappable or " \
         "test_std_is_nothrow_swappable_ext need to be defined"
 #endif
+
+#include <utility>
+#include <array>
+#include <tuple>
+#include <queue>
+#include <stack>
+#include <testsuite_tr1.h>
 
 namespace funny {
   struct F {};
@@ -285,7 +286,9 @@ void test01()
   static_assert(test_property<is_nothrow_swappable,
 		std::queue<ThrowCopyConsClass>>(true), "");
   static_assert(test_property<is_nothrow_swappable,
-		std::priority_queue<ThrowCopyConsClass>>(true), "");
+		std::priority_queue<ThrowCopyConsClass,
+				    std::vector<ThrowCopyConsClass>,
+				    comps::CompareNoThrowCopyable>>(true), "");
   static_assert(test_property<is_nothrow_swappable,
 		std::stack<ThrowCopyConsClass>>(true), "");
   static_assert(test_property<is_nothrow_swappable,

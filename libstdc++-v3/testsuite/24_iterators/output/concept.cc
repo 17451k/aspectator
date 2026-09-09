@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Free Software Foundation, Inc.
+// Copyright (C) 2019-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,8 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do compile { target c++2a } }
+// { dg-do compile { target c++20 } }
 
 #include <iterator>
 
@@ -68,7 +67,7 @@ using std::string;
 using std::string_view;
 using std::vector;
 
-struct B { };
+struct B { bool operator<(const B&) const; };
 
 static_assert( output_iterator< array<int, 1>::iterator, int > );
 static_assert( output_iterator< array<B, 1>::iterator, B > );

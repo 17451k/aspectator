@@ -1,3 +1,4 @@
+// { dg-additional-options "-Wno-deprecated-openmp" }
 void foo (void);
 int v;
 #ifdef __cplusplus
@@ -180,6 +181,24 @@ f5 (int *a)
     {
       #pragma omp atomic write		/* { dg-error "OpenMP constructs other than 'parallel', 'loop' or 'simd' may not be nested inside a 'loop' region" "" { target c++ } } */
       v = a[i];				/* { dg-error "OpenMP constructs other than 'parallel', 'loop' or 'simd' may not be nested inside a 'loop' region" "" { target c } } */
+    }
+  #pragma omp loop
+  for (i = 0; i < 64; i++)
+    {
+      #pragma omp master		/* { dg-error "OpenMP constructs other than 'parallel', 'loop' or 'simd' may not be nested inside a 'loop' region" } */
+      foo ();
+    }
+  #pragma omp loop
+  for (i = 0; i < 64; i++)
+    {
+      #pragma omp masked		/* { dg-error "OpenMP constructs other than 'parallel', 'loop' or 'simd' may not be nested inside a 'loop' region" } */
+      foo ();
+    }
+  #pragma omp loop
+  for (i = 0; i < 64; i++)
+    {
+      #pragma omp scope			/* { dg-error "OpenMP constructs other than 'parallel', 'loop' or 'simd' may not be nested inside a 'loop' region" } */
+      foo ();
     }
   #pragma omp loop
   for (i = 0; i < 64; i++)

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -33,9 +33,14 @@
 
 with System.Exponn;
 
-package System.Exn_LLLI is
+package System.Exn_LLLI
+  with SPARK_Mode
+is
+   package Exponn_Integer is new Exponn (Long_Long_Long_Integer);
 
-   function Exn_Long_Long_Long_Integer is new Exponn (Long_Long_Long_Integer);
-   pragma Pure_Function (Exn_Long_Long_Long_Integer);
+   function Exn_Long_Long_Long_Integer
+     (Left : Long_Long_Long_Integer; Right : Natural)
+      return Long_Long_Long_Integer
+     renames Exponn_Integer.Expon;
 
 end System.Exn_LLLI;

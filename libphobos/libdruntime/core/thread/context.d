@@ -6,11 +6,12 @@
  *      $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0).
  *    (See accompanying file LICENSE)
  * Authors:   Sean Kelly, Walter Bright, Alex Rønne Petersen, Martin Nowak
- * Source:    $(DRUNTIMESRC core/thread/package.d)
+ * Source:    $(DRUNTIMESRC core/thread/context.d)
  */
 
 module core.thread.context;
 
+///
 struct StackContext
 {
     void* bstack, tstack;

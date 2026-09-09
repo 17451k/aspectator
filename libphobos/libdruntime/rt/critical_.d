@@ -2,8 +2,9 @@
  * Implementation of support routines for synchronized blocks.
  *
  * Copyright: Copyright Digital Mars 2000 - 2011.
- * License:   $(WEB www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
+ * License:   $(HTTP www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
  * Authors:   Walter Bright, Sean Kelly
+ * Source: $(DRUNTIMESRC rt/_critical_.d)
  */
 
 /*          Copyright Digital Mars 2000 - 2011.
@@ -17,17 +18,17 @@ nothrow:
 
 import rt.monitor_, core.atomic;
 
-extern (C) void _d_critical_init()
+extern (C) void _d_critical_init() @nogc nothrow
 {
     initMutex(cast(Mutex*)&gcs.mtx);
-    head = &gcs;
+    atomicStore(head, &gcs);
 }
 
-extern (C) void _d_critical_term()
+extern (C) void _d_critical_term() @nogc nothrow
 {
     // This function is only ever called by the runtime shutdown code
     // and therefore is single threaded so the following cast is fine.
-    auto h = cast()head;
+    auto h = cast(D_CRITICAL_SECTION*) atomicLoad(head);
     for (auto p = h; p; p = p.next)
         destroyMutex(cast(Mutex*)&p.mtx);
 }
@@ -80,8 +81,8 @@ void ensureMutex(shared(D_CRITICAL_SECTION)* cs)
         if (atomicLoad!(MemoryOrder.raw)(cs.next) is null)
         {
             initMutex(cast(Mutex*)&cs.mtx);
-            auto ohead = head;
-            head = cs;
+            auto ohead = atomicLoad(head);
+            atomicStore(head, cs);
             atomicStore!(MemoryOrder.rel)(cs.next, ohead);
         }
         unlockMutex(cast(Mutex*)&gcs.mtx);

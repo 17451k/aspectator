@@ -1,5 +1,5 @@
 # Configure script for c++tools
-#   Copyright (C) 2020 Free Software Foundation, Inc.
+#   Copyright (C) 2020-2026 Free Software Foundation, Inc.
 #   Written by Nathan Sidwell <nathan@acm.org> while at FaceBook
 #
 # This file is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
 # By default g++ uses an in-process mapper.
 
 sinclude(../config/acx.m4)
-sinclude(../config/ax_lib_socket_nsl.m4)
 
 AC_INIT(c++tools)
 
@@ -40,6 +39,8 @@ AC_PROG_CXX
 MISSING=`cd $ac_aux_dir && ${PWDCMD-pwd}`/missing
 AC_CHECK_PROGS([AUTOCONF], [autoconf], [$MISSING autoconf])
 AC_CHECK_PROGS([AUTOHEADER], [autoheader], [$MISSING autoheader])
+
+AC_LANG(C++)
 
 dnl Enabled by default
 AC_MSG_CHECKING([whether to build C++ tools])
@@ -67,12 +68,49 @@ AC_MSG_RESULT([$maintainer_mode])
 test "$maintainer_mode" = yes && MAINTAINER=yes
 AC_SUBST(MAINTAINER)
 
-# Check whether --enable-default-pie was given.
-AC_ARG_ENABLE(default-pie,
-[AS_HELP_STRING([--enable-default-pie],
-		  [enable Position Independent Executable as default])],
-[PIEFLAG=-fPIE], [PIEFLAG=])
-AC_SUBST([PIEFLAG])
+# Handle configuration of checking; for the tools in this directory we
+# default to release checking and stricter checks do not change this.
+
+AC_ARG_ENABLE(checking,
+[AS_HELP_STRING([[--enable-checking[=LIST]]],
+		[enable expensive run-time checks.  With LIST,
+		 enable only specific categories of checks.
+		 Categories are: yes,no,all,none,release.])],
+[ac_checking_flags="${enableval}"],[
+# Default to checking.
+ac_checking_flags=yes
+])
+IFS="${IFS= 	}"; ac_save_IFS="$IFS"; IFS="$IFS,"
+for check in release $ac_checking_flags
+do
+	case $check in
+	# these set all the flags to specific states
+	yes|all|release|assert) ac_assert_checking=1 ; ;;
+	no|none) ac_assert_checking= ; ;;
+	*) ;;
+	esac
+done
+IFS="$ac_save_IFS"
+
+if test x$ac_assert_checking != x ; then
+  AC_DEFINE(ENABLE_ASSERT_CHECKING, 1,
+[Define if you want assertions enabled.  This is a cheap check.])
+fi
+
+# Enable --enable-host-pie
+AC_ARG_ENABLE(host-pie,
+[AS_HELP_STRING([--enable-host-pie],
+		[build host code as PIE])],
+[PICFLAG=-fPIE; LD_PICFLAG=-pie], [])
+AC_SUBST(PICFLAG)
+
+# Enable --enable-host-bind-now
+AC_ARG_ENABLE(host-bind-now,
+[AS_HELP_STRING([--enable-host-bind-now],
+       [link host code as BIND_NOW])],
+[LD_PICFLAG="$LD_PICFLAG -Wl,-z,now"], [])
+AC_SUBST(enable_host_bind_now)
+AC_SUBST(LD_PICFLAG)
 
 # Check if O_CLOEXEC is defined by fcntl
 AC_CACHE_CHECK(for O_CLOEXEC, ac_cv_o_cloexec, [
@@ -218,15 +256,6 @@ fi
 
 # Determine what GCC version number to use in filesystem paths.
 GCC_BASE_VER
-
-# Solaris needs libsocket and libnsl for socket functions before 11.4.
-# libcody uses those.
-save_LIBS="$LIBS"
-LIBS=
-AX_LIB_SOCKET_NSL
-NETLIBS="$LIBS"
-LIBS="$save_LIBS"
-AC_SUBST(NETLIBS)
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile])

@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,14 +15,15 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do run { target c++2a } }
+// { dg-do run { target c++20 } }
 
 #include <algorithm>
 #include <array>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include <testsuite_hooks.h>
 #include <testsuite_iterators.h>
@@ -93,7 +94,7 @@ test05()
 {
   using namespace std::literals;
   std::vector<std::string> x = {"the", " ", "quick", " ", "brown", " ", "fox"};
-  auto v = x | views::join | views::split(' ');
+  auto v = x | views::join | views::lazy_split(' ');
   auto i = v.begin();
   VERIFY( ranges::equal(*i++, "the"sv) );
   VERIFY( ranges::equal(*i++, "quick"sv) );
@@ -113,7 +114,7 @@ test06()
   // Verify that _Iterator<false> is implicitly convertible to _Iterator<true>.
   static_assert(!std::same_as<decltype(ranges::begin(v)),
 			      decltype(ranges::cbegin(v))>);
-  auto a = ranges::cbegin(v);
+  auto a = std::cbegin(v);
   a = ranges::begin(v);
 
   // Verify that _Sentinel<false> is implicitly convertible to _Sentinel<true>.
@@ -193,6 +194,63 @@ test11()
     ;
 }
 
+void
+test12()
+{
+  // PR libstdc++/101263
+  constexpr auto b = [] {
+    auto r = std::views::iota(0, 5)
+      | std::views::lazy_split(0)
+      | std::views::join;
+    return r.begin() != r.end();
+  }();
+}
+
+void
+test13()
+{
+  // PR libstdc++/106320
+  auto l = std::views::transform([](auto x) {
+    return x | std::views::transform([i=0](auto y) {
+      return y;
+    });
+  });
+  std::vector<std::vector<int>> v{{5, 6, 7}};
+  v | l | std::views::join;
+}
+
+void
+test14()
+{
+  // LWG 3569: join_view fails to support ranges of ranges with
+  // non-default_initializable iterators
+  auto ss = std::istringstream{"1 2 3"};
+  auto v = views::single(views::istream<int>(ss));
+  using inner = ranges::range_reference_t<decltype(v)>;
+  static_assert(ranges::input_range<inner>
+		&& !ranges::forward_range<inner>
+		&& !std::default_initializable<ranges::iterator_t<inner>>);
+  VERIFY( ranges::equal(v | views::join, (int[]){1, 2, 3}) );
+}
+
+void
+test15()
+{
+  // PR libstdc++/119962 - __maybe_present_t misses initialization
+  constexpr decltype(views::join(views::single(views::single(0))).begin()) it;
+}
+
+void
+test16()
+{
+  // PR libstdc++/121804 - join_view::iterator::_M_get_inner should be noexcept
+  std::vector<std::vector<int>> vv;
+  ranges::join_view j{vv};
+  auto jit = j.begin();
+  static_assert(noexcept(ranges::iter_move(jit)));
+  static_assert(noexcept(ranges::iter_swap(jit, jit)));
+}
+
 int
 main()
 {
@@ -207,4 +265,9 @@ main()
   test09();
   test10();
   test11();
+  test12();
+  test13();
+  test14();
+  test15();
+  test16();
 }

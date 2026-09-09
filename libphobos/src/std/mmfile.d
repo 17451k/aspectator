@@ -2,15 +2,27 @@
 
 /**
  * Read and write memory mapped files.
- * Copyright: Copyright Digital Mars 2004 - 2009.
+ *
+ * Memory mapped files are a mechanism in operating systems that allows
+ * file access through virtual memory. After opening a file with `MmFile`,
+ * the contents can be read from or written to with standard slice / pointer operations.
+ * Changes to the memory are automatically reflected in the underlying file.
+ *
+ * Memory mapping can increase I/O performance of large files, compared to buffered
+ * read / write operations from `std.file` and `std.stdio`. However, I/O errors are
+ * not handled as safely: when for example the disk that the file is on gets removed,
+ * reading from it may result in a segfault.
+ *
+ * Copyright: Copyright The D Language Foundation 2004 - 2009.
  * License:   $(HTTP www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
  * Authors:   $(HTTP digitalmars.com, Walter Bright),
  *            Matthew Wilson
- * Source:    $(PHOBOSSRC std/_mmfile.d)
+ * References: $(LINK https://en.wikipedia.org/wiki/Memory-mapped_file)
+ * Source:    $(PHOBOSSRC std/mmfile.d)
  *
  * $(SCRIPT inhibitQuickIndex = 1;)
  */
-/*          Copyright Digital Mars 2004 - 2009.
+/*          Copyright The D Language Foundation 2004 - 2009.
  * Distributed under the Boost Software License, Version 1.0.
  *    (See accompanying file LICENSE_1_0.txt or copy at
  *          http://www.boost.org/LICENSE_1_0.txt)
@@ -31,7 +43,8 @@ import std.internal.cstring;
 
 version (Windows)
 {
-    import core.sys.windows.windows;
+    import core.sys.windows.winbase;
+    import core.sys.windows.winnt;
     import std.utf;
     import std.windows.syserror;
 }
@@ -67,15 +80,16 @@ class MmFile
      * Open memory mapped file filename for reading.
      * File is closed when the object instance is deleted.
      * Throws:
-     *  std.file.FileException
+     *  - On POSIX, $(REF ErrnoException, std, exception).
+     *  - On Windows, $(REF WindowsException, std, windows, syserror).
      */
-    this(string filename)
+    this(string filename) scope
     {
         this(filename, Mode.read, 0, null);
     }
 
     version (linux) this(File file, Mode mode = Mode.read, ulong size = 0,
-            void* address = null, size_t window = 0)
+            void* address = null, size_t window = 0) scope
     {
         // Save a copy of the File to make sure the fd stays open.
         this.file = file;
@@ -83,12 +97,12 @@ class MmFile
     }
 
     version (linux) private this(int fildes, Mode mode, ulong size,
-            void* address, size_t window)
+            void* address, size_t window) scope
     {
         int oflag;
         int fmode;
 
-        switch (mode)
+        final switch (mode)
         {
         case Mode.read:
             flags = MAP_SHARED;
@@ -118,9 +132,6 @@ class MmFile
             oflag = O_RDWR;
             fmode = 0;
             break;
-
-        default:
-            assert(0);
         }
 
         fd = fildes;
@@ -166,10 +177,11 @@ class MmFile
      *      with 0 meaning map the entire file. The window size must be a
      *      multiple of the memory allocation page size.
      * Throws:
-     *  std.file.FileException
+     *  - On POSIX, $(REF ErrnoException, std, exception).
+     *  - On Windows, $(REF WindowsException, std, windows, syserror).
      */
     this(string filename, Mode mode, ulong size, void* address,
-            size_t window = 0)
+            size_t window = 0) scope
     {
         this.filename = filename;
         this.mMode = mode;
@@ -184,7 +196,7 @@ class MmFile
             uint dwCreationDisposition;
             uint flProtect;
 
-            switch (mode)
+            final switch (mode)
             {
             case Mode.read:
                 dwDesiredAccess2 = GENERIC_READ;
@@ -218,9 +230,6 @@ class MmFile
                 flProtect = PAGE_WRITECOPY;
                 dwDesiredAccess = FILE_MAP_COPY;
                 break;
-
-            default:
-                assert(0);
             }
 
             if (filename != null)
@@ -281,7 +290,7 @@ class MmFile
             int oflag;
             int fmode;
 
-            switch (mode)
+            final switch (mode)
             {
             case Mode.read:
                 flags = MAP_SHARED;
@@ -311,9 +320,6 @@ class MmFile
                 oflag = O_RDWR;
                 fmode = 0;
                 break;
-
-            default:
-                assert(0);
             }
 
             if (filename.length)
@@ -343,7 +349,6 @@ class MmFile
             else
             {
                 fd = -1;
-                version (CRuntime_Glibc) import core.sys.linux.sys.mman : MAP_ANON;
                 flags |= MAP_ANON;
             }
             this.size = size;
@@ -371,7 +376,7 @@ class MmFile
     /**
      * Flushes pending output and closes the memory mapped file.
      */
-    ~this()
+    ~this() scope
     {
         debug (MMFILE) printf("MmFile.~this()\n");
         unmap();
@@ -417,6 +422,7 @@ class MmFile
         version (Windows)
         {
             FlushViewOfFile(data.ptr, data.length);
+            FlushFileBuffers(hFile);
         }
         else version (Posix)
         {
@@ -438,6 +444,11 @@ class MmFile
         debug (MMFILE) printf("MmFile.length()\n");
         return size;
     }
+
+    /**
+     * Forwards `length`.
+     */
+    alias opDollar = length;
 
     /**
      * Read-only property returning the file mode.
@@ -614,23 +625,47 @@ private:
     {
         static assert(0);
     }
+}
 
-    // Report error, where errno gives the error number
-    // void errNo()
-    // {
-    //     version (Windows)
-    //     {
-    //         throw new FileException(filename, GetLastError());
-    //     }
-    //     else version (linux)
-    //     {
-    //         throw new FileException(filename, errno);
-    //     }
-    //     else
-    //     {
-    //         static assert(0);
-    //     }
-    // }
+/// Read an existing file
+@system unittest
+{
+    import std.file;
+    std.file.write(deleteme, "hello"); // deleteme is a temporary filename
+    scope(exit) remove(deleteme);
+
+    // Use a scope class so the file will be closed at the end of this function
+    scope mmfile = new MmFile(deleteme);
+
+    assert(mmfile.length == "hello".length);
+
+    // Access file contents with the slice operator
+    // This is typed as `void[]`, so cast to `char[]` or `ubyte[]` to use it
+    const data = cast(const(char)[]) mmfile[];
+
+    // At this point, the file content may not have been read yet.
+    // In that case, the following memory access will intentionally
+    // trigger a page fault, causing the kernel to load the file contents
+    assert(data[0 .. 5] == "hello");
+}
+
+/// Write a new file
+@system unittest
+{
+    import std.file;
+    scope(exit) remove(deleteme);
+
+    scope mmfile = new MmFile(deleteme, MmFile.Mode.readWriteNew, 5, null);
+    assert(mmfile.length == 5);
+
+    auto data = cast(ubyte[]) mmfile[];
+
+    // This write to memory will be reflected in the file contents
+    data[] = '\n';
+
+    mmfile.flush();
+
+    assert(std.file.read(deleteme) == "\n\n\n\n\n");
 }
 
 @system unittest
@@ -648,9 +683,10 @@ private:
          win = sysinfo.dwAllocationGranularity;
          +/
     }
-    else version (linux)
+    else version (Posix)
     {
-        // getpagesize() is not defined in the unix D headers so use the guess
+        import core.sys.posix.unistd;
+        win = cast(size_t) sysconf(_SC_PAGESIZE);
     }
     string test_file = std.file.deleteme ~ "-testing.txt";
     MmFile mf = new MmFile(test_file,MmFile.Mode.readWriteNew,
@@ -671,7 +707,6 @@ private:
     assert( data2[$-1] == 'b' );
 
     destroy(mf);
-    GC.free(&mf);
 
     std.file.remove(test_file);
     // Create anonymous mapping
@@ -679,7 +714,7 @@ private:
 }
 
 version (linux)
-@system unittest // Issue 14868
+@system unittest // https://issues.dlang.org/show_bug.cgi?id=14868
 {
     import std.file : deleteme;
     import std.typecons : scoped;
@@ -702,7 +737,9 @@ version (linux)
     assert(.close(fd) == -1);
 }
 
-@system unittest // Issue 14994, 14995
+// https://issues.dlang.org/show_bug.cgi?id=14994
+// https://issues.dlang.org/show_bug.cgi?id=14995
+@system unittest
 {
     import std.file : deleteme;
     import std.typecons : scoped;
@@ -718,4 +755,102 @@ version (linux)
     auto fn = std.file.deleteme ~ "-testing.txt";
     scope(exit) std.file.remove(fn);
     verifyThrown(scoped!MmFile(fn, MmFile.Mode.readWrite, 0, null));
+}
+
+@system unittest
+{
+    MmFile shar = new MmFile(null, MmFile.Mode.readWrite, 10, null, 0);
+    void[] output = shar[0 .. $];
+}
+
+@system unittest
+{
+    import std.file : deleteme;
+    auto name = std.file.deleteme ~ "-test.tmp";
+    scope(exit) std.file.remove(name);
+
+    std.file.write(name, "abcd");
+    {
+        scope MmFile mmf = new MmFile(name);
+        string p;
+
+        assert(mmf[0] == 'a');
+        p = cast(string) mmf[];
+        assert(p[1] == 'b');
+        p = cast(string) mmf[0 .. 4];
+        assert(p[2] == 'c');
+    }
+    {
+        scope MmFile mmf = new MmFile(name, MmFile.Mode.read, 0, null);
+        string p;
+
+        assert(mmf[0] == 'a');
+        p = cast(string) mmf[];
+        assert(mmf.length == 4);
+        assert(p[1] == 'b');
+        p = cast(string) mmf[0 .. 4];
+        assert(p[2] == 'c');
+    }
+    std.file.remove(name);
+    {
+        scope MmFile mmf = new MmFile(name, MmFile.Mode.readWriteNew, 4, null);
+        char[] p = cast(char[]) mmf[];
+        p[] = "1234";
+        mmf[3] = '5';
+        assert(mmf[2] == '3');
+        assert(mmf[3] == '5');
+    }
+    {
+        string p = cast(string) std.file.read(name);
+        assert(p[] == "1235");
+    }
+    {
+        scope MmFile mmf = new MmFile(name, MmFile.Mode.readWriteNew, 4, null);
+        char[] p = cast(char[]) mmf[];
+        p[] = "5678";
+        mmf[3] = '5';
+        assert(mmf[2] == '7');
+        assert(mmf[3] == '5');
+        assert(cast(string) mmf[] == "5675");
+    }
+    {
+        string p = cast(string) std.file.read(name);
+        assert(p[] == "5675");
+    }
+    {
+        scope MmFile mmf = new MmFile(name, MmFile.Mode.readWrite, 4, null);
+        char[] p = cast(char[]) mmf[];
+        assert(cast(char[]) mmf[] == "5675");
+        p[] = "9102";
+        mmf[2] = '5';
+        assert(cast(string) mmf[] == "9152");
+    }
+    {
+        string p = cast(string) std.file.read(name);
+        assert(p[] == "9152");
+    }
+    std.file.remove(name);
+    {
+        scope MmFile mmf = new MmFile(name, MmFile.Mode.readWrite, 4, null);
+        char[] p = cast(char[]) mmf[];
+        p[] = "abcd";
+        mmf[2] = '5';
+        assert(cast(string) mmf[] == "ab5d");
+    }
+    {
+        string p = cast(string) std.file.read(name);
+        assert(p[] == "ab5d");
+    }
+    {
+        scope MmFile mmf = new MmFile(name, MmFile.Mode.readCopyOnWrite, 4, null);
+        char[] p = cast(char[]) mmf[];
+        assert(cast(string) mmf[] == "ab5d");
+        p[] = "9102";
+        mmf[2] = '5';
+        assert(cast(string) mmf[] == "9152");
+    }
+    {
+        string p = cast(string) std.file.read(name);
+        assert(p[] == "ab5d");
+    }
 }

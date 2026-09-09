@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2021 Free Software Foundation, Inc.
+// Copyright (C) 2019-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,14 +15,18 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++2a" }
-// { dg-do compile { target c++2a } }
+// { dg-do compile { target c++20 } }
+// { dg-add-options no_pch }
 
 #include <ranges>
 
 #ifndef __cpp_lib_ranges
 # error "Feature test macro for ranges is missing in <ranges>"
-#elif __cpp_lib_ranges < 201911L
+#elif __cplusplus > 202302L && __cpp_lib_ranges != 202406L
+# error "Feature test macro for ranges has wrong value in <ranges>"
+#elif __cplusplus == 202302L && __cpp_lib_ranges != 202302L
+# error "Feature test macro for ranges has wrong value in <ranges>"
+#elif __cplusplus == 202002L && __cpp_lib_ranges != 202110L
 # error "Feature test macro for ranges has wrong value in <ranges>"
 #endif
 
@@ -33,12 +37,22 @@ namespace __gnu_test
 {
   constexpr const bool* disable_sized_range
     = &std::ranges::disable_sized_range<void>;
-  constexpr auto* begin = &std::ranges::begin;
-  constexpr auto* end = &std::ranges::end;
-  constexpr auto* cbegin = &std::ranges::cbegin;
-  constexpr auto* cend = &std::ranges::cend;
-  constexpr auto* rbegin = &std::ranges::rbegin;
-  constexpr auto* rend = &std::ranges::rend;
-  constexpr auto* crbegin = &std::ranges::crbegin;
-  constexpr auto* crend = &std::ranges::crend;
+  using std::ranges::begin;
+  using std::ranges::end;
+  using std::ranges::cbegin;
+  using std::ranges::cend;
+  using std::ranges::rbegin;
+  using std::ranges::rend;
+  using std::ranges::crbegin;
+  using std::ranges::crend;
+  using std::ranges::size;
+  using std::ranges::ssize;
+  using std::ranges::empty;
+  using std::ranges::data;
+  using std::ranges::cdata;
+
+  using std::ranges::advance;
+  using std::ranges::distance;
+  using std::ranges::next;
+  using std::ranges::prev;
 }

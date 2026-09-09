@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -26,33 +26,24 @@
 --  This package contains various utility procedures to assist in building
 --  specific types of tree nodes.
 
-with Namet; use Namet;
-with Sinfo; use Sinfo;
-with Types; use Types;
-with Uintp; use Uintp;
+with Namet;          use Namet;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Types;          use Types;
+with Uintp;          use Uintp;
 
 package Tbuild is
 
-   function Checks_Off (N : Node_Id) return Node_Id;
-   pragma Inline (Checks_Off);
-   --  Returns an N_Unchecked_Expression node whose expression is the given
-   --  argument. The results is a subexpression identical to the argument,
-   --  except that it will be analyzed and resolved with checks off.
-
    function Convert_To (Typ : Entity_Id; Expr : Node_Id) return Node_Id;
-   --  Returns an expression that represents the result of a checked convert
-   --  of expression Exp to type T. If the base type of Exp is T, then no
-   --  conversion is required, and Exp is returned unchanged. Otherwise an
-   --  N_Type_Conversion node is constructed to convert the expression.
-   --  If an N_Type_Conversion node is required, Relocate_Node is used on
-   --  Exp. This means that it is safe to replace a node by a Convert_To
-   --  of itself to some other type.
+   --  Returns an expression that is a type conversion of expression Expr to
+   --  type Typ. If the type of Expr is Typ, then no conversion is required.
+   --  Otherwise an N_Type_Conversion node is constructed to convert the
+   --  expression. Relocate_Node is applied to Expr, so that it is safe to
+   --  replace a node by a Convert_To of itself to some other type.
 
    procedure Convert_To_And_Rewrite (Typ : Entity_Id; Expr : Node_Id);
    pragma Inline (Convert_To_And_Rewrite);
    --  Like the function, except that there is an extra step of calling
    --  Rewrite on the Expr node and replacing it with the converted result.
-   --  As noted above, this is safe, because Relocate_Node is called.
 
    procedure Discard_Node (N : Node_Or_Entity_Id);
    pragma Inline (Discard_Node);
@@ -68,6 +59,10 @@ package Tbuild is
    --  effect (e.g. a call to the parser to parse a list of compilation
    --  units), but the List_Id value is not required.
 
+   function Make_Assertion_Level
+     (Loc : Source_Ptr; Nam : Name_Id) return Entity_Id;
+   --  Create a new Defining_Identifier node for an Assertion_Level
+
    function Make_Byte_Aligned_Attribute_Reference
      (Sloc           : Source_Ptr;
       Prefix         : Node_Id;
@@ -76,11 +71,6 @@ package Tbuild is
    --  Like the standard Make_Attribute_Reference but the special flag
    --  Must_Be_Byte_Aligned is set in the attribute reference node. The
    --  Attribute_Name must be Name_Address or Name_Unrestricted_Access.
-
-   function Make_DT_Access
-     (Loc : Source_Ptr; Rec : Node_Id; Typ : Entity_Id) return Node_Id;
-   --  Create an access to the Dispatch Table by using the Tag field of a
-   --  tagged record : Acc_Dt (Rec.tag).all
 
    function Make_Float_Literal
      (Loc         : Source_Ptr;
@@ -194,6 +184,13 @@ package Tbuild is
    --  A convenient form of Make_String_Literal, where the string value is
    --  given as a normal string instead of a String_Id value.
 
+   function Make_Suppress_Block
+     (Loc   : Source_Ptr;
+      Check : Name_Id;
+      Stmts : List_Id) return Node_Id;
+   --  Build a block with a pragma Suppress on Check. Stmts is the statements
+   --  list that needs protection against the check activation.
+
    function Make_Temporary
      (Loc          : Source_Ptr;
       Id           : Character;
@@ -214,8 +211,8 @@ package Tbuild is
      (Loc   : Source_Ptr;
       Check : Name_Id;
       Stmts : List_Id) return Node_Id;
-   --  Build a block with a pragma Suppress on 'Check'. Stmts is the statements
-   --  list that needs protection against the check
+   --  Build a block with a pragma Unsuppress on Check. Stmts is the statements
+   --  list that needs protection against the check suppression.
 
    function New_Constraint_Error (Loc : Source_Ptr) return Node_Id;
    --  This function builds a tree corresponding to the Ada statement
@@ -318,13 +315,11 @@ package Tbuild is
    function New_Occurrence_Of
      (Def_Id : Entity_Id;
       Loc    : Source_Ptr) return Node_Id;
-   --  New_Occurrence_Of creates an N_Identifier node which is an occurrence
-   --  of the defining identifier which is passed as its argument. The Entity
-   --  and Etype of the result are set from the given defining identifier as
-   --  follows: Entity is simply a copy of Def_Id. Etype is a copy of Def_Id
-   --  for types, and a copy of the Etype of Def_Id for other entities. Note
-   --  that Is_Static_Expression is set if this call creates an occurrence of
-   --  an enumeration literal.
+   --  New_Occurrence_Of creates an N_Identifier node that is an occurrence of
+   --  the defining identifier Def_Id. The Entity of the result is Def_Id. The
+   --  Etype of the result is Def_Id for types, and Etype (Def_Id) otherwise.
+   --  Is_Static_Expression is set if this call creates an occurrence of an
+   --  enumeration literal.
 
    function New_Suffixed_Name
      (Related_Id : Name_Id;
@@ -348,7 +343,10 @@ package Tbuild is
      (Typ  : Entity_Id;
       Expr : Node_Id) return Node_Id;
    --  Like Convert_To, but if a conversion is actually needed, constructs an
-   --  N_Unchecked_Type_Conversion node to do the required conversion.
+   --  N_Unchecked_Type_Conversion node to do the required conversion. Unlike
+   --  Convert_To, a new node is not required if Expr is already of the correct
+   --  BASE type, and if a new node is created, the Parent of Expr is copied to
+   --  it.
 
    -------------------------------------
    -- Subprograms for Use by Gnat1drv --

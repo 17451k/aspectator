@@ -1,7 +1,6 @@
-// { dg-options "-std=gnu++2a" }
-// { dg-do run { target c++2a } }
+// { dg-do run { target c++20 } }
 
-// Copyright (C) 2020-2021 Free Software Foundation, Inc.
+// Copyright (C) 2020-2026 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -41,7 +40,7 @@ test02()
   VERIFY( iter != std::default_sentinel );
   VERIFY( std::default_sentinel != iter );
 
-  std::next(iter, 3);
+  (void) std::next(iter, 3);
   VERIFY( iter == std::default_sentinel );
   VERIFY( std::default_sentinel == iter );
 }

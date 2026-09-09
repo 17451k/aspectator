@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2026, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -25,21 +25,23 @@
 
 --  Processing for intrinsic subprogram declarations
 
-with Atree;    use Atree;
-with Einfo;    use Einfo;
-with Errout;   use Errout;
-with Lib;      use Lib;
-with Namet;    use Namet;
-with Opt;      use Opt;
-with Sem_Aux;  use Sem_Aux;
-with Sem_Eval; use Sem_Eval;
-with Sem_Util; use Sem_Util;
-with Sinfo;    use Sinfo;
-with Snames;   use Snames;
-with Stand;    use Stand;
-with Stringt;  use Stringt;
-with Ttypes;   use Ttypes;
-with Uintp;    use Uintp;
+with Atree;          use Atree;
+with Einfo.Entities; use Einfo.Entities;
+with Einfo.Utils;    use Einfo.Utils;
+with Errout;         use Errout;
+with Lib;            use Lib;
+with Namet;          use Namet;
+with Opt;            use Opt;
+with Sem_Aux;        use Sem_Aux;
+with Sem_Eval;       use Sem_Eval;
+with Sem_Util;       use Sem_Util;
+with Sinfo.Nodes;    use Sinfo.Nodes;
+with Sinfo.Utils;    use Sinfo.Utils;
+with Snames;         use Snames;
+with Stand;          use Stand;
+with Stringt;        use Stringt;
+with Ttypes;         use Ttypes;
+with Uintp;          use Uintp;
 
 package body Sem_Intr is
 
@@ -451,7 +453,7 @@ package body Sem_Intr is
       --  For modular type, modulus must be 2**8, 2**16, 2**32, or 2**64.
       --  Don't apply to generic types, since we may not have a modulus value.
 
-      elsif Is_Modular_Integer_Type (Typ1)
+      elsif Has_Modular_Operations (Typ1)
         and then not Is_Generic_Type (Typ1)
         and then Modulus (Typ1) /= Uint_2 ** 8
         and then Modulus (Typ1) /= Uint_2 ** 16
