@@ -5482,8 +5482,12 @@ ldv_convert_struct_or_union_spec (tree t, bool is_decl_decl_spec)
         if ((struct_or_union_name_str = IDENTIFIER_POINTER (struct_or_union_name)))
             LDV_STRUCT_OR_UNION_SPEC_ID (struct_or_union_spec) = struct_or_union_name_str;
 
-      /* Fields should be printed just for full type declarations. */
-      if ((!struct_or_union_name || is_decl_decl_spec) && C_TYPE_BEING_DEFINED (t))
+      /* Print fields only for full type declarations. Before GCC 15,
+         C_TYPE_BEING_DEFINED was never reset for structures and unions, so it
+         meant "this type has a definition". Since GCC 15, finish_struct ()
+         clears it, so check completeness as well to keep the same meaning. */
+      if ((!struct_or_union_name || is_decl_decl_spec)
+          && (C_TYPE_BEING_DEFINED (t) || COMPLETE_TYPE_P (t)))
         {
           if ((struct_or_union_fields = TYPE_FIELDS (t)))
             {
