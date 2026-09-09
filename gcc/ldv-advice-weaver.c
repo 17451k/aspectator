@@ -364,7 +364,19 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
   else if (!strcmp (pattern->name, "arg_type_str"))
     *text = ldv_print_arg_type_str (pattern->arg_numb);
   else if (!strcmp (pattern->name, "arg_name"))
-    *text = ldv_copy_str (ldv_get_arg_name (pattern->arg_numb));
+    {
+      func_arg = ldv_get_arg_name (pattern->arg_numb);
+
+      /* Print the stub "NULL" when an actual argument has no name of its own,
+         for example, when it is an expression rather than a plain variable. */
+      if (func_arg == NULL)
+        {
+          *text = ldv_copy_str ("NULL");
+          ldv_print_info (LDV_INFO_WEAVE, "generate stub \"NULL\" for aspect pattern \"%s\"", pattern->name);
+        }
+      else
+        *text = ldv_copy_str (func_arg);
+    }
   else if (!strcmp (pattern->name, "arg_size"))
     {
       func_arg_size = ldv_get_arg_size (pattern->arg_numb);
