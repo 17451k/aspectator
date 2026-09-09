@@ -978,6 +978,8 @@ applied.
 
 @hook TARGET_PROMOTE_FUNCTION_MODE
 
+@hook TARGET_PROMOTE_FUNCTION_MODE_CA
+
 @defmac PARM_BOUNDARY
 Normal alignment required for function parameters on the stack, in
 bits.  All stack parameters receive at least this much alignment
@@ -3463,7 +3465,11 @@ required.
 
 @hook TARGET_FUNCTION_ARG_BOUNDARY
 
+@hook TARGET_FUNCTION_ARG_BOUNDARY_CA
+
 @hook TARGET_FUNCTION_ARG_ROUND_BOUNDARY
+
+@hook TARGET_FUNCTION_ARG_ROUND_BOUNDARY_CA
 
 @defmac FUNCTION_ARG_REGNO_P (@var{regno})
 A C expression that is nonzero if @var{regno} is the number of a hard

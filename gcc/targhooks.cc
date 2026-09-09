@@ -180,6 +180,15 @@ default_promote_function_mode_sign_extend (const_tree type,
 }
 
 machine_mode
+default_promote_function_mode_ca (cumulative_args_t, function_arg_info arg,
+				  const_tree funtype, int *punsignedp,
+				  int for_return)
+{
+  return promote_function_mode (arg.type, arg.mode, punsignedp,
+				funtype, for_return);
+}
+
+machine_mode
 default_cc_modes_compatible (machine_mode m1, machine_mode m2)
 {
   if (m1 == m2)
@@ -907,10 +916,26 @@ default_function_arg_boundary (machine_mode mode ATTRIBUTE_UNUSED,
 }
 
 unsigned int
+default_function_arg_boundary_ca (machine_mode mode ATTRIBUTE_UNUSED,
+				  const_tree type ATTRIBUTE_UNUSED,
+				  cumulative_args_t ca ATTRIBUTE_UNUSED)
+{
+  return default_function_arg_boundary (mode, type);
+}
+
+unsigned int
 default_function_arg_round_boundary (machine_mode mode ATTRIBUTE_UNUSED,
 				     const_tree type ATTRIBUTE_UNUSED)
 {
   return PARM_BOUNDARY;
+}
+
+unsigned int
+default_function_arg_round_boundary_ca (machine_mode mode ATTRIBUTE_UNUSED,
+					const_tree type ATTRIBUTE_UNUSED,
+					cumulative_args_t ca ATTRIBUTE_UNUSED)
+{
+  return default_function_arg_round_boundary (mode, type);
 }
 
 void

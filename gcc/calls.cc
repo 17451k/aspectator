@@ -1418,7 +1418,8 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 	 with those made by function.cc.  */
 
       /* See if this argument should be passed by invisible reference.  */
-      function_arg_info arg (type, argpos < n_named_args);
+      function_arg_info arg (type, argpos < n_named_args,
+			     argpos == n_named_args - 1);
       if (pass_by_reference (args_so_far_pnt, arg))
 	{
 	  const bool callee_copies
@@ -1543,10 +1544,13 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 	type = integer_type_node;
 
       arg.type = type;
-      arg.mode
-	= promote_function_mode (type, TYPE_MODE (type), &unsignedp,
-				 fndecl ? TREE_TYPE (fndecl) : fntype, 0);
-
+      arg.mode = TYPE_MODE (type);
+//      arg.mode
+//	= promote_function_mode (type, TYPE_MODE (type), &unsignedp,
+//				 fndecl ? TREE_TYPE (fndecl) : fntype, 0);
+      arg.mode = promote_function_mode (args_so_far, arg,
+					fndecl ? TREE_TYPE (fndecl) : fntype,
+					&unsignedp, 0);
       args[i].unsignedp = unsignedp;
       args[i].mode = arg.mode;
 
@@ -1596,6 +1600,7 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 #endif
 			     reg_parm_stack_space,
 			     args[i].pass_on_stack ? 0 : args[i].partial,
+			     args_so_far,
 			     fndecl, args_size, &args[i].locate);
 #ifdef BLOCK_REG_PADDING
       else
@@ -4184,6 +4189,7 @@ split_complex_types (tree types)
   return types;
 }
 
+extern void debug_tree (tree);
 /* Output a library call to function ORGFUN (a SYMBOL_REF rtx)
    for a value of mode OUTMODE,
    with NARGS different arguments, passed as ARGS.
@@ -4369,6 +4375,7 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
 			   argvec[count].reg != 0,
 #endif
 			   reg_parm_stack_space, 0,
+			   args_so_far,
 			   NULL_TREE, &args_size, &argvec[count].locate);
 
       if (argvec[count].reg == 0 || argvec[count].partial != 0
@@ -4439,8 +4446,16 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
 	  val = force_operand (XEXP (slot, 0), NULL_RTX);
 	}
 
-      arg.mode = promote_function_mode (NULL_TREE, arg.mode, &unsigned_p,
-					NULL_TREE, 0);
+//      arg.mode = promote_function_mode (NULL_TREE, arg.mode, &unsigned_p,
+//					NULL_TREE, 0);
+      tree t = arg.type;
+if (t)
+  debug_tree (t);
+gcc_assert (!t);
+      arg.type = NULL_TREE;
+      arg.mode = promote_function_mode (args_so_far, arg, NULL_TREE,
+					&unsigned_p, 0);
+      arg.type = t;
       argvec[count].mode = arg.mode;
       argvec[count].value = convert_modes (arg.mode, GET_MODE (val), val,
 					   unsigned_p);
@@ -4460,6 +4475,7 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
 			       argvec[count].reg != 0,
 #endif
 			       reg_parm_stack_space, argvec[count].partial,
+			       args_so_far,
 			       NULL_TREE, &args_size, &argvec[count].locate);
 	  args_size.constant += argvec[count].locate.size.constant;
 	  gcc_assert (!argvec[count].locate.size.var);

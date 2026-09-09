@@ -206,7 +206,9 @@
    A constraint that matches a small GOT access."
   (and (match_code "const,symbol_ref")
        (match_test "aarch64_classify_symbolic_expression (op)
-		     == SYMBOL_SMALL_GOT_4G")))
+		     == SYMBOL_SMALL_GOT_4G
+		    || aarch64_classify_symbolic_expression (op)
+		     == SYMBOL_MO_SMALL_GOT")))
 
 (define_constraint "Uss"
   "@internal
@@ -620,6 +622,11 @@
   (and (match_code "const_int")
        (match_test "IN_RANGE (ival, -1008, -1)
 		    && !(ival & 0xf)")))
+
+(define_address_constraint "Du"
+  "@internal
+ An address valid for a prefetch instruction with an unscaled offset."
+ (match_test "aarch64_address_valid_for_unscaled_prefetch_p (op, true)"))
 
 (define_constraint "vgb"
   "@internal

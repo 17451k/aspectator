@@ -465,6 +465,8 @@ extern machine_mode c_default_pointer_mode;
 #define D_CXX_COROUTINES 0x10000  /* In C++, only with coroutines.  */
 #define D_CXX_MODULES	0x20000  /* In C++, only with modules.  */
 #define D_CXX26         0x40000	/* In C++, C++26 only.  */
+#define D_EXT_C_IN_CXX	0x80000  /* In C++, allow additional C keywords.  */
+#define D_EXT_CXX_IN_C	0x100000  /* In C, allow additional C++ keywords.  */
 
 #define D_CXX_CONCEPTS_FLAGS D_CXXONLY | D_CXX_CONCEPTS
 #define D_CXX_CHAR8_T_FLAGS D_CXXONLY | D_CXX_CHAR8_T
@@ -1697,6 +1699,7 @@ extern void check_for_xor_used_as_pow (location_t lhs_loc, tree lhs_val,
 /* In c-attribs.cc.  */
 extern bool attribute_takes_identifier_p (const_tree);
 extern tree handle_deprecated_attribute (tree *, tree, tree, int, bool *);
+extern bool attribute_clang_form_p (const_tree);
 extern tree handle_unused_attribute (tree *, tree, tree, int, bool *);
 extern tree handle_fallthrough_attribute (tree *, tree, tree, int, bool *);
 extern int parse_tm_stmt_attr (tree, int);

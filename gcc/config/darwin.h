@@ -42,6 +42,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #define DARWIN_X86 0
 #define DARWIN_PPC 0
+#define DARWIN_ARM64 0
 
 #define OBJECT_FORMAT_MACHO 1
 
@@ -394,7 +395,8 @@ extern GTY(()) int darwin_ms_struct;
 */
 
 #define DARWIN_NOCOMPACT_UNWIND \
-" %:version-compare(>= 10.6 mmacosx-version-min= -no_compact_unwind) "
+"%{!fuse-ld=lld: \
+    %:version-compare(>= 10.6 mmacosx-version-min= -no_compact_unwind)}"
 
 /* In Darwin linker specs we can put -lcrt0.o and ld will search the library
    path for crt0.o or -lcrtx.a and it will search for libcrtx.a.  As for
@@ -423,7 +425,8 @@ extern GTY(()) int darwin_ms_struct;
      %{force_cpusubtype_ALL:-arch %(darwin_arch)} \
      %{!force_cpusubtype_ALL:-arch %(darwin_subarch)} "\
     DARWIN_PLATFORM_ID \
-    " %l " \
+    " %l \
+     %{fuse-ld=*:-fuse-ld=%*} " \
     LINK_COMPRESS_DEBUG_SPEC \
    "%X %{s} %{t} %{Z} %{u*} \
     %{e*} %{r} \
@@ -433,7 +436,8 @@ extern GTY(()) int darwin_ms_struct;
     %{!r:%{!nostdlib:%{!nodefaultlibs: " DARWIN_WEAK_CRTS "}}} \
     %o \
     %{!r:%{!nostdlib:%{!nodefaultlibs:\
-      %{fprofile-arcs|fcondition-coverage|fprofile-generate*|coverage:-lgcov} \
+      %{fprofile-arcs|fcondition-coverage|fpath-coverage|\
+	fprofile-generate*|coverage:-lgcov} \
       %{fopenacc|fopenmp|%:gt(%{ftree-parallelize-loops=*:%*} 1): \
 	%{static|static-libgcc|static-libstdc++|static-libgfortran: \
 	  libgomp.a%s; : -lgomp }} \
@@ -1003,7 +1007,12 @@ extern GTY(()) section * darwin_sections[NUM_DARWIN_SECTIONS];
   { "apple_kext_compatibility", 0, 0, false, true, false, false,	     \
     darwin_handle_kext_attribute, NULL },				     \
   { "weak_import", 0, 0, true, false, false, false,			     \
-    darwin_handle_weak_import_attribute, NULL }
+    darwin_handle_weak_import_attribute, NULL },			     \
+  { "availability", 0, -1, true, false, false, false,			     \
+    darwin_handle_availability_attribute, NULL }
+
+#undef TARGET_ATTRIBUTE_TAKES_IDENTIFIER_P
+#define TARGET_ATTRIBUTE_TAKES_IDENTIFIER_P darwin_attribute_takes_identifier_p
 
 /* Make local constant labels linker-visible, so that if one follows a
    weak_global constant, ld64 will be able to separate the atoms.  */
