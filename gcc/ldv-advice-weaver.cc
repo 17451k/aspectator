@@ -582,7 +582,7 @@ ldv_evaluate_aspect_pattern (ldv_aspect_pattern_ptr pattern, const char **text, 
     {
       ldv_var_initializer = ldv_convert_initializer_to_internal (ldv_var_initializer_tree);
       var_init_json = ldv_convert_initializer_to_json (ldv_var_initializer);
-      var_init_json->print (&pp);
+      var_init_json->print (&pp, false);
       *text = ldv_copy_str (pp_formatted_text (&pp));
 
       if (ldv_var_initializer)
@@ -715,7 +715,7 @@ ldv_get_actual_arg_func_names (void)
 
           i_str = ldv_itoa (i);
           ldv_puts_string (i_str, actual_arg_func_names);
-          free (CONST_CAST (char *, i_str));
+          free (const_cast<char *> (i_str));
 
           ldv_putc_string ('=', actual_arg_func_names);
           ldv_puts_string (func_arg_info->func_name, actual_arg_func_names);
@@ -1758,7 +1758,7 @@ ldv_print_int (int n)
 
   ldv_print_str (str);
 
-  free (CONST_CAST (char *, str));
+  free (const_cast<char *> (str));
 }
 
 ldv_list_ptr
@@ -2080,7 +2080,7 @@ ldv_print_types_typedefs (ldv_ab_ptr body, bool isret_type_needed)
 
       ldv_puts_id (arg_type_name_numb_aux, arg_type_name_aux);
 
-      free (CONST_CAST (char *, arg_type_name_numb_aux));
+      free (const_cast<char *> (arg_type_name_numb_aux));
 
       arg_type_name = ldv_get_id_name (arg_type_name_aux);
 
@@ -2189,12 +2189,6 @@ ldv_free_func_arg_type_decl_list (void)
 
   ldv_list_delete_all (ldv_func_arg_type_decl_list);
   ldv_func_arg_type_decl_list = NULL;
-}
-
-static int
-htab_eq_string (const void *s1, const void *s2)
-{
-  return strcmp ((const char*)s1, (const char*)s2) == 0;
 }
 
 void

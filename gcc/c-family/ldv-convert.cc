@@ -3089,7 +3089,7 @@ ldv_convert_identifier (tree t)
           decl_uid_str = ldv_itoa (decl_uid);
           decl_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (decl_uid_str) + 1);
           sprintf (decl_uid_name_str, "ldv_%d", decl_uid);
-          XDELETE (CONST_CAST (char *, decl_uid_str));
+          XDELETE (const_cast<char *> (decl_uid_str));
           LDV_IDENTIFIER_STR (identifier) = decl_uid_name_str;
         }
       else
@@ -3128,7 +3128,7 @@ ldv_convert_identifier (tree t)
           enum_uid_str = ldv_itoa (enum_uid);
           enum_uid_name_str = XCNEWVEC (char, 3 + 1 + strlen (enum_uid_str) + 1);
           sprintf (enum_uid_name_str, "ldv_%d", enum_uid);
-          XDELETE (CONST_CAST (char *, enum_uid_str));
+          XDELETE (const_cast<char *> (enum_uid_str));
           LDV_IDENTIFIER_STR (identifier) = enum_uid_name_str;
         }
       else
@@ -6391,7 +6391,7 @@ ldv_label_decl_name (tree t)
             label_decl_uid_str = ldv_itoa (label_decl_uid);
             label_decl_name_str = XCNEWVEC (char, 3 + 1 + strlen (label_decl_uid_str) + 1);
             sprintf (label_decl_name_str, "ldv_%d", label_decl_uid);
-            XDELETE (CONST_CAST (char *, label_decl_uid_str));
+            XDELETE (const_cast<char *> (label_decl_uid_str));
             return label_decl_name_str;
           }
         else

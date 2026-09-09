@@ -391,7 +391,7 @@ ldv_make_includes (void)
       ldv_puts (" \"", LDV_FILE_PREPARED_STREAM);
       ldv_puts (aux_fname, LDV_FILE_PREPARED_STREAM);
       ldv_puts ("\"\n", LDV_FILE_PREPARED_STREAM);
-      free (CONST_CAST (char *, line_cur_str));
+      free (const_cast<char *> (line_cur_str));
 
       /* Then copy all after includes. */
       for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
