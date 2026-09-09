@@ -2352,6 +2352,18 @@ ldv_convert_designator_list (tree t)
   return NULL;
 }
 
+/* Since GCC 12, TYPE_VALUES of an enumeration type holds CONST_DECLs of
+   enumeration constants rather than their values. Return the value in both
+   cases. */
+static tree
+ldv_enum_value (tree t)
+{
+  if (t && TREE_CODE (t) == CONST_DECL)
+    return DECL_INITIAL (t);
+
+  return t;
+}
+
 /*
 enumerator:
     enumeration-constant
@@ -2375,7 +2387,7 @@ ldv_convert_enum (tree t)
       else
         LDV_ERROR ("can't get an enumeration constant");
 
-      if ((const_expr = TREE_VALUE (t)))
+      if ((const_expr = ldv_enum_value (TREE_VALUE (t))))
         {
           LDV_ENUM_KIND (ldv_enum) = LDV_ENUM_SECOND;
           ldv_is_convert_enum_const_const_expr = true;
@@ -2560,7 +2572,7 @@ ldv_convert_enumeration_constant (tree t)
         {
           if (TREE_CODE (type) == ENUMERAL_TYPE)
             {
-              for (value = TYPE_VALUES (type); value != NULL_TREE && !tree_int_cst_equal (TREE_VALUE (value), t); value = TREE_CHAIN (value));
+              for (value = TYPE_VALUES (type); value != NULL_TREE && !tree_int_cst_equal (ldv_enum_value (TREE_VALUE (value)), t); value = TREE_CHAIN (value));
 
               if (value != NULL_TREE)
                 {
