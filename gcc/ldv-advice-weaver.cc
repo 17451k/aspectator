@@ -2128,6 +2128,10 @@ ldv_print_var_init_values (ldv_i_initializer_ptr initializer, ldv_text_ptr initi
   ldv_list_ptr array_elem_initializer_list = NULL;
   ldv_i_array_elem_initializer_ptr array_elem_initializer = NULL;
 
+  /* Large initializers are not converted, so there are no values to print. */
+  if (!initializer)
+    return;
+
   if (initializer->non_struct_or_array_initializer)
     {
       ldv_puts_text ("||", initializer_text);
