@@ -1556,11 +1556,15 @@ enum ldv_type_qual_kind
   LDV_TYPE_QUAL_CONST,
   LDV_TYPE_QUAL_RESTRICT,
   LDV_TYPE_QUAL_VOLATILE,
-  LDV_TYPE_QUAL_ATOMIC
+  LDV_TYPE_QUAL_ATOMIC,
+  /* A GNU named address space, for example, __seg_gs on x86. */
+  LDV_TYPE_QUAL_ADDR_SPACE
 };
 struct ldv_type_qual
 {
   enum ldv_type_qual_kind kind;
+  /* The keyword of a named address space for LDV_TYPE_QUAL_ADDR_SPACE. */
+  const char *addr_space_name;
 };
 typedef struct ldv_type_qual *ldv_type_qual_ptr;
 #define LDV_TYPE_QUAL_KIND(type_qual) (type_qual->kind)

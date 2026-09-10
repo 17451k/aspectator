@@ -1286,6 +1286,8 @@ ldv_convert_cast_expr (tree t, unsigned int recursion_limit)
     case FLOAT_EXPR:
     case FIX_TRUNC_EXPR:
     case VIEW_CONVERT_EXPR:
+    /* A cast between pointers to different named address spaces. */
+    case ADDR_SPACE_CONVERT_EXPR:
       if ((type = TREE_TYPE (t)) &&
           /* Do not consider casts to anonymous structures. */
           ((!TYPE_NAME (type) && TREE_CODE (type) != RECORD_TYPE) || TYPE_NAME (type)))
@@ -5677,6 +5679,15 @@ ldv_convert_type_qual_internal (tree t)
 
       if (type_quals & TYPE_QUAL_ATOMIC)
         ldv_new_type_qual (&is_type_qual, &decl_spec_cur, LDV_TYPE_QUAL_ATOMIC);
+
+      /* Named address spaces are encoded in type qualifiers as well. Print
+         them with their keywords, for example, __seg_gs. */
+      if (DECODE_QUAL_ADDR_SPACE (type_quals))
+        {
+          ldv_new_type_qual (&is_type_qual, &decl_spec_cur, LDV_TYPE_QUAL_ADDR_SPACE);
+          LDV_DECL_SPEC_TYPE_QUAL (decl_spec_cur)->addr_space_name
+            = c_addr_space_name (DECODE_QUAL_ADDR_SPACE (type_quals));
+        }
 
       /* Sometimes a new type qualifier may arise. In this case say about it and
          generate artificial type qualifier to print warning message later. */

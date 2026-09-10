@@ -4390,6 +4390,10 @@ ldv_print_type_qual (unsigned int indent_level, ldv_type_qual_ptr type_qual)
         ldv_c_backend_print (indent_level, true, "_Atomic");
         break;
 
+      case LDV_TYPE_QUAL_ADDR_SPACE:
+        ldv_c_backend_print (indent_level, true, "%s", type_qual->addr_space_name);
+        break;
+
       default:
         LDV_PRETTY_PRINT_ERROR (indent_level, "type qualifier was not printed");
       }
