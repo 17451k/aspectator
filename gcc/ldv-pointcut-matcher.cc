@@ -77,6 +77,7 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "ldv-aspect-parser.h"
 #include "ldv-converter.h"
 #include "ldv-core.h"
+#include "ldv-cpp-converter.h"
 #include "ldv-cpp-pointcut-matcher.h"
 #include "c-family/ldv-convert.h"
 #include "c-family/ldv-grammar.h"
@@ -926,11 +927,332 @@ ldv_match_expr (tree t, tree context)
     }
 }
 
+/* Indexes of advices by kinds of join points and by names. Walking the whole
+   list of advices for every join point is very slow for large aspects. Indexes
+   keep advices in the original order because the first matching advice wins. */
+
+/* Return true if primitive pointcuts of a given kind belong to an index. */
+typedef bool (*ldv_pp_pred) (ldv_ppk);
+
+/* An advice together with its position in ldv_adef_list, which defines the
+   order of matching. */
+struct ldv_adef_entry
+{
+  /* The position of the advice in ldv_adef_list. */
+  unsigned int ord;
+  ldv_adef_ptr adef;
+};
+
+/* A growable array of advices. */
+struct ldv_adef_vec
+{
+  struct ldv_adef_entry *elems;
+  unsigned int len;
+  unsigned int cap;
+};
+
+/* Advices whose pointcuts refer to a particular name. */
+struct ldv_adef_named
+{
+  const char *name;
+  struct ldv_adef_vec vec;
+};
+
+/* An index of advices for one kind of join points. */
+struct ldv_adef_index
+{
+  /* Whether the index was built from ldv_adef_list already. */
+  bool built;
+  /* Advices with concrete names, keyed by name: struct ldv_adef_named. */
+  htab_t by_name;
+  /* Advices that can match any name ("$" wildcard or negation). */
+  struct ldv_adef_vec any;
+  /* All advices with relevant pointcuts, for join points without names. */
+  struct ldv_adef_vec all;
+};
+
+/* An iterator over advices that can match a join point, in the original
+   order. */
+struct ldv_adef_iter
+{
+  /* Candidates with the name of the join point and candidates that can match
+     any name. Either can be NULL. */
+  const struct ldv_adef_vec *named;
+  const struct ldv_adef_vec *any;
+  /* Positions in named and any. */
+  unsigned int i, j;
+};
+
+static struct ldv_adef_index ldv_func_adef_index;
+static struct ldv_adef_index ldv_var_adef_index;
+
+/* Return true if primitive pointcuts of a given kind describe functions. */
+static bool
+ldv_is_func_pp (ldv_ppk pp_kind)
+{
+  switch (pp_kind)
+    {
+    case LDV_PP_CALL:
+    case LDV_PP_CALLP:
+    case LDV_PP_USE_FUNC:
+    case LDV_PP_EXECUTION:
+    case LDV_PP_DECLARE_FUNC:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/* Return true if primitive pointcuts of a given kind describe variables. */
+static bool
+ldv_is_var_pp (ldv_ppk pp_kind)
+{
+  switch (pp_kind)
+    {
+    case LDV_PP_GET:
+    case LDV_PP_GET_GLOBAL:
+    case LDV_PP_GET_LOCAL:
+    case LDV_PP_SET:
+    case LDV_PP_SET_GLOBAL:
+    case LDV_PP_SET_LOCAL:
+    case LDV_PP_INIT:
+    case LDV_PP_INIT_GLOBAL:
+    case LDV_PP_INIT_LOCAL:
+    case LDV_PP_USE_VAR:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/* Return true if a composite pointcut contains a primitive pointcut of a
+   given kind. */
+static bool
+ldv_cp_has_pp (ldv_cp_ptr c_pointcut, ldv_pp_pred pred)
+{
+  if (!c_pointcut)
+    return false;
+
+  if (c_pointcut->cp_kind == LDV_CP_PRIMITIVE)
+    return pred (c_pointcut->p_pointcut->pp_kind);
+
+  return ldv_cp_has_pp (c_pointcut->c_pointcut_first, pred)
+    || ldv_cp_has_pp (c_pointcut->c_pointcut_second, pred);
+}
+
+/* Add a name to a set of names unless it is there already. */
+static void
+ldv_add_name (htab_t names, const char *name)
+{
+  void **slot;
+
+  slot = htab_find_slot_with_hash (names, name, htab_hash_string (name), INSERT);
+
+  if (!*slot)
+    *slot = xstrdup (name);
+}
+
+/* Collect names of entities from primitive pointcuts of a given kind. The
+   special name "$" means that any name can match: either the name contains a
+   wildcard or a negation applies, so the result does not depend on the name. */
+static void
+ldv_cp_collect_names (ldv_cp_ptr c_pointcut, ldv_pp_pred pred, htab_t names)
+{
+  ldv_i_func_ptr i_func;
+  ldv_i_var_ptr i_var;
+  ldv_id_ptr name;
+
+  if (!c_pointcut)
+    return;
+
+  switch (c_pointcut->cp_kind)
+    {
+    case LDV_CP_NOT:
+      if (ldv_cp_has_pp (c_pointcut->c_pointcut_first, pred))
+        ldv_add_name (names, "$");
+
+      break;
+
+    case LDV_CP_PRIMITIVE:
+      if (!pred (c_pointcut->p_pointcut->pp_kind))
+        break;
+
+      /* TODO: get names directly from signatures rather than through this
+         expensive conversion. It runs once per advice though. */
+      if (ldv_is_func_pp (c_pointcut->p_pointcut->pp_kind))
+        {
+          i_func = ldv_convert_func_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
+          name = i_func->name;
+          ldv_add_name (names, (!name || name->isany_chars) ? "$" : ldv_get_id_name (name));
+          ldv_free_info_func (i_func);
+        }
+      else
+        {
+          i_var = ldv_convert_var_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
+          name = i_var->name;
+          ldv_add_name (names, (!name || name->isany_chars) ? "$" : ldv_get_id_name (name));
+          ldv_free_info_var (i_var);
+        }
+
+      break;
+
+    default:
+      ldv_cp_collect_names (c_pointcut->c_pointcut_first, pred, names);
+      ldv_cp_collect_names (c_pointcut->c_pointcut_second, pred, names);
+    }
+}
+
+/* Append an advice to a vector, growing it as needed. */
+static void
+ldv_adef_vec_push (struct ldv_adef_vec *vec, unsigned int ord, ldv_adef_ptr adef)
+{
+  if (vec->len == vec->cap)
+    {
+      vec->cap = vec->cap ? 2 * vec->cap : 4;
+      vec->elems = XRESIZEVEC (struct ldv_adef_entry, vec->elems, vec->cap);
+    }
+
+  vec->elems[vec->len].ord = ord;
+  vec->elems[vec->len].adef = adef;
+  vec->len++;
+}
+
+/* Hash and equality functions of by_name. The table is searched by plain
+   names, so the equality function compares an entry with a name. */
+static hashval_t
+ldv_adef_named_hash (const void *p)
+{
+  return htab_hash_string (((const struct ldv_adef_named *) p)->name);
+}
+
+static int
+ldv_adef_named_eq (const void *p, const void *q)
+{
+  return strcmp (((const struct ldv_adef_named *) p)->name, (const char *) q) == 0;
+}
+
+/* Arguments of ldv_adef_index_add_name (). */
+struct ldv_adef_index_name_arg
+{
+  struct ldv_adef_index *index;
+  unsigned int ord;
+  ldv_adef_ptr adef;
+};
+
+/* Add an advice to the vector of a name, creating the entry if needed.
+   Called for every name collected from the pointcut of the advice. */
+static int
+ldv_adef_index_add_name (void **slot, void *data)
+{
+  struct ldv_adef_index_name_arg *arg = (struct ldv_adef_index_name_arg *) data;
+  const char *name = (const char *) *slot;
+  struct ldv_adef_named *named;
+  void **named_slot;
+
+  named_slot = htab_find_slot_with_hash (arg->index->by_name, name, htab_hash_string (name), INSERT);
+
+  if (!*named_slot)
+    {
+      named = XCNEW (struct ldv_adef_named);
+      named->name = xstrdup (name);
+      *named_slot = named;
+    }
+
+  ldv_adef_vec_push (&((struct ldv_adef_named *) *named_slot)->vec, arg->ord, arg->adef);
+
+  return 1;
+}
+
+/* Build an index of advices whose pointcuts contain primitive pointcuts of a
+   given kind. */
+static void
+ldv_adef_index_build (struct ldv_adef_index *index, ldv_pp_pred pred)
+{
+  ldv_list_ptr adef_list;
+  ldv_adef_ptr adef;
+  unsigned int ord = 0;
+  htab_t names;
+  struct ldv_adef_index_name_arg arg;
+
+  index->by_name = htab_create (127, ldv_adef_named_hash, ldv_adef_named_eq, NULL);
+
+  for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list), ord++)
+    {
+      adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
+
+      if (!ldv_cp_has_pp (adef->a_declaration->c_pointcut, pred))
+        continue;
+
+      ldv_adef_vec_push (&index->all, ord, adef);
+
+      names = htab_create (1, htab_hash_string, htab_eq_string, free);
+      ldv_cp_collect_names (adef->a_declaration->c_pointcut, pred, names);
+
+      if (htab_find_with_hash (names, "$", htab_hash_string ("$")))
+        ldv_adef_vec_push (&index->any, ord, adef);
+      else
+        {
+          arg.index = index;
+          arg.ord = ord;
+          arg.adef = adef;
+          htab_traverse_noresize (names, ldv_adef_index_add_name, &arg);
+        }
+
+      htab_delete (names);
+    }
+
+  index->built = true;
+}
+
+/* Start iterating over advices that can match a join point with a given name.
+   NULL means that the name is unknown, so all advices are considered. */
+static void
+ldv_adef_iter_init (struct ldv_adef_iter *iter, struct ldv_adef_index *index, ldv_pp_pred pred, const char *name)
+{
+  struct ldv_adef_named *named;
+
+  if (!index->built)
+    ldv_adef_index_build (index, pred);
+
+  iter->i = iter->j = 0;
+
+  if (!name)
+    {
+      iter->named = &index->all;
+      iter->any = NULL;
+      return;
+    }
+
+  named = (struct ldv_adef_named *) htab_find_with_hash (index->by_name, name, htab_hash_string (name));
+  iter->named = named ? &named->vec : NULL;
+  iter->any = &index->any;
+}
+
+/* Return the next advice in the original order, or NULL when there are no
+   more. Candidates with the name and candidates for any name are merged by
+   their positions in ldv_adef_list. */
+static ldv_adef_ptr
+ldv_adef_iter_next (struct ldv_adef_iter *iter)
+{
+  bool has_named = iter->named && iter->i < iter->named->len;
+  bool has_any = iter->any && iter->j < iter->any->len;
+
+  if (has_named && (!has_any || iter->named->elems[iter->i].ord < iter->any->elems[iter->j].ord))
+    return iter->named->elems[iter->i++].adef;
+
+  if (has_any)
+    return iter->any->elems[iter->j++].adef;
+
+  return NULL;
+}
+
 ldv_i_func_ptr
 ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
-  ldv_list_ptr adef_list = NULL;
+  struct ldv_adef_iter adef_iter;
   ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_func_ptr func = NULL;
@@ -1036,10 +1358,10 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
       if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "gnu_inline"))
         func->isgnu_inline = true;
 
-  /* Walk through an advice definitions list to find matches. */
-  for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
+  /* Walk through advices that can match the function to find matches. */
+  ldv_adef_iter_init (&adef_iter, &ldv_func_adef_index, ldv_is_func_pp, func->name ? ldv_get_id_name (func->name) : NULL);
+  while ((adef = ldv_adef_iter_next (&adef_iter)))
     {
-      adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
       c_pointcut = adef->a_declaration->c_pointcut;
 
       /* Skip obviously unnecessary advices. */
@@ -1256,7 +1578,7 @@ void
 ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
-  ldv_list_ptr adef_list = NULL;
+  struct ldv_adef_iter adef_iter;
   ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_var_ptr var = NULL;
@@ -1343,10 +1665,10 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
       DECL_INITIAL (t) = initializer;
     }
 
-  /* Walk through an advice definitions list to find matches. */
-  for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
+  /* Walk through advices that can match the variable to find matches. */
+  ldv_adef_iter_init (&adef_iter, &ldv_var_adef_index, ldv_is_var_pp, ldv_get_id_name (var->name));
+  while ((adef = ldv_adef_iter_next (&adef_iter)))
     {
-      adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
       c_pointcut = adef->a_declaration->c_pointcut;
 
       /* Skip obviously unnecessary advices. */
