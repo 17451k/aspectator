@@ -30,6 +30,28 @@ extern ldv_list_ptr ldv_n_pointcut_list;
 extern ldv_i_match_ptr ldv_i_match;
 
 
+/* Kinds of join points that advices are indexed by. LDV_ADEF_INDEX_KINDS is
+   the number of kinds. */
+typedef enum { LDV_ADEF_INDEX_FUNC, LDV_ADEF_INDEX_VAR, LDV_ADEF_INDEX_TYPE, LDV_ADEF_INDEX_MACRO, LDV_ADEF_INDEX_KINDS } ldv_adef_index_kind;
+
+struct ldv_adef_vec;
+
+/* An iterator over advices that can match a join point, in the original
+   order. */
+struct ldv_adef_iter
+{
+  /* Candidates with the name of the join point and candidates that can match
+     any name. Either can be NULL. */
+  const struct ldv_adef_vec *named;
+  const struct ldv_adef_vec *any;
+  /* Positions in named and any. */
+  unsigned int i, j;
+};
+
+extern void ldv_adef_iter_init (struct ldv_adef_iter *, ldv_adef_index_kind, const char *, bool);
+extern ldv_adef_ptr ldv_adef_iter_next (struct ldv_adef_iter *);
+extern bool ldv_adef_iter_empty (const struct ldv_adef_iter *);
+
 extern bool ldv_match_cp (ldv_cp_ptr, ldv_i_match_ptr);
 extern bool ldv_match_file_signature (const char *, ldv_pps_file_ptr);
 extern bool ldv_match_func_signature (ldv_i_match_ptr, ldv_pps_decl_ptr);
