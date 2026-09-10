@@ -25,6 +25,8 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "tree-iterator.h"
 #include "tree.h"
 #include "c/c-tree.h"
+#include "stringpool.h"
+#include "attribs.h"
 
 #include "ldv-convert.h"
 #include "ldv-core.h"
@@ -1715,6 +1717,7 @@ ldv_decl_ptr
 ldv_convert_decl (tree t)
 {
   ldv_decl_ptr decl;
+  tree attr;
 
   decl = XCNEW (struct ldv_decl);
 
@@ -1731,9 +1734,32 @@ ldv_convert_decl (tree t)
 
       break;
 
+    case VAR_DECL:
+      /* Attributes of declarations are not printed in general, but the
+         cleanup attribute changes the control flow, so keep it. */
+      if ((attr = lookup_attribute ("cleanup", DECL_ATTRIBUTES (t))))
+        {
+          ldv_decl_spec_ptr decl_spec_cur;
+          ldv_attr_list_ptr attr_list;
+
+          attr_list = XCNEW (struct ldv_attr_list);
+          attr_list->attr = ldv_convert_attr (attr);
+
+          for (decl_spec_cur = LDV_DECL_DECL_SPEC (decl); decl_spec_cur; decl_spec_cur = LDV_DECL_SPEC_DECL_SPEC (decl_spec_cur))
+            if (LDV_DECL_SPEC_TYPE_SPEC (decl_spec_cur))
+              {
+                attr_list->attr_list = LDV_DECL_SPEC_TYPE_SPEC (decl_spec_cur)->attr_list;
+                LDV_DECL_SPEC_TYPE_SPEC (decl_spec_cur)->attr_list = attr_list;
+                break;
+              }
+
+          if (!decl_spec_cur)
+            LDV_ERROR ("can't find type specifier to attach cleanup attribute to");
+        }
+
+      /* Fall through. */
     case FUNCTION_DECL:
     case TYPE_DECL:
-    case VAR_DECL:
       LDV_DECL_INIT_DECLARATOR_LIST (decl) = ldv_convert_init_declarator_list (t);
 
       break;
@@ -5062,6 +5088,16 @@ ldv_convert_statement (tree t)
     case STATEMENT_LIST:
       LDV_STATEMENT_KIND (statement) = LDV_COMPOUND_STATEMENT;
       LDV_STATEMENT_COMPOUND_STATEMENT (statement) = ldv_convert_compound_statement (t);
+
+      break;
+
+    /* The C front end wraps the rest of a block after a declaration of a
+       variable with __attribute__((cleanup(...))) into this statement whose
+       second operand is a call of the cleanup function. Print only the body
+       because the attribute is printed with the declaration itself. */
+    case TRY_FINALLY_EXPR:
+      LDV_STATEMENT_KIND (statement) = LDV_COMPOUND_STATEMENT;
+      LDV_STATEMENT_COMPOUND_STATEMENT (statement) = ldv_convert_compound_statement (TREE_OPERAND (t, 0));
 
       break;
 

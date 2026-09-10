@@ -637,6 +637,15 @@ ldv_match_expr (tree t, tree context)
           ldv_match_expr (SWITCH_STMT_BODY (t), t);
           break;
 
+        /* The rest of a block after a declaration of a variable with
+           __attribute__((cleanup(...))). Traverse only the body. The second
+           operand is a call of the cleanup function that does not exist in
+           the source code, so there is nothing to weave there. */
+        case TRY_FINALLY_EXPR:
+        case TRY_CATCH_EXPR:
+          ldv_match_expr (TREE_OPERAND (t, 0), t);
+          break;
+
         /* Traverse condition and body of "while" statement. */
         case WHILE_STMT:
           ldv_match_expr (WHILE_COND (t), t);
