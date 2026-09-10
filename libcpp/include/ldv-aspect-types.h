@@ -437,6 +437,9 @@ typedef struct ldv_info_func_internal
   struct ldv_info_func_internal *func_context;
   char *decl;
   bool isgnu_inline;
+  /* The GCC tree of the entity, kept to convert its type and declaration
+     lazily. */
+  void *node;
 } ldv_info_func;
 typedef ldv_info_func *ldv_i_func_ptr;
 
@@ -479,6 +482,8 @@ typedef struct ldv_info_typedecl_internal
   ldv_i_type_ptr type;
   const char *file_path;
   char *decl;
+  /* The GCC tree of the entity, kept to convert its declaration lazily. */
+  void *node;
 } ldv_info_typedecl;
 typedef ldv_info_typedecl *ldv_i_typedecl_ptr;
 
@@ -516,6 +521,8 @@ typedef struct ldv_info_var_internal
   unsigned int use_line;
   void *initializer;
   char *decl;
+  /* The GCC tree of the entity, kept to convert its declaration lazily. */
+  void *node;
 } ldv_info_var;
 typedef ldv_info_var *ldv_i_var_ptr;
 

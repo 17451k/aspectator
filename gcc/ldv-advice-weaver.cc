@@ -1487,6 +1487,9 @@ ldv_print_func_decl (ldv_i_func_ptr func)
 {
   ldv_pps_decl_ptr decl;
 
+  /* The type of a function that no advice can match is not converted yet. */
+  ldv_ensure_func_type (func);
+
   decl = ldv_convert_internal_to_declaration (func->type, ldv_get_id_name (func->name));
   ldv_text_printed = ldv_create_text ();
   ldv_padding_cur = LDV_PADDING_NONE;
@@ -2227,7 +2230,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_text_printed = ldv_create_text ();
 
       ldv_var_signature = ldv_i_match->i_var;
-      ldv_var_decl = ldv_i_match->i_var->decl;
+      ldv_var_decl = ldv_get_var_decl (ldv_i_match->i_var);
       ldv_var_name = ldv_get_id_name (ldv_i_match->i_var_aspect->name);
 
       if (ldv_i_match->i_var_aspect->type->it_kind == LDV_IT_PRIMITIVE && ldv_i_match->i_var_aspect->type->primitive_type->type_name)
@@ -2253,7 +2256,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_text_printed = ldv_create_text ();
 
       ldv_func_signature = ldv_i_match->i_func;
-      ldv_func_decl = ldv_i_match->i_func->decl;
+      ldv_func_decl = ldv_get_func_decl (ldv_i_match->i_func);
       if (ldv_func_signature->name)
         ldv_func_name = ldv_get_id_name (ldv_func_signature->name);
       if (ldv_func_signature->ptr_name)
@@ -2294,7 +2297,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
       ldv_text_printed = ldv_create_text ();
 
       ldv_type_signature = ldv_i_match->i_typedecl;
-      ldv_type_decl = ldv_i_match->i_typedecl->decl;
+      ldv_type_decl = ldv_get_typedecl_decl (ldv_i_match->i_typedecl);
       ldv_print_body (ldv_i_match->a_definition->a_body, a_kind);
 
       ldv_free_text (ldv_text_printed);

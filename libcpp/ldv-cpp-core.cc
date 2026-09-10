@@ -469,7 +469,8 @@ ldv_free_info_func (ldv_i_func_ptr func)
   if (func->ptr_name)
     ldv_free_id (func->ptr_name);
 
-  ldv_free_info_type (func->type);
+  if (func->type)
+    ldv_free_info_type (func->type);
 
   free (func->decl);
 
@@ -761,8 +762,10 @@ ldv_free_info_typedecl (ldv_i_typedecl_ptr typedecl)
   if (typedecl->name)
     ldv_free_id (typedecl->name);
 
-  ldv_free_info_type (typedecl->type);
+  if (typedecl->type)
+    ldv_free_info_type (typedecl->type);
 
+  free (typedecl->decl);
   free (typedecl);
 }
 
@@ -782,7 +785,8 @@ ldv_free_info_var (ldv_i_var_ptr var)
   if (var->name)
     ldv_free_id (var->name);
 
-  ldv_free_info_type (var->type);
+  if (var->type)
+    ldv_free_info_type (var->type);
 
   free (var->decl);
 

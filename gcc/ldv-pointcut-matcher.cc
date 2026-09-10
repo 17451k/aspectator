@@ -985,6 +985,7 @@ struct ldv_adef_iter
 
 static struct ldv_adef_index ldv_func_adef_index;
 static struct ldv_adef_index ldv_var_adef_index;
+static struct ldv_adef_index ldv_type_adef_index;
 
 /* Return true if primitive pointcuts of a given kind describe functions. */
 static bool
@@ -1027,6 +1028,14 @@ ldv_is_var_pp (ldv_ppk pp_kind)
     }
 }
 
+/* Return true if primitive pointcuts of a given kind describe type
+   declarations. */
+static bool
+ldv_is_type_pp (ldv_ppk pp_kind)
+{
+  return pp_kind == LDV_PP_INTRODUCE;
+}
+
 /* Return true if a composite pointcut contains a primitive pointcut of a
    given kind. */
 static bool
@@ -1062,6 +1071,7 @@ ldv_cp_collect_names (ldv_cp_ptr c_pointcut, ldv_pp_pred pred, htab_t names)
 {
   ldv_i_func_ptr i_func;
   ldv_i_var_ptr i_var;
+  ldv_i_typedecl_ptr i_typedecl;
   ldv_id_ptr name;
 
   if (!c_pointcut)
@@ -1087,6 +1097,13 @@ ldv_cp_collect_names (ldv_cp_ptr c_pointcut, ldv_pp_pred pred, htab_t names)
           name = i_func->name;
           ldv_add_name (names, (!name || name->isany_chars) ? "$" : ldv_get_id_name (name));
           ldv_free_info_func (i_func);
+        }
+      else if (ldv_is_type_pp (c_pointcut->p_pointcut->pp_kind))
+        {
+          i_typedecl = ldv_convert_typedecl_signature_to_internal (c_pointcut->p_pointcut->pp_signature->pps_declaration);
+          name = i_typedecl->name;
+          ldv_add_name (names, (!name || name->isany_chars) ? "$" : ldv_get_id_name (name));
+          ldv_free_info_typedecl (i_typedecl);
         }
       else
         {
@@ -1248,6 +1265,112 @@ ldv_adef_iter_next (struct ldv_adef_iter *iter)
   return NULL;
 }
 
+/* Return true if no advice can match the join point. */
+static bool
+ldv_adef_iter_empty (const struct ldv_adef_iter *iter)
+{
+  return !((iter->named && iter->named->len) || (iter->any && iter->any->len));
+}
+
+/* Types and printed declarations of join points are needed only when some
+   advice can match them or when advice bodies refer to them, so the functions
+   below convert them lazily. */
+
+/* Convert the type of a function or of a function pointer to the internal
+   representation. */
+static ldv_i_type_ptr
+ldv_convert_func_type (tree t)
+{
+  bool isfunc_ptr = (TREE_CODE (t) == VAR_DECL || TREE_CODE (t) == PARM_DECL || TREE_CODE (t) == FIELD_DECL);
+
+  /* Remember whether a function is inline/static to add this information to
+     a function return type. This information has sense just when function isn't
+     called by pointer. */
+  if (!isfunc_ptr)
+    {
+      if (DECL_DECLARED_INLINE_P (t) || !TREE_PUBLIC (t) || !TREE_STATIC (t))
+        {
+          ldv_entity_declspecs = ldv_create_declspecs ();
+
+          if (DECL_DECLARED_INLINE_P (t))
+            ldv_entity_declspecs->isinline = true;
+
+          if (!TREE_PUBLIC (t))
+            ldv_entity_declspecs->isstatic = true;
+          /* Ignore an extern flag since it isn't stored in gcc internal
+             representation in the same way as it's declared in source code.
+          if (!TREE_STATIC (t))
+            ldv_entity_declspecs->isextern = true;
+          */
+        }
+    }
+
+  if (isfunc_ptr)
+    return ldv_convert_type_tree_to_internal (TREE_TYPE (TREE_TYPE (t)), NULL_TREE);
+
+  return ldv_convert_type_tree_to_internal (TREE_TYPE (t), t);
+}
+
+/* Convert the type of a function unless it was converted already. */
+void
+ldv_ensure_func_type (ldv_i_func_ptr func)
+{
+  if (!func->type && func->node)
+    func->type = ldv_convert_func_type ((tree) func->node);
+}
+
+/* Return the printed declaration of a function, printing it on the first
+   call. */
+const char *
+ldv_get_func_decl (ldv_i_func_ptr func)
+{
+  if (!func->decl && func->node && TREE_CODE ((tree) func->node) == FUNCTION_DECL)
+    func->decl = ldv_convert_and_print_decl ((tree) func->node, true);
+
+  return func->decl;
+}
+
+/* Return the printed declaration of a variable without its initializer,
+   printing it on the first call. */
+const char *
+ldv_get_var_decl (ldv_i_var_ptr var)
+{
+  tree t, initializer;
+
+  if (!var->decl && var->node && TREE_CODE ((tree) var->node) == VAR_DECL)
+    {
+      t = (tree) var->node;
+      /* Do not print an initializer. */
+      initializer = DECL_INITIAL (t);
+      DECL_INITIAL (t) = NULL_TREE;
+      var->decl = ldv_convert_and_print_decl (t, true);
+      DECL_INITIAL (t) = initializer;
+    }
+
+  return var->decl;
+}
+
+/* Return the printed declaration of a type on one line, printing it on the
+   first call. */
+const char *
+ldv_get_typedecl_decl (ldv_i_typedecl_ptr typedecl)
+{
+  char *newline;
+
+  if (!typedecl->decl && typedecl->node)
+    {
+      ldv_disable_anon_enum_spec = true;
+      typedecl->decl = ldv_convert_and_print_decl ((tree) typedecl->node, true);
+      ldv_disable_anon_enum_spec = false;
+
+      /* Replace all new lines with spaces to avoid multi-line type definitions. */
+      for (newline = typedecl->decl; (newline = strchr (newline, '\n')); )
+        *newline = ' ';
+    }
+
+  return typedecl->decl;
+}
+
 ldv_i_func_ptr
 ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
 {
@@ -1305,36 +1428,7 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
       ldv_puts_id ((const char *) (func_ptr_id->str), func->ptr_name);
     }
 
-  /* Remember whether a function is inline/static to add this information to
-     a function return type. This information has sense just when function isn't
-     called by pointer. */
-  if (!isfunc_ptr)
-    {
-      if (DECL_DECLARED_INLINE_P (t) || !TREE_PUBLIC (t) || !TREE_STATIC (t))
-        {
-          ldv_entity_declspecs = ldv_create_declspecs ();
-
-          if (DECL_DECLARED_INLINE_P (t))
-            ldv_entity_declspecs->isinline = true;
-
-          if (!TREE_PUBLIC (t))
-            ldv_entity_declspecs->isstatic = true;
-          /* Ignore an extern flag since it isn't stored in gcc internal
-             representation in the same way as it's declared in source code.
-          if (!TREE_STATIC (t))
-            ldv_entity_declspecs->isextern = true;
-          */
-        }
-    }
-
-  if (isfunc_ptr)
-    {
-      func->type = ldv_convert_type_tree_to_internal (TREE_TYPE (TREE_TYPE (t)), NULL_TREE);
-    }
-  else
-    {
-      func->type = ldv_convert_type_tree_to_internal (TREE_TYPE (t), t);
-    }
+  func->node = t;
 
   func->file_path = ldv_get_realpath (DECL_SOURCE_FILE (t));
   func->decl_line = DECL_SOURCE_LINE (t);
@@ -1350,9 +1444,6 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
       func->use_line = line;
     }
 
-  if (TREE_CODE (t) == FUNCTION_DECL)
-    func->decl = ldv_convert_and_print_decl (t, true);
-
   if ((attrs = DECL_ATTRIBUTES(t)))
     for (; attrs != NULL_TREE; attrs = TREE_CHAIN (attrs))
       if (strstr (IDENTIFIER_POINTER (TREE_PURPOSE (attrs)), "gnu_inline"))
@@ -1360,6 +1451,16 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
 
   /* Walk through advices that can match the function to find matches. */
   ldv_adef_iter_init (&adef_iter, &ldv_func_adef_index, ldv_is_func_pp, func->name ? ldv_get_id_name (func->name) : NULL);
+
+  /* Convert types only when some advice can match the function. */
+  if (!ldv_adef_iter_empty (&adef_iter))
+    {
+      ldv_ensure_func_type (func);
+
+      if (func->func_context)
+        ldv_ensure_func_type (func->func_context);
+    }
+
   while ((adef = ldv_adef_iter_next (&adef_iter)))
     {
       c_pointcut = adef->a_declaration->c_pointcut;
@@ -1473,7 +1574,7 @@ void
 ldv_match_typedecl (tree t, const char *file_path, ldv_ppk pp_kind)
 {
   ldv_adef_ptr adef = NULL;
-  ldv_list_ptr adef_list = NULL;
+  struct ldv_adef_iter adef_iter;
   ldv_cp_ptr c_pointcut = NULL;
   ldv_i_match_ptr match = NULL;
   ldv_i_typedecl_ptr typedecl = NULL;
@@ -1505,29 +1606,25 @@ ldv_match_typedecl (tree t, const char *file_path, ldv_ppk pp_kind)
       ldv_puts_id ((const char *) (IDENTIFIER_POINTER (DECL_NAME (t))), typedecl->name);
     }
 
+  typedecl->node = t;
+
+  /* Do not convert anything if no advice can match the type declaration. */
+  ldv_adef_iter_init (&adef_iter, &ldv_type_adef_index, ldv_is_type_pp, typedecl->name ? ldv_get_id_name (typedecl->name) : NULL);
+
+  if (ldv_adef_iter_empty (&adef_iter))
+    {
+      ldv_free_info_match (match);
+      ldv_i_match = NULL;
+      return;
+    }
+
   typedecl->type = ldv_convert_type_tree_to_internal (TREE_CODE (t) == TYPE_DECL ? TREE_TYPE (t) : t, NULL);
 
   typedecl->file_path = ldv_get_realpath (file_path);
 
-  ldv_disable_anon_enum_spec = true;
-  typedecl->decl = ldv_convert_and_print_decl (t, true);
-  ldv_disable_anon_enum_spec = false;
-
-  /* Replace all new lines with spaces to avoid multi-line type definitions. */
-  while (1)
+  /* Walk through advices that can match the type declaration to find matches. */
+  while ((adef = ldv_adef_iter_next (&adef_iter)))
     {
-      char *newline = strstr(typedecl->decl, "\n");
-      if (newline)
-        *newline = ' ';
-      else
-        break;
-    }
-
-
-  /* Walk through an advice definitions list to find matches. */
-  for (adef_list = ldv_adef_list; adef_list; adef_list = ldv_list_get_next (adef_list))
-    {
-      adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
       c_pointcut = adef->a_declaration->c_pointcut;
 
       /* Skip obviously unnecessary advices. */
@@ -1584,7 +1681,6 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
   ldv_i_var_ptr var = NULL;
   ldv_i_func_ptr f_context = NULL;
   const char *var_decl_printed;
-  tree initializer = NULL_TREE;
 
   /* There is no advice definitions at all. So nothing will be matched. */
   if (ldv_adef_list == NULL)
@@ -1608,6 +1704,19 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
   else
     ldv_puts_id ((const char *) "", var->name);
 
+  var->node = t;
+
+  /* Do not convert anything if no advice can match the variable. */
+  ldv_adef_iter_init (&adef_iter, &ldv_var_adef_index, ldv_is_var_pp, ldv_get_id_name (var->name));
+
+  if (ldv_adef_iter_empty (&adef_iter))
+    {
+      ldv_free_info_var (var);
+      ldv_free_info_match (match);
+      ldv_i_match = NULL;
+      return;
+    }
+
   /* Remember whether a variable is static to add this information to its type. Ignore function arguments that are
    * always "static" from the standpoint of the TREE_PUBLIC() definition. Ditto skip local variables. */
   if (TREE_CODE (t) != PARM_DECL && pp_kind == LDV_PP_INIT_GLOBAL && !TREE_PUBLIC (t))
@@ -1624,6 +1733,9 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
     {
       var->func_context = func_context;
       var->use_line = line;
+
+      if (func_context)
+        ldv_ensure_func_type (func_context);
     }
 
   /* Add a function context for a variable if it's needed. */
@@ -1657,16 +1769,7 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
   if (TREE_CODE (t) == VAR_DECL && DECL_INITIAL (t))
     var->initializer = (void *) DECL_INITIAL (t);
 
-  if (TREE_CODE (t) == VAR_DECL)
-    {
-      initializer = DECL_INITIAL (t);
-      DECL_INITIAL (t) = NULL_TREE;
-      var->decl = ldv_convert_and_print_decl (t, true);
-      DECL_INITIAL (t) = initializer;
-    }
-
   /* Walk through advices that can match the variable to find matches. */
-  ldv_adef_iter_init (&adef_iter, &ldv_var_adef_index, ldv_is_var_pp, ldv_get_id_name (var->name));
   while ((adef = ldv_adef_iter_next (&adef_iter)))
     {
       c_pointcut = adef->a_declaration->c_pointcut;
