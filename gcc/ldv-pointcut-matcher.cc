@@ -1199,6 +1199,11 @@ ldv_adef_index_build (struct ldv_adef_index *index, ldv_pp_pred pred)
     {
       adef = (ldv_adef_ptr) ldv_list_get_data (adef_list);
 
+      /* Queries are executed at the instrumentation stage. Matching them again
+         at the compilation stage only duplicates their results. */
+      if (ldv_compilation () && adef->a_declaration->a_kind == LDV_A_QUERY)
+        continue;
+
       if (!ldv_cp_has_pp (adef->a_declaration->c_pointcut, pred))
         continue;
 
