@@ -411,6 +411,16 @@ advice_declaration: /* It's an advice declaration, the part of an advice definit
       /* Set a composite pointcut from a corresponding rule. */
       a_declaration->c_pointcut = $3;
 
+      /* The "new" advice creates a file, so its pointcut should be just a
+         "file" primitive pointcut. */
+      if (a_declaration->a_kind == LDV_A_NEW
+        && (a_declaration->c_pointcut->cp_kind != LDV_CP_PRIMITIVE
+        || a_declaration->c_pointcut->p_pointcut->pp_kind != LDV_PP_FILE))
+        {
+          ldv_print_info_location (@3, LDV_ERROR_BISON, "pointcut of \"new\" advice should be \"file\" primitive pointcut");
+          internal_error ("incorrect pointcut of \"new\" advice declaration");
+        }
+
       if (a_declaration->c_pointcut->cp_type == LDV_CP_TYPE_CALL)
         {
           /* Create hash table with called function names. */
