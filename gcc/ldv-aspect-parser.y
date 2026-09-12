@@ -2174,6 +2174,41 @@ ldv_parse_advice_body (ldv_ab_ptr *body)
           ldv_putc_body (c, *body);
           ldv_set_last_column (yylloc.last_column + 1);
 
+          /* Copy string and character literals as is since braces inside
+             them do not open or close anything. */
+          if (c == '"' || c == '\'')
+            {
+              int quote = c;
+
+              while ((c = ldv_getc (LDV_ASPECT_STREAM)) != EOF && c != quote && c != '\n')
+                {
+                  ldv_putc_body (c, *body);
+                  ldv_set_last_column (yylloc.last_column + 1);
+
+                  /* Keep an escaped character whatever it is. */
+                  if (c == '\\' && (c = ldv_getc (LDV_ASPECT_STREAM)) != EOF)
+                    {
+                      ldv_putc_body (c, *body);
+                      ldv_set_last_column (yylloc.last_column + 1);
+                    }
+                }
+
+              if (c == EOF)
+                internal_error ("End of file is reached but advice body \"%s\" isn't completed", ldv_get_body_text (*body));
+
+              /* An unterminated literal ends at the end of line, which is
+                 processed as usual. */
+              if (c == '\n')
+                ldv_ungetc (c, LDV_ASPECT_STREAM);
+              else
+                {
+                  ldv_putc_body (c, *body);
+                  ldv_set_last_column (yylloc.last_column + 1);
+                }
+
+              continue;
+            }
+
           /* Increase/decrease a brace counter to skip '{...}' construction
              inside a body. */
           if (c == '{')
