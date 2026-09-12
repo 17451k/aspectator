@@ -430,8 +430,45 @@ ldv_match_cp (ldv_cp_ptr c_pointcut, ldv_i_match_ptr i_match)
 
     /* A result is true if an operand is false. */
     case LDV_CP_NOT:
-      if (!ldv_match_cp (c_pointcut->c_pointcut_first, i_match))
-        return true;
+      {
+        /* Matching of the operand should not leave its state behind: a
+           negated match is not woven, and the state left by a pointcut
+           matched earlier, say, by the first operand of "&&", is kept. */
+        ldv_pp_ptr p_pointcut = i_match->p_pointcut;
+        ldv_i_func_ptr i_func_aspect = i_match->i_func_aspect;
+        ldv_i_macro_ptr i_macro_aspect = i_match->i_macro_aspect;
+        ldv_i_var_ptr i_var_aspect = i_match->i_var_aspect;
+        bool ismatched_by_name = i_match->ismatched_by_name;
+        bool ismatched;
+
+        i_match->i_func_aspect = NULL;
+        i_match->i_macro_aspect = NULL;
+        i_match->i_var_aspect = NULL;
+        i_match->ismatched_by_name = false;
+
+        ismatched = ldv_match_cp (c_pointcut->c_pointcut_first, i_match);
+
+        /* Aspect entities matched by name only are owned by the match and
+           are freed here as they are after a failed match. Other ones may
+           share their parts with source entities, so they are not freed. */
+        if (i_match->ismatched_by_name)
+          {
+            if (i_match->i_func_aspect)
+              ldv_free_info_func (i_match->i_func_aspect);
+
+            if (i_match->i_macro_aspect)
+              ldv_free_info_macro (i_match->i_macro_aspect);
+          }
+
+        i_match->p_pointcut = p_pointcut;
+        i_match->i_func_aspect = i_func_aspect;
+        i_match->i_macro_aspect = i_macro_aspect;
+        i_match->i_var_aspect = i_var_aspect;
+        i_match->ismatched_by_name = ismatched_by_name;
+
+        if (!ismatched)
+          return true;
+      }
 
       break;
 
@@ -747,7 +784,9 @@ ldv_match_macro (cpp_reader *pfile, cpp_hashnode *node, const cpp_token ***arg_v
       if (c_pointcut->cp_type == LDV_CP_TYPE_CALL)
         continue;
 
-      if (ldv_match_cp (c_pointcut, match))
+      /* A join point is matched only if some primitive pointcut matched it:
+         a negation alone does not describe what to weave. */
+      if (ldv_match_cp (c_pointcut, match) && match->p_pointcut)
         {
           /* Count advice weavings. */
           ++(adef->use_counter);

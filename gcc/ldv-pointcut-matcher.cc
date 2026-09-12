@@ -1137,7 +1137,9 @@ ldv_match_func (tree t, unsigned int line, ldv_ppk pp_kind)
             continue;
         }
 
-      if (ldv_match_cp (c_pointcut, match))
+      /* A join point is matched only if some primitive pointcut matched it:
+         a negation alone does not describe what to weave. */
+      if (ldv_match_cp (c_pointcut, match) && match->p_pointcut)
         {
           /* Count advice weavings. */
           ++(adef->use_counter);
@@ -1285,7 +1287,9 @@ ldv_match_typedecl (tree t, const char *file_path, ldv_ppk pp_kind)
       if (c_pointcut->cp_type == LDV_CP_TYPE_CALL)
         continue;
 
-      if (ldv_match_cp (c_pointcut, match))
+      /* A join point is matched only if some primitive pointcut matched it:
+         a negation alone does not describe what to weave. */
+      if (ldv_match_cp (c_pointcut, match) && match->p_pointcut)
         {
           /* Count advice weavings. */
           ++(adef->use_counter);
@@ -1432,7 +1436,9 @@ ldv_match_var (tree t, unsigned int line, ldv_ppk pp_kind)
       if (c_pointcut->cp_type == LDV_CP_TYPE_CALL)
         continue;
 
-      if (ldv_match_cp (c_pointcut, match))
+      /* A join point is matched only if some primitive pointcut matched it:
+         a negation alone does not describe what to weave. */
+      if (ldv_match_cp (c_pointcut, match) && match->p_pointcut)
         {
           /* Count advice weavings. */
           ++(adef->use_counter);
