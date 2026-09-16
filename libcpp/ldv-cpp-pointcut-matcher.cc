@@ -904,6 +904,9 @@ ldv_match_func_signature (ldv_i_match_ptr i_match, ldv_pps_decl_ptr pps_func)
   return true;
 }
 
+static bool
+ldv_match_macro_param (ldv_i_macro_func_param_ptr source, ldv_i_macro_func_param_ptr aspect);
+
 bool
 ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
 {
@@ -941,75 +944,159 @@ ldv_match_macro_signature (ldv_i_match_ptr i_match, ldv_pps_macro_ptr pps_macro)
   /* Specify that a macro was matched by a name. */
   i_match->ismatched_by_name = true;
 
-  /* Match wildcard ".." if so. It can be the only aspect macro parameter. */
-  if (ldv_list_len (macro_aspect->macro_param) == 1)
-    {
-      i_macro_param_second = (ldv_i_macro_func_param_ptr) ldv_list_get_data (macro_aspect->macro_param);
+  /* Find the position of the ".." wildcard (if any) among aspect macro
+     parameters, and the total number of aspect macro parameters. */
+  {
+    int n = 0, k = -1, idx = 0;
 
-      /* Replace ".." with source parameter names. */
-      if (i_macro_param_second->isany_params)
-        {
-          ldv_free_info_macro_func_param (i_macro_param_second);
-          ldv_list_delete_all (macro_aspect->macro_param);
+    for (i_macro_param_second_list = macro_aspect->macro_param
+      ; i_macro_param_second_list
+      ; i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list), idx++)
+      {
+        i_macro_param_second = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_second_list);
 
-          for (i_macro_param_first_list = macro_source->macro_param
-            ; i_macro_param_first_list && i_macro_param_second_list
-            ; i_macro_param_first_list = ldv_list_get_next (i_macro_param_first_list))
-            {
-              i_macro_param_first = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_first_list);
+        if (i_macro_param_second->isany_params)
+          {
+            if (k != -1)
+              {
+                LDV_CPP_FATAL_ERROR ("there may be the only wildcard \"..\" for matching macro function parameters");
+              }
 
-              i_macro_param_second = ldv_create_info_macro_func_param ();
-              i_macro_param_second->name = i_macro_param_first->name;
-              i_macro_param_second->isvar_params = i_macro_param_first->isvar_params;
+            k = idx;
+          }
 
-              ldv_list_push_back (&macro_aspect->macro_param, i_macro_param_second);
-            }
+        n++;
+      }
 
-          /* Specify that a macro was matched by a whole signature not just by a
-             name. */
-          i_match->ismatched_by_name = false;
+    if (k == -1)
+      {
+        /* No ".." wildcard. Macro parameters (if so) are matched just in case
+           when '$' wildcard is used in them because of in this case we need
+           to replace aspect parameter names with the source ones. Otherwise
+           aspect parameter name is taken. */
+        for (i_macro_param_first_list = macro_source->macro_param, i_macro_param_second_list = macro_aspect->macro_param
+          ; i_macro_param_first_list && i_macro_param_second_list
+          ; i_macro_param_first_list = ldv_list_get_next (i_macro_param_first_list), i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list))
+          {
+            i_macro_param_first = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_first_list);
+            i_macro_param_second = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_second_list);
 
-          return true;
-        }
-    }
+            if (!ldv_match_macro_param (i_macro_param_first, i_macro_param_second))
+              return false;
+          }
 
-  /* Macro parameters (if so) are matched just in case when '$' wildcard is used
-     in them because of in this case we need to replace aspect parameter names
-     with the source ones. Otherwise aspect parameter name is taken. */
-  for (i_macro_param_first_list = macro_source->macro_param, i_macro_param_second_list = macro_aspect->macro_param
-    ; i_macro_param_first_list && i_macro_param_second_list
-    ; i_macro_param_first_list = ldv_list_get_next (i_macro_param_first_list), i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list))
-    {
-      i_macro_param_first = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_first_list);
-      i_macro_param_second = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_second_list);
+        /* I.e. the numbers of macro parameters aren't equal. */
+        if (i_macro_param_first_list || i_macro_param_second_list)
+            return false;
 
-      if (i_macro_param_second->isany_params)
-        {
-          LDV_CPP_FATAL_ERROR ("there may be the only wildcard \"..\" for matching macro function parameters");
-        }
+        /* Specify that a macro was matched by a whole signature not just by a
+           name. */
+        i_match->ismatched_by_name = false;
 
-      if ((i_macro_param_first->isvar_params && !i_macro_param_second->isvar_params) ||
-          (!i_macro_param_first->isvar_params && i_macro_param_second->isvar_params))
+        return true;
+      }
+    else
+      {
+        int m = ldv_list_len (macro_source->macro_param);
+        int prefix = k;
+        int suffix = n - k - 1;
+        ldv_list_ptr source_list = NULL;
+        ldv_list_ptr new_params = NULL;
+        ldv_list_ptr old_params = macro_aspect->macro_param;
+        int i;
+
+        if (m < prefix + suffix)
           return false;
 
-      if (i_macro_param_first->name && i_macro_param_second->name && i_macro_param_second->name->isany_chars)
-        {
-          if (ldv_cmp_str (i_macro_param_second->name, ldv_cpp_get_id_name (i_macro_param_first->name)))
-              return false;
+        /* Match the prefix source parameters against the aspect parameters
+           that precede "..". */
+        source_list = macro_source->macro_param;
+        i_macro_param_second_list = macro_aspect->macro_param;
 
-          ldv_free_id (i_macro_param_second->name);
-          i_macro_param_second->name = ldv_create_id();
-          ldv_puts_id(ldv_cpp_get_id_name (i_macro_param_first->name), i_macro_param_second->name);
-        }
+        for (i = 0; i < prefix; i++, source_list = ldv_list_get_next (source_list), i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list))
+          {
+            i_macro_param_first = (ldv_i_macro_func_param_ptr) ldv_list_get_data (source_list);
+            i_macro_param_second = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_second_list);
+
+            if (!ldv_match_macro_param (i_macro_param_first, i_macro_param_second))
+              return false;
+          }
+
+        /* Skip the source parameters covered by "..". */
+        for (i = 0; i < m - prefix - suffix; i++, source_list = ldv_list_get_next (source_list))
+          ;
+
+        /* Skip the ".." aspect parameter itself. */
+        i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list);
+
+        /* Match the suffix source parameters against the aspect parameters
+           that follow "..". */
+        for (i = 0; i < suffix; i++, source_list = ldv_list_get_next (source_list), i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list))
+          {
+            i_macro_param_first = (ldv_i_macro_func_param_ptr) ldv_list_get_data (source_list);
+            i_macro_param_second = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_second_list);
+
+            if (!ldv_match_macro_param (i_macro_param_first, i_macro_param_second))
+              return false;
+          }
+
+        /* Rebuild the aspect macro parameters as copies of all source
+           parameters in order. */
+        for (i_macro_param_first_list = macro_source->macro_param
+          ; i_macro_param_first_list
+          ; i_macro_param_first_list = ldv_list_get_next (i_macro_param_first_list))
+          {
+            i_macro_param_first = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_first_list);
+
+            i_macro_param_second = ldv_create_info_macro_func_param ();
+            i_macro_param_second->name = i_macro_param_first->name;
+            i_macro_param_second->isvar_params = i_macro_param_first->isvar_params;
+
+            ldv_list_push_back (&new_params, i_macro_param_second);
+          }
+
+        for (i_macro_param_second_list = old_params
+          ; i_macro_param_second_list
+          ; i_macro_param_second_list = ldv_list_get_next (i_macro_param_second_list))
+          {
+            i_macro_param_second = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_second_list);
+            ldv_free_info_macro_func_param (i_macro_param_second);
+          }
+
+        ldv_list_delete_all (old_params);
+
+        macro_aspect->macro_param = new_params;
+
+        /* Specify that a macro was matched by a whole signature not just by a
+           name. */
+        i_match->ismatched_by_name = false;
+
+        return true;
+      }
+  }
+}
+
+static bool
+ldv_match_macro_param (ldv_i_macro_func_param_ptr source, ldv_i_macro_func_param_ptr aspect)
+{
+  if (aspect->isany_params)
+    {
+      LDV_CPP_FATAL_ERROR ("there may be the only wildcard \"..\" for matching macro function parameters");
     }
 
-  /* I.e. the numbers of macro parameters aren't equal. */
-  if (i_macro_param_first_list || i_macro_param_second_list)
+  if ((source->isvar_params && !aspect->isvar_params) ||
+      (!source->isvar_params && aspect->isvar_params))
       return false;
 
-  /* Specify that a macro was matched by a whole signature not just by a
-     name. */
-  i_match->ismatched_by_name = false;
+  if (source->name && aspect->name && aspect->name->isany_chars)
+    {
+      if (ldv_cmp_str (aspect->name, ldv_cpp_get_id_name (source->name)))
+          return false;
+
+      ldv_free_id (aspect->name);
+      aspect->name = ldv_create_id ();
+      ldv_puts_id (ldv_cpp_get_id_name (source->name), aspect->name);
+    }
 
   return true;
 }

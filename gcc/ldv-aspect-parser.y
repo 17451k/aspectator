@@ -894,6 +894,24 @@ macro_param: /* It's a macro function parameters, the part of macro primitive po
       ldv_list_push_back (&$1, pps_macro_func_param);
 
       $$ = $1;
+    }
+  | macro_param ',' LDV_ANY_PARAMS /* ".." may follow other parameters; consecutive ".." are merged. */
+    {
+      ldv_list_ptr macro_param_list_last = NULL;
+      ldv_pps_macro_func_param_ptr pps_macro_func_param_last = NULL;
+      ldv_pps_macro_func_param_ptr pps_macro_func_param = NULL;
+
+      macro_param_list_last = ldv_list_get_last ($1);
+      pps_macro_func_param_last = (ldv_pps_macro_func_param_ptr) ldv_list_get_data (macro_param_list_last);
+
+      if (!pps_macro_func_param_last->isany_params)
+        {
+          pps_macro_func_param = ldv_create_macro_func_param ();
+          pps_macro_func_param->isany_params = true;
+          ldv_list_push_back (&$1, pps_macro_func_param);
+        }
+
+      $$ = $1;
     };
 
 primitive_pointcut_signature_declaration:
