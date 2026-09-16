@@ -110,6 +110,28 @@ typedef struct YYLTYPE
 #define yyltype YYLTYPE
 #define YYLTYPE_IS_DECLARED 1
 
+/* The default location computation copies only lines and columns, so the
+   file name of a nonterminal would be left uninitialized. */
+#define YYLLOC_DEFAULT(Current, Rhs, N)                                 \
+    do                                                                  \
+      if (N)                                                            \
+        {                                                               \
+          (Current).first_line   = YYRHSLOC (Rhs, 1).first_line;        \
+          (Current).first_column = YYRHSLOC (Rhs, 1).first_column;      \
+          (Current).last_line    = YYRHSLOC (Rhs, N).last_line;         \
+          (Current).last_column  = YYRHSLOC (Rhs, N).last_column;       \
+          (Current).file_name    = YYRHSLOC (Rhs, 1).file_name;         \
+        }                                                               \
+      else                                                              \
+        {                                                               \
+          (Current).first_line   = (Current).last_line   =              \
+            YYRHSLOC (Rhs, 0).last_line;                                \
+          (Current).first_column = (Current).last_column =              \
+            YYRHSLOC (Rhs, 0).last_column;                              \
+          (Current).file_name    = YYRHSLOC (Rhs, 0).file_name;         \
+        }                                                               \
+    while (0)
+
 /* Flag says whether it's parsed primitive pointcut declaration signature or not. */
 static bool ldv_isdecl_pps = false;
 /* Flag says whether it's parsed primitive pointcut file signature or not. */
