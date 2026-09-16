@@ -379,7 +379,7 @@ char *
 ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro)
 {
   ldv_list_ptr i_macro_param_list = NULL;
-  ldv_id_ptr i_macro_param = NULL;
+  ldv_i_macro_func_param_ptr i_macro_param = NULL;
   ldv_str_ptr text = ldv_create_string ();
 
   ldv_puts_string (ldv_cpp_get_id_name (i_macro->macro_name), text);
@@ -391,9 +391,9 @@ ldv_cpp_print_macro_signature (ldv_i_macro_ptr i_macro)
     ; i_macro_param_list
     ; i_macro_param_list = ldv_list_get_next (i_macro_param_list))
     {
-      i_macro_param = (ldv_id_ptr) ldv_list_get_data (i_macro_param_list);
+      i_macro_param = (ldv_i_macro_func_param_ptr) ldv_list_get_data (i_macro_param_list);
 
-      ldv_puts_string (ldv_cpp_get_id_name (i_macro_param), text);
+      ldv_puts_string (ldv_cpp_get_id_name (i_macro_param->name), text);
 
       if (ldv_list_get_next (i_macro_param_list))
         ldv_puts_string (", ", text);
