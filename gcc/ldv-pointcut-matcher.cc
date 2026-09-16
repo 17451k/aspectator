@@ -97,6 +97,12 @@ C Instrumentation Framework.  If not, see <http://www.gnu.org/licenses/>.  */
 #define LDV_OP3 TREE_OPERAND (t, 2)
 #define LDV_OP4 TREE_OPERAND (t, 3)
 
+/* SAVE_EXPR nodes are shared between all uses of the value they save
+   (e.g. GCC wraps a volatile access in a SAVE_EXPR and reuses that same
+   node under a COMPOUND_EXPR). Track which ones have already been
+   descended into so each is matched exactly once. */
+static hash_set<tree> ldv_matched_save_exprs;
+
 /* This is copypasted from C-backend. */
 #define LDV_CONVERT_WARN(t) error ("LDV: %s: %d: tree node '%s' isn't supported", __FILE__, __LINE__, LDV_TREE_NODE_NAME (t))
 #define LDV_TREE_NODE_NAME(t) (get_tree_code_name(TREE_CODE (t)))
@@ -509,8 +515,12 @@ ldv_match_expr (tree t, tree context)
 
           break;
 
-        /* Do nothing for this auxliary entity. */
+        /* This auxiliary entity may be shared by several uses of the same
+           saved value, so descend into it only the first time it is seen. */
         case SAVE_EXPR:
+          if (!ldv_matched_save_exprs.add (t))
+            ldv_match_expr (LDV_OP1, t);
+
           break;
 
         /* It has four operands. */
@@ -1201,6 +1211,10 @@ ldv_match_func_body (tree fndecl, ldv_i_func_ptr i_func)
 
   /* Save current function context. */
   func_context = i_func;
+
+  /* Each function body is matched independently, so SAVE_EXPR nodes from a
+     previous function must not suppress matching in this one. */
+  ldv_matched_save_exprs.empty ();
 
   if (strncmp (CIF_AUX_FUNC_NAME_PREFIX, ldv_get_id_name (i_func->name), strlen (CIF_AUX_FUNC_NAME_PREFIX)))
   {
