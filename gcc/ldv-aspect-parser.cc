@@ -833,8 +833,8 @@ static const yytype_int16 yyrline[] =
     1247,  1259,  1276,  1293,  1310,  1327,  1340,  1353,  1366,  1379,
     1393,  1405,  1417,  1431,  1445,  1453,  1470,  1476,  1504,  1523,
     1526,  1532,  1549,  1568,  1571,  1576,  1588,  1591,  1597,  1601,
-    1620,  1643,  1659,  1688,  1707,  1761,  1767,  1776,  1785,  1791,
-    1797,  1823,  1842,  1845,  1852,  1855
+    1620,  1646,  1662,  1691,  1710,  1764,  1770,  1779,  1788,  1794,
+    1800,  1826,  1845,  1848,  1855,  1858
 };
 #endif
 
@@ -3283,18 +3283,21 @@ yyreduce:
           pps_func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data (pps_func_arg_list);
 
           if (pps_func_arg->isva && ldv_list_get_next (pps_func_arg_list))
-            internal_error ("Used '...' not at the end of parameter list");
+            {
+              ldv_print_info_location ((yylsp[0]), LDV_ERROR_BISON, "\"...\" must be the last parameter");
+              internal_error ("Used '...' not at the end of parameter list");
+            }
         }
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed parameter list");
 
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3294 "ldv-aspect-parser.c"
+#line 3297 "ldv-aspect-parser.c"
     break;
 
   case 91: /* c_parameter_list: c_parameter_declaration  */
-#line 1644 "ldv-aspect-parser.y"
+#line 1647 "ldv-aspect-parser.y"
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_list_ptr func_arg_list = NULL;
@@ -3310,11 +3313,11 @@ yyreduce:
 
       (yyval.list) = func_arg_list;
     }
-#line 3314 "ldv-aspect-parser.c"
+#line 3317 "ldv-aspect-parser.c"
     break;
 
   case 92: /* c_parameter_list: c_parameter_list ',' c_parameter_declaration  */
-#line 1660 "ldv-aspect-parser.y"
+#line 1663 "ldv-aspect-parser.y"
     {
       ldv_pps_func_arg_ptr pps_func_arg_new = NULL;
       ldv_pps_func_arg_ptr pps_func_arg_last = NULL;
@@ -3341,11 +3344,11 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-2].list);
     }
-#line 3345 "ldv-aspect-parser.c"
+#line 3348 "ldv-aspect-parser.c"
     break;
 
   case 93: /* c_parameter_declaration: c_declaration_specifiers c_declarator  */
-#line 1689 "ldv-aspect-parser.y"
+#line 1692 "ldv-aspect-parser.y"
     {
       ldv_pps_decl_ptr pps_decl = NULL;
 
@@ -3364,11 +3367,11 @@ yyreduce:
 
       (yyval.pps_decl) = pps_decl;
     }
-#line 3368 "ldv-aspect-parser.c"
+#line 3371 "ldv-aspect-parser.c"
     break;
 
   case 94: /* c_parameter_declaration: c_declaration_specifiers c_abstract_declarator_opt  */
-#line 1708 "ldv-aspect-parser.y"
+#line 1711 "ldv-aspect-parser.y"
     {
       ldv_pps_decl_ptr pps_decl = NULL;
       ldv_pps_declarator_ptr declarator = NULL;
@@ -3420,31 +3423,31 @@ yyreduce:
 
       (yyval.pps_decl) = pps_decl;
     }
-#line 3424 "ldv-aspect-parser.c"
+#line 3427 "ldv-aspect-parser.c"
     break;
 
   case 95: /* c_abstract_declarator: c_pointer  */
-#line 1762 "ldv-aspect-parser.y"
+#line 1765 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed abstract declarator");
 
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3434 "ldv-aspect-parser.c"
+#line 3437 "ldv-aspect-parser.c"
     break;
 
   case 96: /* c_abstract_declarator: c_pointer_opt c_direct_abstract_declarator  */
-#line 1768 "ldv-aspect-parser.y"
+#line 1771 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed abstract declarator");
 
       (yyval.list) = ldv_list_splice ((yyvsp[-1].list), (yyvsp[0].list));
     }
-#line 3444 "ldv-aspect-parser.c"
+#line 3447 "ldv-aspect-parser.c"
     break;
 
   case 97: /* c_abstract_declarator_opt: %empty  */
-#line 1776 "ldv-aspect-parser.y"
+#line 1779 "ldv-aspect-parser.y"
     {
       ldv_list_ptr declarator_list = NULL;
 
@@ -3454,29 +3457,29 @@ yyreduce:
 
       (yyval.list) = declarator_list;
     }
-#line 3458 "ldv-aspect-parser.c"
+#line 3461 "ldv-aspect-parser.c"
     break;
 
   case 98: /* c_abstract_declarator_opt: c_abstract_declarator  */
-#line 1786 "ldv-aspect-parser.y"
+#line 1789 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3466 "ldv-aspect-parser.c"
+#line 3469 "ldv-aspect-parser.c"
     break;
 
   case 99: /* c_direct_abstract_declarator: '(' c_abstract_declarator ')'  */
-#line 1792 "ldv-aspect-parser.y"
+#line 1795 "ldv-aspect-parser.y"
     {
       ldv_print_info (LDV_INFO_BISON, "bison parsed direct abstract declarator of associativity");
 
       (yyval.list) = (yyvsp[-1].list);
     }
-#line 3476 "ldv-aspect-parser.c"
+#line 3479 "ldv-aspect-parser.c"
     break;
 
   case 100: /* c_direct_abstract_declarator: c_direct_abstract_declarator_opt '[' int_opt ']'  */
-#line 1798 "ldv-aspect-parser.y"
+#line 1801 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -3501,11 +3504,11 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-3].list);
     }
-#line 3505 "ldv-aspect-parser.c"
+#line 3508 "ldv-aspect-parser.c"
     break;
 
   case 101: /* c_direct_abstract_declarator: c_direct_abstract_declarator '(' c_parameter_type_list_opt ')'  */
-#line 1824 "ldv-aspect-parser.y"
+#line 1827 "ldv-aspect-parser.y"
     {
       ldv_pps_declarator_ptr declarator_new = NULL;
 
@@ -3521,43 +3524,43 @@ yyreduce:
 
       (yyval.list) = (yyvsp[-3].list);
     }
-#line 3525 "ldv-aspect-parser.c"
+#line 3528 "ldv-aspect-parser.c"
     break;
 
   case 102: /* c_direct_abstract_declarator_opt: %empty  */
-#line 1842 "ldv-aspect-parser.y"
+#line 1845 "ldv-aspect-parser.y"
     {
       (yyval.list) = NULL;
     }
-#line 3533 "ldv-aspect-parser.c"
+#line 3536 "ldv-aspect-parser.c"
     break;
 
   case 103: /* c_direct_abstract_declarator_opt: c_direct_abstract_declarator  */
-#line 1846 "ldv-aspect-parser.y"
+#line 1849 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3541 "ldv-aspect-parser.c"
+#line 3544 "ldv-aspect-parser.c"
     break;
 
   case 104: /* c_parameter_type_list_opt: %empty  */
-#line 1852 "ldv-aspect-parser.y"
+#line 1855 "ldv-aspect-parser.y"
     {
       (yyval.list) = NULL;
     }
-#line 3549 "ldv-aspect-parser.c"
+#line 3552 "ldv-aspect-parser.c"
     break;
 
   case 105: /* c_parameter_type_list_opt: c_parameter_type_list  */
-#line 1856 "ldv-aspect-parser.y"
+#line 1859 "ldv-aspect-parser.y"
     {
       (yyval.list) = (yyvsp[0].list);
     }
-#line 3557 "ldv-aspect-parser.c"
+#line 3560 "ldv-aspect-parser.c"
     break;
 
 
-#line 3561 "ldv-aspect-parser.c"
+#line 3564 "ldv-aspect-parser.c"
 
       default: break;
     }
@@ -3755,7 +3758,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 1860 "ldv-aspect-parser.y"
+#line 1863 "ldv-aspect-parser.y"
 
 
 void

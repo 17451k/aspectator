@@ -1631,7 +1631,10 @@ c_parameter_type_list:
           pps_func_arg = (ldv_pps_func_arg_ptr) ldv_list_get_data (pps_func_arg_list);
 
           if (pps_func_arg->isva && ldv_list_get_next (pps_func_arg_list))
-            internal_error ("Used '...' not at the end of parameter list");
+            {
+              ldv_print_info_location (@1, LDV_ERROR_BISON, "\"...\" must be the last parameter");
+              internal_error ("Used '...' not at the end of parameter list");
+            }
         }
 
       ldv_print_info (LDV_INFO_BISON, "bison parsed parameter list");
