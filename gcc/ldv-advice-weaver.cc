@@ -179,6 +179,7 @@ static void ldv_store_func_arg_type_decl_list (ldv_i_type_ptr);
 static void ldv_free_func_arg_type_decl_list (void);
 static void ldv_weave_func_source (const char *, const char *, ldv_ppk);
 static void ldv_weave_var_source (const char *, const char *, ldv_ppk);
+static bool ldv_is_var_query (ldv_ppk);
 
 
 void
@@ -2198,6 +2199,18 @@ ldv_free_func_arg_type_decl_list (void)
   ldv_func_arg_type_decl_list = NULL;
 }
 
+/* Return true if PP_KIND is one of the primitive pointcuts that match a
+   variable (as opposed to a function, macro, type or file), so that a
+   query advice for it is printed rather than woven. */
+static bool
+ldv_is_var_query (ldv_ppk pp_kind)
+{
+  return pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_INIT
+    || pp_kind == LDV_PP_USE_VAR
+    || pp_kind == LDV_PP_GET || pp_kind == LDV_PP_GET_GLOBAL || pp_kind == LDV_PP_GET_LOCAL
+    || pp_kind == LDV_PP_SET || pp_kind == LDV_PP_SET_GLOBAL || pp_kind == LDV_PP_SET_LOCAL;
+}
+
 void
 ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 {
@@ -2229,7 +2242,7 @@ ldv_weave_advice (expanded_location *open_brace, expanded_location *close_brace)
 
   /* In case of source code queries do not perform weaving just "print" advice
      body that implicitly invokes evaluation of all $fprintf. */
-  if (a_kind == LDV_A_QUERY && (pp_kind == LDV_PP_INIT_GLOBAL || pp_kind == LDV_PP_INIT_LOCAL || pp_kind == LDV_PP_USE_VAR))
+  if (a_kind == LDV_A_QUERY && ldv_is_var_query (pp_kind))
     {
       ldv_text_printed = ldv_create_text ();
 
